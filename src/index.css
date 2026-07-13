@@ -53,6 +53,16 @@
   --accent-orange:  #CC6B49;   /* Terracotta — Claude/partner + warnings only */
   --alt-bg-green:   #0B1A08;
 
+  /* RGB channels (for Tailwind /opacity utilities) */
+  --bg-page-rgb:      4 7 13;
+  --bg-card-rgb:      8 10 14;
+  --bg-panel-rgb:     16 19 28;
+  --accent-green-rgb: 177 217 151;
+  --accent-blue-rgb:  99 165 231;
+  --accent-orange-rgb:204 107 73;
+  --alt-bg-green-rgb: 11 26 8;
+  --text-primary-rgb: 255 255 255;
+
   --text-primary:   #FFFFFF;
   --text-secondary: rgba(255,255,255,0.72);
   --text-muted:     rgba(255,255,255,0.50);
@@ -73,6 +83,15 @@
   --accent-blue:    #408CD6;
   --accent-orange:  #CC6B49;
   --alt-bg-green:   #E7F0DF;
+
+  --bg-page-rgb:      248 250 247;
+  --bg-card-rgb:      255 255 255;
+  --bg-panel-rgb:     238 243 234;
+  --accent-green-rgb: 143 188 106;
+  --accent-blue-rgb:  64 140 214;
+  --accent-orange-rgb:204 107 73;
+  --alt-bg-green-rgb: 231 240 223;
+  --text-primary-rgb: 4 7 13;
 
   --text-primary:   #04070D;
   --text-secondary: rgba(4,7,13,0.72);

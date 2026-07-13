@@ -8,14 +8,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        page: 'var(--bg-page)',
-        card: 'var(--bg-card)',
-        panel: 'var(--bg-panel)',
-        sage: 'var(--accent-green)',
-        electric: 'var(--accent-blue)',
-        terracotta: 'var(--accent-orange)',
-        'alt-green': 'var(--alt-bg-green)',
-        ink: 'var(--text-primary)',
+        // RGB-channel vars let Tailwind's /opacity modifiers work (e.g. bg-sage/12).
+        page: 'rgb(var(--bg-page-rgb) / <alpha-value>)',
+        card: 'rgb(var(--bg-card-rgb) / <alpha-value>)',
+        panel: 'rgb(var(--bg-panel-rgb) / <alpha-value>)',
+        sage: 'rgb(var(--accent-green-rgb) / <alpha-value>)',
+        electric: 'rgb(var(--accent-blue-rgb) / <alpha-value>)',
+        terracotta: 'rgb(var(--accent-orange-rgb) / <alpha-value>)',
+        'alt-green': 'rgb(var(--alt-bg-green-rgb) / <alpha-value>)',
+        ink: 'rgb(var(--text-primary-rgb) / <alpha-value>)',
         muted: 'var(--text-muted)',
         line: 'var(--border-subtle)',
       },
