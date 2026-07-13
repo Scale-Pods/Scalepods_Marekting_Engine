@@ -10,6 +10,8 @@ import Clients from './pages/Clients'
 import BusinessProfile from './pages/BusinessProfile'
 import Intelligence from './pages/Intelligence'
 import IntelligenceReport from './pages/IntelligenceReport'
+import Trends from './pages/Trends'
+import Strategy from './pages/Strategy'
 import Placeholder from './pages/Placeholder'
 
 function FullScreenLoader() {
@@ -49,8 +51,8 @@ export default function App() {
           <Route path="/clients/:id" element={<Protected><BusinessProfile /></Protected>} />
           <Route path="/intelligence" element={<Protected><Intelligence /></Protected>} />
           <Route path="/intelligence/:id" element={<Protected><IntelligenceReport /></Protected>} />
-          <Route path="/trends" element={<Protected><Placeholder title="Trends" step="Step 4" /></Protected>} />
-          <Route path="/strategy" element={<Protected><Placeholder title="Strategy" step="Step 4" /></Protected>} />
+          <Route path="/trends" element={<Protected><Trends /></Protected>} />
+          <Route path="/strategy" element={<Protected><Strategy /></Protected>} />
           <Route path="/content" element={<Protected><Placeholder title="Content Factory" step="Step 5" /></Protected>} />
           <Route path="/review" element={<Protected><Placeholder title="Creative Review" step="Step 6" /></Protected>} />
           <Route path="/calendar" element={<Protected><Placeholder title="Calendar" step="Step 5" /></Protected>} />
