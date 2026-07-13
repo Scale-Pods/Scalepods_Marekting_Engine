@@ -6,6 +6,10 @@ import AppShell from './components/AppShell'
 import Login from './pages/Login'
 import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
+import Clients from './pages/Clients'
+import BusinessProfile from './pages/BusinessProfile'
+import Intelligence from './pages/Intelligence'
+import IntelligenceReport from './pages/IntelligenceReport'
 import Placeholder from './pages/Placeholder'
 
 function FullScreenLoader() {
@@ -40,10 +44,11 @@ export default function App() {
           <Route path="/reset-password" element={<ResetPassword />} />
 
           <Route path="/" element={<Protected><Dashboard /></Protected>} />
-          <Route path="/clients" element={<Protected><Placeholder title="Business" step="Step 3" /></Protected>} />
-          <Route path="/clients/:id" element={<Protected><Placeholder title="Business Profile" step="Step 3" /></Protected>} />
-          <Route path="/intelligence" element={<Protected><Placeholder title="Intelligence" step="Step 3" /></Protected>} />
-          <Route path="/intelligence/:id" element={<Protected><Placeholder title="Intelligence Report" step="Step 3" /></Protected>} />
+          <Route path="/clients" element={<Protected><Clients /></Protected>} />
+          <Route path="/clients/new" element={<Protected><BusinessProfile /></Protected>} />
+          <Route path="/clients/:id" element={<Protected><BusinessProfile /></Protected>} />
+          <Route path="/intelligence" element={<Protected><Intelligence /></Protected>} />
+          <Route path="/intelligence/:id" element={<Protected><IntelligenceReport /></Protected>} />
           <Route path="/trends" element={<Protected><Placeholder title="Trends" step="Step 4" /></Protected>} />
           <Route path="/strategy" element={<Protected><Placeholder title="Strategy" step="Step 4" /></Protected>} />
           <Route path="/content" element={<Protected><Placeholder title="Content Factory" step="Step 5" /></Protected>} />

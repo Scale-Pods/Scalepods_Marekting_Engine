@@ -18,3 +18,15 @@ export const supabase = createClient(url, anonKey, {
 
 /** Base URL for firing n8n webhooks (workflow triggers). */
 export const N8N_WEBHOOK_BASE = import.meta.env.VITE_N8N_WEBHOOK_BASE ?? ''
+
+/** Fires an n8n webhook by path (e.g. 'sp-ai-analysis'). Workflow responds 200 immediately and works async. */
+export async function fireWebhook(path: string, body?: Record<string, unknown>) {
+  if (!N8N_WEBHOOK_BASE) throw new Error('VITE_N8N_WEBHOOK_BASE is not configured')
+  const res = await fetch(`${N8N_WEBHOOK_BASE}/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  })
+  if (!res.ok) throw new Error(`Webhook ${path} failed (${res.status})`)
+  return res
+}
