@@ -9,3 +9,9 @@ dist-ssr
 *.log
 npm-debug.log*
 .vite
+
+# tsc -b composite build artifacts
+vite.config.js
+vite.config.d.ts
+tsconfig.node.tsbuildinfo
+*.tsbuildinfo
