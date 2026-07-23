@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 
 // --- Buttons --------------------------------------------------------------
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -62,6 +62,35 @@ export function PageHeader({
         {subtitle && <p className="text-muted text-sm mt-1 max-w-2xl">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+    </div>
+  )
+}
+
+export function Modal({
+  title,
+  onClose,
+  children,
+  wide,
+}: {
+  title: string
+  onClose: () => void
+  children: ReactNode
+  wide?: boolean
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+      <div
+        className={`card w-full ${wide ? 'max-w-2xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto p-6`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-medium">{title}</h3>
+          <button onClick={onClose} className="text-muted hover:text-ink">
+            <X size={18} />
+          </button>
+        </div>
+        {children}
+      </div>
     </div>
   )
 }

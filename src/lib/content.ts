@@ -104,3 +104,53 @@ export async function triggerCarousel(itemId: string): Promise<void> {
   if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
   await fireWebhook('sp-carousel', { itemId })
 }
+
+/** Items awaiting creative review (M8): ready for the first time, or sent back for revision. */
+export async function listReviewItems(profileId: string): Promise<ContentItem[]> {
+  const { data, error } = await supabase
+    .from('content_items')
+    .select('*')
+    .eq('profile_id', profileId)
+    .in('status', ['ready', 'revision'])
+    .order('scheduled_date', { ascending: true })
+  if (error) throw error
+  return data as ContentItem[]
+}
+
+export async function approveItem(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('content_items')
+    .update({ status: 'approved', approved_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+  await fireWebhook('sp-notify', { type: 'approved', itemId: id }).catch(() => {})
+}
+
+export async function approveAllItems(ids: string[]): Promise<void> {
+  const { error } = await supabase
+    .from('content_items')
+    .update({ status: 'approved', approved_at: new Date().toISOString() })
+    .in('id', ids)
+  if (error) throw error
+}
+
+export async function sendBackItem(id: string, notes: string): Promise<void> {
+  const { error } = await supabase.from('content_items').update({ status: 'revision', review_notes: notes }).eq('id', id)
+  if (error) throw error
+  await fireWebhook('sp-notify', { type: 'revision', itemId: id }).catch(() => {})
+}
+
+/** Replaces an item's creative (upload / Canva / Figma / MediaEditor export). */
+export async function replaceItemMedia(id: string, mediaUrl: string): Promise<void> {
+  const { data: existing, error: fetchErr } = await supabase.from('content_items').select('metadata').eq('id', id).single()
+  if (fetchErr) throw fetchErr
+  const metadata = { ...(existing?.metadata ?? {}), branded: true }
+  const { error } = await supabase.from('content_items').update({ media_url: mediaUrl, metadata }).eq('id', id)
+  if (error) throw error
+}
+
+/** Fires the Content Revision workflow (M8 "Revise with AI") — regenerates copy for one item. */
+export async function reviseWithAi(itemId: string, notes: string): Promise<void> {
+  if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
+  await fireWebhook('sp-content-revise', { itemId, notes })
+}
