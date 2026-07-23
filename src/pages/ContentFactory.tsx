@@ -1,0 +1,229 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle } from 'lucide-react'
+import { listProfiles, type BusinessProfile } from '../lib/clients'
+import { getLatestStrategy, type MarketingStrategy } from '../lib/strategy'
+import {
+  getLatestRun, listItemsForRun, triggerContentGeneration, triggerCarousel,
+  IMAGE_CONTENT_TYPES, VIDEO_CONTENT_TYPES, GENERATION_ENABLED,
+  type ContentRun, type ContentItem,
+} from '../lib/content'
+import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
+
+const PLATFORM_TONE: Record<string, 'green' | 'blue' | 'orange'> = {
+  linkedin: 'blue', instagram: 'green', facebook: 'blue', youtube: 'orange',
+}
+
+function ItemCard({ item, onCarousel }: { item: ContentItem; onCarousel: (id: string) => void }) {
+  const isImage = IMAGE_CONTENT_TYPES.includes(item.content_type)
+  const isVideo = VIDEO_CONTENT_TYPES.includes(item.content_type)
+  const isCarousel = item.content_type === 'carousel'
+  const waitingOnImage = isImage && !item.media_url && item.status !== 'failed'
+  const [firingCarousel, setFiringCarousel] = useState(false)
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <Badge tone={PLATFORM_TONE[item.platform?.toLowerCase()] ?? 'blue'}>{item.platform}</Badge>
+        <Badge tone="orange">{item.content_type.replace(/_/g, ' ')}</Badge>
+        {item.scheduled_date && <span className="text-muted text-xs">{item.scheduled_date}</span>}
+      </div>
+
+      {item.media_url ? (
+        <img src={item.media_url} alt={item.title ?? ''} className="w-full h-40 object-cover rounded-lg mb-3" />
+      ) : waitingOnImage ? (
+        <div className="w-full h-40 rounded-lg panel flex flex-col items-center justify-center gap-2 mb-3">
+          <Spinner size={18} />
+          <span className="text-muted text-xs">Generating image…</span>
+        </div>
+      ) : isVideo ? (
+        <div className="w-full h-40 rounded-lg panel flex flex-col items-center justify-center gap-2 mb-3">
+          <Video size={20} className="text-terracotta" />
+          <span className="text-muted text-xs text-center px-4">Manual video — trigger HeyGen/fal.ai in n8n</span>
+        </div>
+      ) : (
+        <div className="w-full h-24 rounded-lg panel flex items-center justify-center gap-2 mb-3">
+          <FileText size={18} className="text-muted" />
+        </div>
+      )}
+
+      {isCarousel && item.metadata?.slides && item.metadata.slides.length > 0 && (
+        <div className="flex gap-1.5 mb-3 overflow-x-auto">
+          {item.metadata.slides.map((s) => (
+            <img key={s.idx} src={s.url} alt={s.title} className="h-14 w-14 object-cover rounded shrink-0" />
+          ))}
+        </div>
+      )}
+
+      <div className="font-medium text-sm mb-1">{item.title}</div>
+      <div className="text-secondary text-sm line-clamp-3">{item.body}</div>
+
+      {item.metadata?.hashtags && item.metadata.hashtags.length > 0 && (
+        <div className="text-muted text-xs mt-2 truncate">{item.metadata.hashtags.join(' ')}</div>
+      )}
+
+      <div className="flex items-center justify-between mt-3">
+        <div className="flex items-center gap-1.5 text-xs">
+          {item.status === 'failed' ? (
+            <><XCircle size={13} className="text-terracotta" /> <span className="text-terracotta">Failed</span></>
+          ) : item.status === 'ready' ? (
+            <><CheckCircle2 size={13} className="text-sage" /> <span className="text-muted">Ready for review</span></>
+          ) : (
+            <span className="text-muted capitalize">{item.status}</span>
+          )}
+        </div>
+        {isCarousel && !item.metadata?.slides?.length && (
+          <Button
+            variant="ghost"
+            className="!py-1 !px-2 text-xs"
+            loading={firingCarousel}
+            onClick={async () => {
+              setFiringCarousel(true)
+              await onCarousel(item.id)
+              setFiringCarousel(false)
+            }}
+          >
+            <ImageIcon size={13} /> Generate slides
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default function ContentFactory() {
+  const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
+  const [strategy, setStrategy] = useState<MarketingStrategy | null>(null)
+  const [run, setRun] = useState<ContentRun | null>(null)
+  const [items, setItems] = useState<ContentItem[]>([])
+  const [generating, setGenerating] = useState(false)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const load = useCallback(async (profileId: string) => {
+    const r = await getLatestRun(profileId)
+    setRun(r)
+    setItems(r ? await listItemsForRun(r.id) : [])
+    return r
+  }, [])
+
+  useEffect(() => {
+    listProfiles().then(async (profiles) => {
+      const p = profiles[0] ?? null
+      setProfile(p)
+      if (p) {
+        setStrategy(await getLatestStrategy(p.id))
+        await load(p.id)
+      }
+    })
+  }, [load])
+
+  // Poll while text generation is still filling in items, or any image-eligible item
+  // is still waiting on its gpt-image-1 render.
+  useEffect(() => {
+    if (!profile || !run) return
+    const stillWaitingOnText = items.length < run.total_items
+    const stillWaitingOnImages = items.some(
+      (it) => IMAGE_CONTENT_TYPES.includes(it.content_type) && !it.media_url && it.status !== 'failed',
+    )
+    const active = stillWaitingOnText || stillWaitingOnImages
+    if (active && !pollRef.current) {
+      pollRef.current = setInterval(() => load(profile.id), 4000)
+    } else if (!active && pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [profile, run, items, load])
+
+  async function onGenerate() {
+    if (!profile) return
+    setGenerating(true)
+    await triggerContentGeneration(profile.id)
+    setTimeout(() => load(profile.id), 2000)
+    setGenerating(false)
+  }
+
+  async function onCarousel(itemId: string) {
+    await triggerCarousel(itemId)
+    if (profile) setTimeout(() => load(profile.id), 2000)
+  }
+
+  if (profile === undefined) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner size={24} />
+      </div>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <div>
+        <PageHeader accent={<Badge><Sparkles size={12} /> Content Factory</Badge>} title="Content Factory" />
+        <EmptyState icon={<Sparkles size={28} />} title="No business profile yet" hint="Create the business profile first." />
+      </div>
+    )
+  }
+
+  if (!strategy || strategy.status !== 'approved') {
+    return (
+      <div>
+        <PageHeader accent={<Badge><Sparkles size={12} /> Content Factory</Badge>} title="Content Factory" />
+        <EmptyState
+          icon={<Sparkles size={28} />}
+          title="Approve a strategy first"
+          hint="The Content Factory reads the approved calendar. Go to Strategy and approve one before generating content."
+        />
+        <div className="flex justify-center mt-4">
+          <Link to="/strategy" className="btn-primary">Go to Strategy</Link>
+        </div>
+      </div>
+    )
+  }
+
+  const textDone = run ? items.length >= run.total_items : false
+  const pendingCount = run ? Math.max(run.total_items - items.length, 0) : 0
+
+  return (
+    <div>
+      <PageHeader
+        accent={<Badge><Sparkles size={12} /> Content Factory</Badge>}
+        title={`Content Factory — ${profile.business_name}`}
+        subtitle="GPT-4o copy + gpt-image-1 images + brand overlay, generated from the approved calendar. Video is manual-only — never auto-generated."
+        actions={
+          <Button variant="ghost" onClick={onGenerate} loading={generating} disabled={!GENERATION_ENABLED}>
+            <RefreshCw size={15} /> {run ? 'Regenerate' : 'Generate content'}
+          </Button>
+        }
+      />
+
+      {!run ? (
+        <EmptyState icon={<Sparkles size={28} />} title="No content yet" hint="Click Generate content to turn the approved calendar into ready-to-review posts." />
+      ) : !textDone ? (
+        <div className="card p-8 flex flex-col items-center gap-3 text-center">
+          <Spinner size={22} />
+          <div className="text-sm text-secondary">
+            Writing copy — {items.length}/{run.total_items} posts{pendingCount > 0 ? ` (${pendingCount} remaining)` : ''}…
+          </div>
+        </div>
+      ) : (
+        <>
+          <Panel className="mb-5 flex items-center gap-3">
+            <CheckCircle2 size={18} className="text-sage" />
+            <span className="text-sm text-secondary">
+              {items.length} posts generated. Images and brand overlay fill in automatically — video items are stubbed for manual generation.
+            </span>
+          </Panel>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {items.map((item) => (
+              <ItemCard key={item.id} item={item} onCarousel={onCarousel} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
