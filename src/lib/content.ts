@@ -4,7 +4,7 @@ import { supabase, fireWebhook } from './supabase'
 // text/image FE triggers below. PUBLISHING_ENABLED gates publish webhooks (Step 7).
 // Video engines (HeyGen, fal.ai) are NEVER wired to a trigger here — manual n8n only.
 export const GENERATION_ENABLED = true
-export const PUBLISHING_ENABLED = false
+export const PUBLISHING_ENABLED = true
 
 export type ContentType =
   | 'static_image' | 'carousel' | 'ugc_video' | 'motion_graphics' | 'product_video'

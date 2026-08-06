@@ -14,6 +14,7 @@ import Trends from './pages/Trends'
 import Strategy from './pages/Strategy'
 import ContentFactory from './pages/ContentFactory'
 import CreativeReview from './pages/CreativeReview'
+import Publishing from './pages/Publishing'
 import Placeholder from './pages/Placeholder'
 
 function FullScreenLoader() {
@@ -58,7 +59,7 @@ export default function App() {
           <Route path="/content" element={<Protected><ContentFactory /></Protected>} />
           <Route path="/review" element={<Protected><CreativeReview /></Protected>} />
           <Route path="/calendar" element={<Protected><Placeholder title="Calendar" step="Step 5" /></Protected>} />
-          <Route path="/publishing" element={<Protected><Placeholder title="Publishing" step="Step 7" /></Protected>} />
+          <Route path="/publishing" element={<Protected><Publishing /></Protected>} />
           <Route path="/analytics" element={<Protected><Placeholder title="Analytics" step="Step 8" /></Protected>} />
           <Route path="/settings" element={<Protected><Placeholder title="Settings" step="Step 9" /></Protected>} />
 
