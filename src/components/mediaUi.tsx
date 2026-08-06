@@ -41,7 +41,7 @@ export function CarouselViewer({ slides }: { slides: ContentSlide[] }) {
                 key={i}
                 onClick={() => setIndex(i)}
                 className="h-1.5 rounded-full transition-all"
-                style={{ width: i === index ? 16 : 6, background: i === index ? '#B1D997' : 'rgba(255,255,255,0.5)' }}
+                style={{ width: i === index ? 16 : 6, background: i === index ? 'var(--accent-green)' : 'rgba(255,255,255,0.5)' }}
                 aria-label={`Slide ${i + 1}`}
               />
             ))}

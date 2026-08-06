@@ -151,7 +151,7 @@ export default function Analytics() {
                   <XAxis dataKey="platform" stroke="var(--text-muted)" fontSize={12} />
                   <YAxis stroke="var(--text-muted)" fontSize={12} />
                   <Tooltip contentStyle={{ background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)', borderRadius: 8 }} />
-                  <Bar dataKey="engagement" fill="#B1D997" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="engagement" fill="var(--accent-green)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </Panel>
