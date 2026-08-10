@@ -38,20 +38,28 @@ export default function Clients() {
         <div className="grid sm:grid-cols-2 gap-4">
           {profiles.map((p) => (
             <Link key={p.id} to={`/clients/${p.id}`} className="card p-5 hover:border-sage/40 transition-colors group">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="font-medium">{p.business_name || 'Untitled business'}</div>
-                  <div className="text-muted text-sm mt-0.5">{p.industry || 'No industry set'}</div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className="h-11 w-11 rounded-xl flex items-center justify-center text-sm font-semibold shrink-0"
+                    style={{ background: 'var(--bg-layer3)', color: 'var(--accent-green)' }}
+                  >
+                    {(p.business_name || 'SP').slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{p.business_name || 'Untitled business'}</div>
+                    <div className="text-muted text-sm mt-0.5 truncate">{p.industry || 'No industry set'}</div>
+                  </div>
                 </div>
                 <ArrowRight size={16} className="text-muted group-hover:text-sage transition-colors shrink-0" />
               </div>
-              {p.target_platforms?.length > 0 && (
-                <div className="flex gap-1.5 mt-4 flex-wrap">
-                  {p.target_platforms.map((pl) => (
-                    <Badge key={pl} tone="blue">{pl}</Badge>
-                  ))}
-                </div>
-              )}
+              <div className="flex gap-1.5 mt-4 flex-wrap items-center">
+                <Badge tone={p.status === 'active' ? 'green' : 'orange'}>{p.status || 'onboarding'}</Badge>
+                <Badge tone="grey">{p.target_platforms?.length ?? 0} platform{p.target_platforms?.length === 1 ? '' : 's'}</Badge>
+                {p.target_platforms?.map((pl) => (
+                  <Badge key={pl} tone="blue">{pl}</Badge>
+                ))}
+              </div>
             </Link>
           ))}
         </div>
