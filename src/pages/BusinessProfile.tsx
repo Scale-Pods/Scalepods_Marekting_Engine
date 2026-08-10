@@ -144,11 +144,13 @@ export default function BusinessProfile() {
       ) : (
         <div className="card overflow-hidden mb-6 p-0">
           <div
-            className="h-24 relative"
+            className="relative w-full"
             style={{
+              aspectRatio: '804 / 134',
               backgroundImage: "url('/brand/profile-banner.png')",
               backgroundSize: 'cover',
               backgroundPosition: 'center',
+              backgroundColor: '#04070D',
             }}
           />
           <div className="px-6 pb-5">
