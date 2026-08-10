@@ -3,7 +3,10 @@
 @tailwind utilities;
 
 /* ============================================================================
-   ScalePods Growth OS — brand design system (TRD §9 / brand-kit)
+   ScalePods Growth OS — brand design system
+   Apple liquid-glass morphism (macOS Sequoia / iOS 18 language), remapped to
+   ScalePods brand colors: Sage Green (primary), Electric Blue (secondary),
+   Terracotta (warnings/partner badges), Deep Cyber Navy / Mint-Alabaster bases.
    Self-hosted OFL fonts: Inter (body/headline) + Instrument Serif (accent).
    ========================================================================== */
 
@@ -43,14 +46,15 @@
   src: url('/fonts/InstrumentSerif-Regular.woff2') format('woff2');
 }
 
-/* --- Tokens: DARK (default) — "cyber navy" system ------------------------- */
+/* --- Tokens: DARK (default) — "cyber navy" liquid glass -------------------- */
 :root, :root[data-theme='dark'] {
   --bg-page:        #04070D;
   --bg-card:        #080A0E;
   --bg-panel:       #10131C;
-  --accent-green:   #B1D997;   /* Sage — PRIMARY accent */
-  --accent-blue:    #63A5E7;   /* Electric — secondary accent */
-  --accent-orange:  #CC6B49;   /* Terracotta — Claude/partner + warnings only */
+  --bg-layer3:      #191D2A;
+  --accent-green:   #B1D997;   /* Sage — PRIMARY accent (Apple "blue" slot) */
+  --accent-blue:    #63A5E7;   /* Electric — secondary accent (Apple "indigo" slot) */
+  --accent-orange:  #CC6B49;   /* Terracotta — warnings/errors + partner badges */
   --alt-bg-green:   #0B1A08;
 
   /* RGB channels (for Tailwind /opacity utilities) */
@@ -63,22 +67,47 @@
   --alt-bg-green-rgb: 11 26 8;
   --text-primary-rgb: 255 255 255;
 
-  --text-primary:   #FFFFFF;
-  --text-secondary: rgba(255,255,255,0.72);
-  --text-muted:     rgba(255,255,255,0.50);
-  --border-subtle:  rgba(255,255,255,0.08);
+  --text-primary:   rgba(255,255,255,0.92);
+  --text-secondary: rgba(255,255,255,0.62);
+  --text-muted:     rgba(255,255,255,0.38);
+  --text-quaternary:rgba(255,255,255,0.18);
+  --border-subtle:  rgba(255,255,255,0.09);
 
-  --glass-fill:     rgba(8,10,14,0.55);
-  --glass-border:   rgba(255,255,255,0.08);
+  /* Apple-style neutral system fills (structural, not brand-tinted) */
+  --fill-primary:    rgba(255,255,255,0.14);
+  --fill-secondary:  rgba(255,255,255,0.10);
+  --fill-tertiary:   rgba(255,255,255,0.07);
+  --fill-quaternary: rgba(255,255,255,0.045);
+
+  /* Liquid glass material */
+  --glass-fill:       rgba(8,10,14,0.72);
+  --glass-fill-hover: rgba(16,19,28,0.80);
+  --glass-blur:       blur(40px) saturate(180%);
+  --glass-blur-lg:    blur(60px) saturate(180%);
+  --glass-border:     rgba(255,255,255,0.09);
+  --glass-shadow:
+    0 2px 4px rgba(0,0,0,0.16),
+    0 8px 16px rgba(0,0,0,0.22),
+    0 24px 48px rgba(0,0,0,0.30),
+    inset 0 1px 0 rgba(255,255,255,0.07);
+  --glass-shadow-hover:
+    0 4px 8px rgba(0,0,0,0.18),
+    0 16px 32px rgba(0,0,0,0.26),
+    0 40px 72px rgba(0,0,0,0.34),
+    inset 0 1px 0 rgba(255,255,255,0.10);
+
   --cta-text:       #0B1A08;   /* dark green text on sage buttons */
   --grid-line:      rgba(177,217,151,0.03);
+  --ambient-1:      rgba(177,217,151,0.10);
+  --ambient-2:      rgba(99,165,231,0.08);
 }
 
-/* --- Tokens: LIGHT — "mint alabaster" cream ------------------------------- */
+/* --- Tokens: LIGHT — "mint alabaster" frosted daylight ---------------------- */
 :root[data-theme='light'] {
   --bg-page:        #F8FAF7;
   --bg-card:        #FFFFFF;
   --bg-panel:       #EEF3EA;
+  --bg-layer3:      #E4EBDD;
   --accent-green:   #8FBC6A;   /* accessibility-optimized on light */
   --accent-blue:    #408CD6;
   --accent-orange:  #CC6B49;
@@ -93,33 +122,66 @@
   --alt-bg-green-rgb: 231 240 223;
   --text-primary-rgb: 4 7 13;
 
-  --text-primary:   #04070D;
-  --text-secondary: rgba(4,7,13,0.72);
-  --text-muted:     rgba(4,7,13,0.52);
-  --border-subtle:  rgba(4,7,13,0.10);
+  --text-primary:   rgba(4,7,13,0.88);
+  --text-secondary: rgba(4,7,13,0.60);
+  --text-muted:     rgba(4,7,13,0.36);
+  --text-quaternary:rgba(4,7,13,0.16);
+  --border-subtle:  rgba(4,7,13,0.08);
 
-  --glass-fill:     rgba(255,255,255,0.65);
-  --glass-border:   rgba(4,7,13,0.08);
+  --fill-primary:    rgba(4,7,13,0.08);
+  --fill-secondary:  rgba(4,7,13,0.06);
+  --fill-tertiary:   rgba(4,7,13,0.045);
+  --fill-quaternary: rgba(4,7,13,0.03);
+
+  --glass-fill:       rgba(255,255,255,0.72);
+  --glass-fill-hover: rgba(255,255,255,0.88);
+  --glass-blur:       blur(40px) saturate(180%);
+  --glass-blur-lg:    blur(60px) saturate(180%);
+  --glass-border:     rgba(255,255,255,0.90);
+  --glass-shadow:
+    0 1px 2px rgba(4,7,13,0.04),
+    0 4px 8px rgba(4,7,13,0.06),
+    0 16px 32px rgba(4,7,13,0.08),
+    inset 0 1px 0 rgba(255,255,255,1.0);
+  --glass-shadow-hover:
+    0 2px 4px rgba(4,7,13,0.06),
+    0 8px 16px rgba(4,7,13,0.09),
+    0 28px 48px rgba(4,7,13,0.12),
+    inset 0 1px 0 rgba(255,255,255,1.0);
+
   --cta-text:       #04070D;
   --grid-line:      rgba(143,188,106,0.06);
+  --ambient-1:      rgba(143,188,106,0.07);
+  --ambient-2:      rgba(64,140,214,0.05);
 }
 
 @layer base {
   * { border-color: var(--border-subtle); }
   html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   body {
-    background: var(--bg-page);
+    background-color: var(--bg-page);
+    background-image:
+      radial-gradient(ellipse 140% 80% at 15% -5%, var(--ambient-1) 0%, transparent 55%),
+      radial-gradient(ellipse 80% 60% at 85% 95%, var(--ambient-2) 0%, transparent 50%);
+    background-attachment: fixed;
     color: var(--text-primary);
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     font-weight: 400;
+    letter-spacing: -0.011em;
     min-height: 100vh;
   }
-  h1, h2, h3, h4 { font-weight: 700; letter-spacing: -0.01em; }
+  h1, h2, h3, h4 { font-weight: 700; letter-spacing: -0.022em; line-height: 1.21; }
   ::selection { background: var(--accent-green); color: var(--alt-bg-green); }
-  /* Scrollbar */
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 999px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  /* macOS-style scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; background: transparent; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--fill-secondary);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--fill-primary); }
 }
 
 @layer components {
@@ -132,80 +194,104 @@
     letter-spacing: 0;
   }
 
-  /* Liquid-glass surface */
+  /* Liquid-glass hero/ambient surface (login panel, full-bleed heroes) */
   .glass {
     background: var(--glass-fill);
-    backdrop-filter: blur(18px) saturate(140%);
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
-    border: 1px solid var(--glass-border);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
-  }
-  .card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: 1rem;
-  }
-  .panel {
-    background: var(--bg-panel);
-    border: 1px solid var(--border-subtle);
-    border-radius: 1rem;
+    backdrop-filter: var(--glass-blur-lg);
+    -webkit-backdrop-filter: var(--glass-blur-lg);
+    outline: 1px solid var(--glass-border);
+    outline-offset: -1px;
+    box-shadow: var(--glass-shadow);
   }
 
-  /* Badge pill — sage glow (TRD §9) */
+  /* Primary floating card — no hard border, depth from blur + shadow only */
+  .card {
+    background: var(--glass-fill);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: none;
+    border-radius: 20px;
+    outline: 1px solid var(--glass-border);
+    outline-offset: -1px;
+    box-shadow: var(--glass-shadow);
+    isolation: isolate;
+    transition: transform 200ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 200ms ease;
+  }
+  a.card:hover, button.card:hover, .card[data-hover]:hover {
+    transform: translateY(-2px) scale(1.002);
+    box-shadow: var(--glass-shadow-hover);
+  }
+
+  /* Secondary/nested surface — recessed frosted well, not a floating card */
+  .panel {
+    background: var(--fill-tertiary);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: none;
+    border-radius: 14px;
+    outline: 1px solid var(--glass-border);
+    outline-offset: -1px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+
+  /* Badge pill — Apple-style soft tint, no border, sentence case */
   .badge {
-    display: inline-flex; align-items: center; gap: 0.375rem;
-    padding: 0.25rem 0.625rem; border-radius: 999px;
-    font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.06em;
-    text-transform: uppercase;
-    background: rgba(177,217,151,0.10);
-    border: 1px solid rgba(177,217,151,0.40);
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.2rem 0.55rem; border-radius: 7px;
+    font-size: 0.72rem; font-weight: 600; letter-spacing: -0.005em;
+    text-transform: capitalize;
+    background: rgb(var(--accent-green-rgb) / 0.15);
     color: var(--accent-green);
   }
   .badge-blue {
-    background: rgba(99,165,231,0.10);
-    border-color: rgba(99,165,231,0.40);
+    background: rgb(var(--accent-blue-rgb) / 0.15);
     color: var(--accent-blue);
   }
   .badge-orange {
-    background: rgba(204,107,73,0.10);
-    border-color: rgba(204,107,73,0.40);
+    background: rgb(var(--accent-orange-rgb) / 0.15);
     color: var(--accent-orange);
   }
 
-  /* Primary CTA — sage fill, dark-green text (TRD §9) */
+  /* Primary CTA — sage fill, dark-green text; Apple press/hover physics */
   .btn-primary {
     display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
-    padding: 0.625rem 1.125rem; border-radius: 0.75rem;
+    padding: 0.625rem 1.125rem; border-radius: 10px;
     background: var(--accent-green); color: var(--cta-text);
-    font-weight: 600; font-size: 0.875rem;
-    transition: transform .12s ease, filter .12s ease, opacity .12s ease;
+    font-weight: 600; font-size: 0.875rem; letter-spacing: -0.011em;
+    transition: opacity 150ms ease, transform 100ms ease;
   }
-  .btn-primary:hover { filter: brightness(1.06); }
-  .btn-primary:active { transform: translateY(1px); }
-  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+  .btn-primary:hover { opacity: 0.88; }
+  .btn-primary:active { transform: scale(0.97); opacity: 0.78; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .btn-ghost {
     display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
-    padding: 0.625rem 1.125rem; border-radius: 0.75rem;
-    background: transparent; color: var(--text-primary);
-    border: 1px solid var(--border-subtle);
-    font-weight: 500; font-size: 0.875rem;
-    transition: background .12s ease;
+    padding: 0.625rem 1.125rem; border-radius: 10px;
+    background: var(--fill-tertiary);
+    backdrop-filter: blur(20px);
+    color: var(--text-primary);
+    border: none;
+    outline: 1px solid var(--glass-border);
+    outline-offset: -1px;
+    font-weight: 500; font-size: 0.875rem; letter-spacing: -0.011em;
+    transition: background 150ms ease, transform 100ms ease;
   }
-  .btn-ghost:hover { background: var(--bg-panel); }
+  .btn-ghost:hover { background: var(--fill-secondary); }
+  .btn-ghost:active { transform: scale(0.97); }
 
   .input {
-    width: 100%; padding: 0.625rem 0.875rem; border-radius: 0.625rem;
-    background: var(--bg-panel); color: var(--text-primary);
-    border: 1px solid var(--border-subtle); font-size: 0.875rem;
-    transition: border-color .12s ease, box-shadow .12s ease;
+    width: 100%; padding: 0.625rem 0.875rem; border-radius: 10px;
+    background: var(--fill-quaternary); color: var(--text-primary);
+    border: 1px solid var(--border-subtle); font-size: 0.9375rem;
+    letter-spacing: -0.011em;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
   }
-  .input::placeholder { color: var(--text-muted); }
+  .input::placeholder { color: var(--text-quaternary); }
   .input:focus {
     outline: none; border-color: var(--accent-green);
-    box-shadow: 0 0 0 3px rgba(177,217,151,0.15);
+    box-shadow: 0 0 0 3px rgb(var(--accent-green-rgb) / 0.22);
   }
-  .label { font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); }
+  .label { font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); letter-spacing: -0.006em; }
 
   /* Faint circuit/grid overlay for hero panels (0.02–0.04 opacity) */
   .grid-overlay {
@@ -214,6 +300,67 @@
       linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
     background-size: 32px 32px;
   }
+
+  /* Metric tile ambient glow — set --tile-accent inline per tile */
+  .metric-tile { position: relative; overflow: hidden; }
+  .metric-tile::before {
+    content: '';
+    position: absolute; top: -40px; right: -40px;
+    width: 120px; height: 120px; border-radius: 50%;
+    background: var(--tile-accent, var(--accent-green));
+    opacity: 0.14; filter: blur(40px);
+    pointer-events: none;
+  }
+
+  /* Recharts: strip axis/tick lines, faint dashed grid only */
+  .chart-clean .recharts-cartesian-axis-line,
+  .chart-clean .recharts-cartesian-axis-tick-line { display: none; }
+  .chart-clean .recharts-cartesian-grid-horizontal line,
+  .chart-clean .recharts-cartesian-grid-vertical line {
+    stroke: var(--border-subtle); stroke-width: 0.5; stroke-dasharray: 3 6;
+  }
+
+  /* Sidebar — frosted macOS rail, hairline separator instead of a hard border */
+  .sidebar {
+    background: var(--glass-fill-hover);
+    backdrop-filter: var(--glass-blur-lg);
+    -webkit-backdrop-filter: var(--glass-blur-lg);
+    border-right: 1px solid var(--border-subtle);
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.5rem 0.75rem; border-radius: 9px;
+    font-size: 0.875rem; font-weight: 500; letter-spacing: -0.011em;
+    color: var(--text-secondary);
+    transition: background 130ms ease, color 130ms ease;
+  }
+  .nav-item:hover { background: var(--fill-tertiary); color: var(--text-primary); }
+  .nav-item.active { background: var(--accent-green); color: var(--cta-text); font-weight: 600; }
+
+  /* Modal — glass sheet with spring entry */
+  .modal-overlay {
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .modal-panel {
+    background: var(--glass-fill);
+    backdrop-filter: var(--glass-blur-lg);
+    -webkit-backdrop-filter: var(--glass-blur-lg);
+    border-radius: 28px;
+    outline: 1px solid var(--glass-border);
+    outline-offset: -1px;
+    box-shadow:
+      0 8px 16px rgba(0,0,0,0.18),
+      0 32px 64px rgba(0,0,0,0.30),
+      inset 0 1px 0 rgba(255,255,255,0.08);
+    animation: modalEntry 320ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+}
+
+@keyframes modalEntry {
+  from { opacity: 0; transform: scale(0.94) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 /* Utility text colors bound to tokens */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
@@ -20,14 +20,14 @@ const INSIGHT_SECTIONS: { key: keyof AiInsight; label: string }[] = [
   { key: 'top_creatives', label: 'Top Creatives' },
 ]
 
-function Tile({ icon: Icon, label, value }: { icon: typeof Heart; label: string; value: number | string }) {
+function Tile({ icon: Icon, label, value, accent = 'var(--accent-green)' }: { icon: typeof Heart; label: string; value: number | string; accent?: string }) {
   return (
-    <div className="card p-4 flex items-center gap-3">
-      <div className="h-9 w-9 rounded-lg panel flex items-center justify-center shrink-0">
-        <Icon size={16} className="text-sage" />
+    <div className="card metric-tile p-4 flex items-center gap-3" style={{ '--tile-accent': accent } as CSSProperties}>
+      <div className="h-9 w-9 rounded-lg panel flex items-center justify-center shrink-0" style={{ position: 'relative', zIndex: 1 }}>
+        <Icon size={16} style={{ color: accent }} />
       </div>
-      <div>
-        <div className="text-lg font-semibold">{value}</div>
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <div className="text-lg font-light tabular-nums tracking-tightest">{value}</div>
         <div className="text-muted text-xs">{label}</div>
       </div>
     </div>
@@ -136,22 +136,28 @@ export default function Analytics() {
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            <Tile icon={Zap} label="Total engagement" value={totals.engagement} />
-            <Tile icon={Heart} label="Likes" value={totals.likes} />
-            <Tile icon={MessageCircle} label="Comments" value={totals.comments} />
-            <Tile icon={Eye} label="Views / reach" value={totals.views} />
+            <Tile icon={Zap} label="Total engagement" value={totals.engagement} accent="var(--accent-green)" />
+            <Tile icon={Heart} label="Likes" value={totals.likes} accent="var(--accent-blue)" />
+            <Tile icon={MessageCircle} label="Comments" value={totals.comments} accent="var(--accent-blue)" />
+            <Tile icon={Eye} label="Views / reach" value={totals.views} accent="var(--accent-orange)" />
           </div>
 
           {chartData.length > 0 && (
             <Panel className="mb-6">
               <div className="font-medium mb-3">Engagement by platform</div>
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={220} className="chart-clean">
                 <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                  <XAxis dataKey="platform" stroke="var(--text-muted)" fontSize={12} />
-                  <YAxis stroke="var(--text-muted)" fontSize={12} />
-                  <Tooltip contentStyle={{ background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)', borderRadius: 8 }} />
-                  <Bar dataKey="engagement" fill="var(--accent-green)" radius={[6, 6, 0, 0]} />
+                  <CartesianGrid strokeDasharray="3 6" stroke="var(--border-subtle)" strokeWidth={0.5} vertical={false} />
+                  <XAxis dataKey="platform" axisLine={false} tickLine={false} stroke="var(--text-muted)" fontSize={12} />
+                  <YAxis axisLine={false} tickLine={false} stroke="var(--text-muted)" fontSize={12} />
+                  <Tooltip
+                    cursor={{ fill: 'var(--fill-tertiary)' }}
+                    contentStyle={{
+                      background: 'var(--glass-fill)', backdropFilter: 'blur(20px)',
+                      border: 'none', outline: '1px solid var(--glass-border)', borderRadius: 12,
+                    }}
+                  />
+                  <Bar dataKey="engagement" fill="var(--accent-green)" radius={[6, 6, 0, 0]} maxBarSize={48} />
                 </BarChart>
               </ResponsiveContainer>
             </Panel>

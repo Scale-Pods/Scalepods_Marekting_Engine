@@ -37,8 +37,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex">
       {/* Sidebar */}
-      <aside className="w-64 shrink-0 border-r border-line bg-card/40 flex flex-col sticky top-0 h-screen">
-        <div className="p-5 border-b border-line">
+      <aside className="sidebar w-64 shrink-0 flex flex-col sticky top-0 h-screen">
+        <div className="p-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="inline-flex items-center rounded-lg px-3 py-2 bg-white/5 dark:bg-white/5">
             <img src={logo} alt="ScalePods" className="h-6" />
           </div>
@@ -51,13 +51,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               key={n.to}
               to={n.to}
               end={n.to === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  isActive
-                    ? 'bg-sage/12 text-sage font-medium'
-                    : 'text-secondary hover:bg-panel hover:text-ink'
-                }`
-              }
+              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             >
               {n.icon}
               {n.label}
@@ -66,7 +60,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         {/* Role switcher + theme + signout */}
-        <div className="p-3 border-t border-line space-y-2">
+        <div className="p-3 space-y-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
           <div className="relative">
             <button
               onClick={() => setRoleOpen((o) => !o)}

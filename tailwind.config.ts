@@ -25,9 +25,20 @@ export default {
         serif: ['"Instrument Serif"', 'Georgia', 'serif'],
         mono: ['Menlo', 'Monaco', 'Consolas', '"Fira Code"', 'monospace'],
       },
-      borderRadius: { xl2: '1.25rem' },
+      borderRadius: { xl2: '1.25rem', card: '20px', panel: '14px', modal: '28px' },
       boxShadow: {
         glass: '0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04)',
+      },
+      letterSpacing: {
+        tightest: '-0.03em',
+        tighter: '-0.022em',
+        tight: '-0.011em',
+      },
+      transitionTimingFunction: {
+        standard: 'cubic-bezier(0.4, 0.0, 0.2, 1)',
+        spring: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+        decel: 'cubic-bezier(0.0, 0.0, 0.2, 1)',
+        accel: 'cubic-bezier(0.4, 0.0, 1.0, 1)',
       },
     },
   },
