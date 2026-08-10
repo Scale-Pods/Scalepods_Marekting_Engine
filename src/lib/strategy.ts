@@ -56,3 +56,18 @@ export async function approveStrategy(id: string): Promise<void> {
   const { error } = await supabase.from('marketing_strategies').update({ status: 'approved' }).eq('id', id)
   if (error) throw error
 }
+
+export type StrategySection =
+  | 'campaign_planning' | 'weekly_content_strategy' | 'content_pillars'
+  | 'platform_strategy' | 'lead_generation_strategy' | 'cta_strategy'
+
+/** Direct manual edit — PATCHes just the one JSON column. */
+export async function updateStrategySection(id: string, section: StrategySection, value: unknown): Promise<void> {
+  const { error } = await supabase.from('marketing_strategies').update({ [section]: value }).eq('id', id)
+  if (error) throw error
+}
+
+/** Fires the section-level AI regenerate n8n workflow (M5b) — rewrites just one column. */
+export async function regenerateStrategySection(strategyId: string, profileId: string, section: StrategySection): Promise<void> {
+  await fireWebhook('sp-strategy-section-regenerate', { strategyId, profileId, section })
+}

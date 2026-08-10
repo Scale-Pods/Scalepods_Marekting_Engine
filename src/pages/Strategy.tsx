@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Target, RefreshCw, CheckCircle2, CalendarDays } from 'lucide-react'
+import { Target, RefreshCw, CheckCircle2, CalendarDays, Pencil, Check, X } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
-import { getLatestStrategy, triggerStrategy, approveStrategy, type MarketingStrategy } from '../lib/strategy'
-import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
-import JsonBlock from '../components/JsonBlock'
+import {
+  getLatestStrategy, triggerStrategy, approveStrategy, updateStrategySection, regenerateStrategySection,
+  type MarketingStrategy, type StrategySection, type CalendarItem,
+} from '../lib/strategy'
+import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
 
-const COMPONENTS: { key: keyof MarketingStrategy; label: string }[] = [
+const COMPONENTS: { key: StrategySection; label: string }[] = [
   { key: 'campaign_planning', label: 'Campaign Planning' },
   { key: 'weekly_content_strategy', label: 'Weekly Content Strategy' },
   { key: 'content_pillars', label: 'Content Pillars' },
@@ -18,11 +20,178 @@ const PLATFORM_TONE: Record<string, 'green' | 'blue' | 'orange'> = {
   linkedin: 'blue', instagram: 'green', facebook: 'blue', youtube: 'orange',
 }
 
+// The 6 non-calendar sections all come back as plain objects whose values are either a
+// string, an array of strings, or a nested { focus, engagement }-style object of strings.
+// This one editor handles all three shapes without needing a per-section schema.
+type SectionValue = Record<string, string | string[] | Record<string, string>>
+
+function cloneSection(value: unknown): SectionValue {
+  return JSON.parse(JSON.stringify(value ?? {}))
+}
+
+function humanize(key: string) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function SectionField({
+  fieldKey, value, editable, onChange,
+}: {
+  fieldKey: string
+  value: string | string[] | Record<string, string>
+  editable: boolean
+  onChange: (v: string | string[] | Record<string, string>) => void
+}) {
+  if (Array.isArray(value)) {
+    return (
+      <div className="mb-3">
+        <div className="text-xs font-semibold text-secondary mb-1.5">{humanize(fieldKey)}</div>
+        {editable ? (
+          <div className="space-y-1.5">
+            {value.map((item, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <input
+                  className="input !py-1.5 text-sm"
+                  value={item}
+                  onChange={(e) => onChange(value.map((v, vi) => (vi === i ? e.target.value : v)))}
+                />
+                <button type="button" onClick={() => onChange(value.filter((_, vi) => vi !== i))} className="text-muted hover:text-terracotta shrink-0">
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+            <button type="button" onClick={() => onChange([...value, ''])} className="text-xs text-sage hover:underline">
+              + Add item
+            </button>
+          </div>
+        ) : (
+          <ul className="list-disc ml-5 space-y-1">
+            {value.map((item, i) => (
+              <li key={i} className="text-sm text-secondary">{item}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    return (
+      <div className="mb-3 panel p-3">
+        <div className="text-xs font-semibold text-secondary mb-2 capitalize">{humanize(fieldKey)}</div>
+        {Object.entries(value).map(([subKey, subVal]) => (
+          <div key={subKey} className="mb-2 last:mb-0">
+            <div className="text-muted text-[11px] uppercase tracking-wide mb-1">{humanize(subKey)}</div>
+            {editable ? (
+              <textarea
+                className="input !py-1.5 text-sm"
+                rows={2}
+                value={subVal}
+                onChange={(e) => onChange({ ...value, [subKey]: e.target.value })}
+              />
+            ) : (
+              <div className="text-sm text-secondary">{subVal}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-3">
+      <div className="text-xs font-semibold text-secondary mb-1.5">{humanize(fieldKey)}</div>
+      {editable ? (
+        <textarea className="input !py-1.5 text-sm" rows={2} value={value} onChange={(e) => onChange(e.target.value)} />
+      ) : (
+        <div className="text-sm text-secondary">{value}</div>
+      )}
+    </div>
+  )
+}
+
+function SectionEditor({
+  label, sectionKey, value, onSave, onRegenerate,
+}: {
+  label: string
+  sectionKey: StrategySection
+  value: unknown
+  onSave: (v: SectionValue) => Promise<void>
+  onRegenerate: () => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<SectionValue>(() => cloneSection(value))
+  const [saving, setSaving] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+
+  useEffect(() => {
+    if (!editing) setDraft(cloneSection(value))
+  }, [value, editing])
+
+  function setField(key: string, v: string | string[] | Record<string, string>) {
+    setDraft((d) => ({ ...d, [key]: v }))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await onSave(draft)
+      setEditing(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleRegenerate() {
+    setRegenerating(true)
+    try {
+      await onRegenerate()
+    } finally {
+      setRegenerating(false)
+    }
+  }
+
+  const displayValue = editing ? draft : cloneSection(value)
+
+  return (
+    <Panel key={sectionKey}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="font-medium">{label}</div>
+        <div className="flex items-center gap-1.5">
+          {editing ? (
+            <>
+              <button onClick={() => setEditing(false)} className="btn-ghost !py-1 !px-2 text-xs" disabled={saving}>
+                Cancel
+              </button>
+              <Button onClick={handleSave} loading={saving} className="!py-1 !px-2 text-xs">
+                <Check size={12} /> Save
+              </Button>
+            </>
+          ) : (
+            <>
+              <button onClick={handleRegenerate} className="btn-ghost !py-1 !px-2 text-xs" disabled={regenerating} title="Regenerate with AI">
+                {regenerating ? <Spinner size={12} /> : <RefreshCw size={12} />}
+              </button>
+              <button onClick={() => setEditing(true)} className="btn-ghost !py-1 !px-2 text-xs" title="Edit manually">
+                <Pencil size={12} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      {Object.entries(displayValue).map(([key, v]) => (
+        <SectionField key={key} fieldKey={key} value={v} editable={editing} onChange={(nv) => setField(key, nv)} />
+      ))}
+      {Object.keys(displayValue).length === 0 && <div className="text-muted text-sm">No data yet.</div>}
+    </Panel>
+  )
+}
+
 export default function Strategy() {
   const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
   const [strategy, setStrategy] = useState<MarketingStrategy | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [approving, setApproving] = useState(false)
+  const [detailItem, setDetailItem] = useState<CalendarItem | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async (profileId: string) => {
@@ -70,6 +239,25 @@ export default function Strategy() {
     setApproving(false)
   }
 
+  async function onSaveSection(section: StrategySection, value: SectionValue) {
+    if (!strategy) return
+    await updateStrategySection(strategy.id, section, value)
+    await load(strategy.profile_id)
+  }
+
+  async function onRegenerateSection(section: StrategySection) {
+    if (!strategy || !profile) return
+    await regenerateStrategySection(strategy.id, profile.id, section)
+    // Section regenerate doesn't touch `status`, so poll this one column directly for a
+    // fresh updated_at instead of relying on the status-based poller above.
+    const before = strategy.updated_at
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 2500))
+      const fresh = await load(profile.id)
+      if (fresh && fresh.updated_at !== before) break
+    }
+  }
+
   if (profile === undefined) {
     return (
       <div className="flex justify-center py-16">
@@ -95,11 +283,11 @@ export default function Strategy() {
       <PageHeader
         accent={<Badge><Target size={12} /> Strategy</Badge>}
         title={`Marketing Strategy — ${profile.business_name}`}
-        subtitle="7 components generated from the BI report + trend signals. Approve before content generation can begin."
+        subtitle="7 components generated from the BI report + trend signals. Edit any section manually, regenerate it with AI, or approve before content generation can begin."
         actions={
           <div className="flex gap-2">
             <Button variant="ghost" onClick={onRegenerate} loading={refreshing || isActive}>
-              <RefreshCw size={15} /> Regenerate
+              <RefreshCw size={15} /> Regenerate all
             </Button>
             {strategy && strategy.status === 'completed' && (
               <Button onClick={onApprove} loading={approving}>
@@ -111,14 +299,14 @@ export default function Strategy() {
       />
 
       {!strategy ? (
-        <EmptyState icon={<Target size={28} />} title="No strategy yet" hint="Click Regenerate to generate the first strategy from the BI report + trends." />
+        <EmptyState icon={<Target size={28} />} title="No strategy yet" hint="Click Regenerate all to generate the first strategy from the BI report + trends." />
       ) : isActive ? (
         <div className="card p-8 flex flex-col items-center gap-3 text-center">
           <Spinner size={22} />
           <div className="text-sm text-secondary">Building campaign plan, calendar, and platform strategy…</div>
         </div>
       ) : strategy.status === 'failed' ? (
-        <EmptyState title="Strategy generation failed" hint="Click Regenerate to try again." />
+        <EmptyState title="Strategy generation failed" hint="Click Regenerate all to try again." />
       ) : (
         <>
           <div className="flex items-center gap-2 mb-6">
@@ -133,16 +321,20 @@ export default function Strategy() {
             {Array.isArray(strategy.content_calendar) && strategy.content_calendar.length > 0 ? (
               <div className="space-y-2">
                 {strategy.content_calendar.map((item, i) => (
-                  <div key={i} className="card p-3 flex items-center justify-between gap-3">
+                  <button
+                    key={i}
+                    onClick={() => setDetailItem(item)}
+                    className="card p-3 flex items-center justify-between gap-3 w-full text-left hover:border-sage/40 transition-colors"
+                  >
                     <div className="min-w-0">
                       <div className="font-medium text-sm">{item.title}</div>
-                      {item.hook && <div className="text-muted text-xs mt-0.5">{item.hook}</div>}
+                      {item.hook && <div className="text-muted text-xs mt-0.5 truncate">{item.hook}</div>}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {item.scheduled_date && <span className="text-muted text-xs">{item.scheduled_date}</span>}
                       <Badge tone={PLATFORM_TONE[item.platform?.toLowerCase()] ?? 'blue'}>{item.platform}</Badge>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             ) : (
@@ -152,13 +344,41 @@ export default function Strategy() {
 
           <div className="grid sm:grid-cols-2 gap-4">
             {COMPONENTS.map((c) => (
-              <Panel key={c.key}>
-                <div className="font-medium mb-3">{c.label}</div>
-                <JsonBlock value={strategy[c.key]} />
-              </Panel>
+              <SectionEditor
+                key={c.key}
+                label={c.label}
+                sectionKey={c.key}
+                value={strategy[c.key]}
+                onSave={(v) => onSaveSection(c.key, v)}
+                onRegenerate={() => onRegenerateSection(c.key)}
+              />
             ))}
           </div>
         </>
+      )}
+
+      {detailItem && (
+        <Modal title={detailItem.title} onClose={() => setDetailItem(null)}>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge tone={PLATFORM_TONE[detailItem.platform?.toLowerCase()] ?? 'blue'}>{detailItem.platform}</Badge>
+              <Badge tone="orange">{detailItem.content_type?.replace(/_/g, ' ')}</Badge>
+              {detailItem.scheduled_date && <span className="text-muted text-xs">{detailItem.scheduled_date}</span>}
+            </div>
+            {detailItem.pillar && (
+              <div>
+                <div className="label mb-1">Pillar</div>
+                <div className="text-sm text-secondary">{detailItem.pillar}</div>
+              </div>
+            )}
+            {detailItem.hook && (
+              <div>
+                <div className="label mb-1">Hook</div>
+                <div className="text-sm text-secondary">{detailItem.hook}</div>
+              </div>
+            )}
+          </div>
+        </Modal>
       )}
     </div>
   )
