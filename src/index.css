@@ -253,6 +253,10 @@
     background: rgb(var(--accent-orange-rgb) / 0.15);
     color: var(--accent-orange);
   }
+  .badge-grey {
+    background: var(--fill-tertiary);
+    color: var(--text-secondary);
+  }
 
   /* Primary CTA — sage fill, dark-green text; Apple press/hover physics */
   .btn-primary {

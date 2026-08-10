@@ -26,17 +26,27 @@ export function Panel({ children, className = '' }: { children: ReactNode; class
 }
 
 // --- Badge ----------------------------------------------------------------
+// No dedicated "red" tone — CLAUDE.md/brand-kit define exactly 3 accent colors (sage/blue/
+// terracotta) and terracotta (orange) is already the established warnings/errors token used
+// throughout the app (Publishing "Failed", ContentFactory failed items). "grey" is safe to
+// add since it's a neutral fill from the existing --fill/--text system tokens, not a new hue.
+const BADGE_TONE_CLASS: Record<string, string> = {
+  green: 'badge',
+  blue: 'badge badge-blue',
+  orange: 'badge badge-orange',
+  grey: 'badge badge-grey',
+}
+
 export function Badge({
   children,
   tone = 'green',
   className = '',
 }: {
   children: ReactNode
-  tone?: 'green' | 'blue' | 'orange'
+  tone?: 'green' | 'blue' | 'orange' | 'grey'
   className?: string
 }) {
-  const cls = tone === 'blue' ? 'badge badge-blue' : tone === 'orange' ? 'badge badge-orange' : 'badge'
-  return <span className={`${cls} ${className}`}>{children}</span>
+  return <span className={`${BADGE_TONE_CLASS[tone]} ${className}`}>{children}</span>
 }
 
 // --- Loading / empty ------------------------------------------------------
