@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check } from 'lucide-react'
+import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check, Filter } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { getLatestStrategy, type MarketingStrategy } from '../lib/strategy'
 import {
@@ -12,6 +12,50 @@ import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../compon
 
 const PLATFORM_TONE: Record<string, 'green' | 'blue' | 'orange'> = {
   linkedin: 'blue', instagram: 'green', facebook: 'blue', youtube: 'orange',
+}
+
+const PLATFORM_OPTIONS = [
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'youtube', label: 'YouTube' },
+]
+
+function FilterBar({
+  platform, onPlatform, type, onType, typeOptions,
+}: {
+  platform: string
+  onPlatform: (v: string) => void
+  type: string
+  onType: (v: string) => void
+  typeOptions: string[]
+}) {
+  const hasFilter = platform !== 'all' || type !== 'all'
+  return (
+    <div className="flex items-center gap-2 mb-4 flex-wrap">
+      <Filter size={14} className="text-muted shrink-0" />
+      <select className="input !w-auto !py-1.5 text-xs" value={platform} onChange={(e) => onPlatform(e.target.value)}>
+        <option value="all">All platforms</option>
+        {PLATFORM_OPTIONS.map((p) => (
+          <option key={p.value} value={p.value}>{p.label}</option>
+        ))}
+      </select>
+      <select className="input !w-auto !py-1.5 text-xs" value={type} onChange={(e) => onType(e.target.value)}>
+        <option value="all">All content types</option>
+        {typeOptions.map((t) => (
+          <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+        ))}
+      </select>
+      {hasFilter && (
+        <button
+          onClick={() => { onPlatform('all'); onType('all') }}
+          className="text-xs text-muted hover:text-sage"
+        >
+          Clear
+        </button>
+      )}
+    </div>
+  )
 }
 
 function ItemCard({ item, onCarousel }: { item: ContentItem; onCarousel: (id: string) => void }) {
@@ -117,6 +161,8 @@ export default function ContentFactory() {
   const [run, setRun] = useState<ContentRun | null>(null)
   const [items, setItems] = useState<ContentItem[]>([])
   const [generating, setGenerating] = useState(false)
+  const [platformFilter, setPlatformFilter] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('all')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async (profileId: string) => {
@@ -206,6 +252,12 @@ export default function ContentFactory() {
 
   const textDone = run ? items.length >= run.total_items : false
   const pendingCount = run ? Math.max(run.total_items - items.length, 0) : 0
+  const typeOptions = Array.from(new Set(items.map((i) => i.content_type))).sort()
+  const filteredItems = items.filter(
+    (i) =>
+      (platformFilter === 'all' || i.platform?.toLowerCase() === platformFilter) &&
+      (typeFilter === 'all' || i.content_type === typeFilter),
+  )
 
   return (
     <div>
@@ -237,11 +289,22 @@ export default function ContentFactory() {
               {items.length} posts generated. Images and brand overlay fill in automatically — video items are stubbed for manual generation.
             </span>
           </Panel>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {items.map((item) => (
-              <ItemCard key={item.id} item={item} onCarousel={onCarousel} />
-            ))}
-          </div>
+          <FilterBar
+            platform={platformFilter}
+            onPlatform={setPlatformFilter}
+            type={typeFilter}
+            onType={setTypeFilter}
+            typeOptions={typeOptions}
+          />
+          {filteredItems.length === 0 ? (
+            <EmptyState icon={<Filter size={28} />} title="No posts match these filters" hint="Try a different platform or content type." />
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredItems.map((item) => (
+                <ItemCard key={item.id} item={item} onCarousel={onCarousel} />
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>

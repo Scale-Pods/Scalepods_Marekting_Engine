@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon,
+  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon, Filter,
 } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import {
@@ -13,6 +13,50 @@ import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../compon
 import { PlatformBadge, CarouselViewer } from '../components/mediaUi'
 import AssetUploader from '../components/AssetUploader'
 import MediaEditor from '../components/MediaEditor'
+
+const PLATFORM_OPTIONS = [
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'youtube', label: 'YouTube' },
+]
+
+function FilterBar({
+  platform, onPlatform, type, onType, typeOptions,
+}: {
+  platform: string
+  onPlatform: (v: string) => void
+  type: string
+  onType: (v: string) => void
+  typeOptions: string[]
+}) {
+  const hasFilter = platform !== 'all' || type !== 'all'
+  return (
+    <div className="flex items-center gap-2 mb-4 flex-wrap">
+      <Filter size={14} className="text-muted shrink-0" />
+      <select className="input !w-auto !py-1.5 text-xs" value={platform} onChange={(e) => onPlatform(e.target.value)}>
+        <option value="all">All platforms</option>
+        {PLATFORM_OPTIONS.map((p) => (
+          <option key={p.value} value={p.value}>{p.label}</option>
+        ))}
+      </select>
+      <select className="input !w-auto !py-1.5 text-xs" value={type} onChange={(e) => onType(e.target.value)}>
+        <option value="all">All content types</option>
+        {typeOptions.map((t) => (
+          <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+        ))}
+      </select>
+      {hasFilter && (
+        <button
+          onClick={() => { onPlatform('all'); onType('all') }}
+          className="text-xs text-muted hover:text-sage"
+        >
+          Clear
+        </button>
+      )}
+    </div>
+  )
+}
 
 function ReplacePanel({ item, onDone }: { item: ContentItem; onDone: (url: string) => void }) {
   const [tab, setTab] = useState<'upload' | 'canva' | 'figma'>('upload')
@@ -217,6 +261,8 @@ export default function CreativeReview() {
   const [items, setItems] = useState<ContentItem[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [approvingAll, setApprovingAll] = useState(false)
+  const [platformFilter, setPlatformFilter] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('all')
 
   async function load(profileId: string) {
     setItems(await listReviewItems(profileId))
@@ -265,6 +311,13 @@ export default function CreativeReview() {
     )
   }
 
+  const typeOptions = Array.from(new Set(items.map((i) => i.content_type))).sort()
+  const filteredItems = items.filter(
+    (i) =>
+      (platformFilter === 'all' || i.platform?.toLowerCase() === platformFilter) &&
+      (typeFilter === 'all' || i.content_type === typeFilter),
+  )
+
   return (
     <div>
       <PageHeader
@@ -283,17 +336,30 @@ export default function CreativeReview() {
       {items.length === 0 ? (
         <EmptyState icon={<CheckSquare size={28} />} title="Nothing to review" hint="Generate content from the Content Factory — it lands here once ready." />
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {items.map((item) => (
-            <ReviewCard
-              key={item.id}
-              item={item}
-              selected={selected.has(item.id)}
-              onToggle={() => toggle(item.id)}
-              onChanged={() => load(profile.id)}
-            />
-          ))}
-        </div>
+        <>
+          <FilterBar
+            platform={platformFilter}
+            onPlatform={setPlatformFilter}
+            type={typeFilter}
+            onType={setTypeFilter}
+            typeOptions={typeOptions}
+          />
+          {filteredItems.length === 0 ? (
+            <EmptyState icon={<Filter size={28} />} title="No items match these filters" hint="Try a different platform or content type." />
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredItems.map((item) => (
+                <ReviewCard
+                  key={item.id}
+                  item={item}
+                  selected={selected.has(item.id)}
+                  onToggle={() => toggle(item.id)}
+                  onChanged={() => load(profile.id)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
