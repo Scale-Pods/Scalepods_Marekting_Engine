@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Target, RefreshCw, CheckCircle2, CalendarDays, Pencil, Check, X } from 'lucide-react'
+import {
+  Target, RefreshCw, CheckCircle2, CalendarDays, Pencil, Check, X,
+  ListChecks, LayoutGrid, Share2, Magnet, MousePointerClick,
+} from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import {
   getLatestStrategy, triggerStrategy, approveStrategy, updateStrategySection, regenerateStrategySection,
@@ -7,14 +10,15 @@ import {
 } from '../lib/strategy'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
 
-const COMPONENTS: { key: StrategySection; label: string }[] = [
-  { key: 'campaign_planning', label: 'Campaign Planning' },
-  { key: 'weekly_content_strategy', label: 'Weekly Content Strategy' },
-  { key: 'content_pillars', label: 'Content Pillars' },
-  { key: 'platform_strategy', label: 'Platform Strategy' },
-  { key: 'lead_generation_strategy', label: 'Lead-Gen Strategy' },
-  { key: 'cta_strategy', label: 'CTA Strategy' },
+const COMPONENTS: { key: StrategySection; label: string; icon: typeof Target; color: string }[] = [
+  { key: 'campaign_planning', label: 'Campaign Planning', icon: Target, color: 'var(--accent-green)' },
+  { key: 'weekly_content_strategy', label: 'Weekly Content', icon: ListChecks, color: 'var(--accent-blue)' },
+  { key: 'content_pillars', label: 'Content Pillars', icon: LayoutGrid, color: 'var(--accent-orange)' },
+  { key: 'platform_strategy', label: 'Platform Strategy', icon: Share2, color: 'var(--accent-blue)' },
+  { key: 'lead_generation_strategy', label: 'Lead-Gen', icon: Magnet, color: 'var(--accent-green)' },
+  { key: 'cta_strategy', label: 'CTA Strategy', icon: MousePointerClick, color: 'var(--accent-orange)' },
 ]
+const CALENDAR_TAB = { key: 'calendar' as const, label: 'Content Calendar', icon: CalendarDays, color: 'var(--accent-green)' }
 
 const PLATFORM_TONE: Record<string, 'green' | 'blue' | 'orange'> = {
   linkedin: 'blue', instagram: 'green', facebook: 'blue', youtube: 'orange',
@@ -192,6 +196,7 @@ export default function Strategy() {
   const [refreshing, setRefreshing] = useState(false)
   const [approving, setApproving] = useState(false)
   const [detailItem, setDetailItem] = useState<CalendarItem | null>(null)
+  const [activeTab, setActiveTab] = useState<StrategySection | 'calendar'>('campaign_planning')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async (profileId: string) => {
@@ -314,46 +319,79 @@ export default function Strategy() {
             {strategy.ai_summary && <span className="text-secondary text-sm">{strategy.ai_summary}</span>}
           </div>
 
-          <Panel className="mb-4">
-            <div className="flex items-center gap-2 mb-4 font-medium">
-              <CalendarDays size={16} className="text-sage" /> Content Calendar
-            </div>
-            {Array.isArray(strategy.content_calendar) && strategy.content_calendar.length > 0 ? (
-              <div className="space-y-2">
-                {strategy.content_calendar.map((item, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setDetailItem(item)}
-                    className="card p-3 flex items-center justify-between gap-3 w-full text-left hover:border-sage/40 transition-colors"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm">{item.title}</div>
-                      {item.hook && <div className="text-muted text-xs mt-0.5 truncate">{item.hook}</div>}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {item.scheduled_date && <span className="text-muted text-xs">{item.scheduled_date}</span>}
-                      <Badge tone={PLATFORM_TONE[item.platform?.toLowerCase()] ?? 'blue'}>{item.platform}</Badge>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="text-muted text-sm">No calendar items.</div>
-            )}
-          </Panel>
-
-          <div className="grid sm:grid-cols-2 gap-4">
-            {COMPONENTS.map((c) => (
-              <SectionEditor
-                key={c.key}
-                label={c.label}
-                sectionKey={c.key}
-                value={strategy[c.key]}
-                onSave={(v) => onSaveSection(c.key, v)}
-                onRegenerate={() => onRegenerateSection(c.key)}
-              />
-            ))}
+          <div className="flex gap-2 flex-wrap mb-5">
+            {[...COMPONENTS, CALENDAR_TAB].map((tab) => {
+              const active = activeTab === tab.key
+              const Icon = tab.icon
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                  style={{
+                    background: active ? tab.color : 'var(--fill-secondary)',
+                    color: active ? '#fff' : 'var(--text-primary)',
+                    border: `1.5px solid ${active ? tab.color : 'var(--border-subtle)'}`,
+                  }}
+                >
+                  <Icon size={13} /> {tab.label}
+                </button>
+              )
+            })}
           </div>
+
+          {activeTab === 'calendar' ? (
+            <Panel>
+              <div className="flex items-center gap-2 mb-4 font-medium">
+                <CalendarDays size={16} className="text-sage" /> Content Calendar
+              </div>
+              {Array.isArray(strategy.content_calendar) && strategy.content_calendar.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                        {['Date', 'Platform', 'Topic', 'Hook'].map((h) => (
+                          <th key={h} className="text-left text-xs font-semibold text-muted uppercase tracking-wide py-2 px-2">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {strategy.content_calendar.map((item, i) => (
+                        <tr
+                          key={i}
+                          onClick={() => setDetailItem(item)}
+                          className="cursor-pointer hover:bg-[var(--fill-tertiary)] transition-colors"
+                          style={{ borderBottom: '1px solid var(--border-subtle)' }}
+                        >
+                          <td className="py-2.5 px-2 text-muted text-xs whitespace-nowrap">{item.scheduled_date || '—'}</td>
+                          <td className="py-2.5 px-2">
+                            <Badge tone={PLATFORM_TONE[item.platform?.toLowerCase()] ?? 'blue'}>{item.platform}</Badge>
+                          </td>
+                          <td className="py-2.5 px-2 font-medium">{item.title}</td>
+                          <td className="py-2.5 px-2 text-secondary text-xs truncate max-w-xs">{item.hook || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-muted text-sm">No calendar items.</div>
+              )}
+            </Panel>
+          ) : (
+            (() => {
+              const c = COMPONENTS.find((comp) => comp.key === activeTab)!
+              return (
+                <SectionEditor
+                  label={c.label}
+                  sectionKey={c.key}
+                  value={strategy[c.key]}
+                  onSave={(v) => onSaveSection(c.key, v)}
+                  onRegenerate={() => onRegenerateSection(c.key)}
+                />
+              )
+            })()
+          )}
         </>
       )}
 
