@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon, Filter,
+  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon, Filter, Clock,
 } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import {
@@ -54,6 +54,60 @@ function FilterBar({
           Clear
         </button>
       )}
+    </div>
+  )
+}
+
+function StatTile({ icon: Icon, label, value, accent }: { icon: typeof Clock; label: string; value: number; accent: string }) {
+  return (
+    <div className="card metric-tile p-4 flex-1" style={{ ['--tile-accent' as string]: accent }}>
+      <div className="flex items-center gap-2 mb-2" style={{ position: 'relative', zIndex: 1 }}>
+        <Icon size={15} style={{ color: accent }} />
+        <span className="text-muted text-xs">{label}</span>
+      </div>
+      <div className="text-2xl font-light tabular-nums tracking-tightest" style={{ position: 'relative', zIndex: 1 }}>{value}</div>
+    </div>
+  )
+}
+
+const STATUS_OPTIONS: { value: 'all' | 'ready' | 'revision'; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'ready', label: 'Ready for review' },
+  { value: 'revision', label: 'Sent back' },
+]
+
+function StatusPills({
+  value, onChange, counts,
+}: {
+  value: 'all' | 'ready' | 'revision'
+  onChange: (v: 'all' | 'ready' | 'revision') => void
+  counts: Record<'all' | 'ready' | 'revision', number>
+}) {
+  return (
+    <div className="flex gap-2 flex-wrap mb-5">
+      {STATUS_OPTIONS.map((opt) => {
+        const active = value === opt.value
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+            style={{
+              background: active ? 'var(--accent-blue)' : 'var(--fill-secondary)',
+              color: active ? '#fff' : 'var(--text-primary)',
+              border: `1.5px solid ${active ? 'var(--accent-blue)' : 'var(--border-subtle)'}`,
+            }}
+          >
+            {opt.label}
+            <span
+              className="text-[10px] px-1.5 rounded-full"
+              style={{ background: active ? 'rgba(255,255,255,0.25)' : 'var(--fill-tertiary)' }}
+            >
+              {counts[opt.value]}
+            </span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -263,6 +317,7 @@ export default function CreativeReview() {
   const [approvingAll, setApprovingAll] = useState(false)
   const [platformFilter, setPlatformFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'revision'>('all')
 
   async function load(profileId: string) {
     setItems(await listReviewItems(profileId))
@@ -320,8 +375,14 @@ export default function CreativeReview() {
   const filteredItems = items.filter(
     (i) =>
       (platformFilter === 'all' || i.platform?.toLowerCase() === platformFilter) &&
-      (typeFilter === 'all' || i.content_type === typeFilter),
+      (typeFilter === 'all' || i.content_type === typeFilter) &&
+      (statusFilter === 'all' || i.status === statusFilter),
   )
+  const statusCounts = {
+    all: items.length,
+    ready: items.filter((i) => i.status === 'ready').length,
+    revision: items.filter((i) => i.status === 'revision').length,
+  } as const
 
   function onPlatformFilterChange(v: string) {
     setPlatformFilter(v)
@@ -359,6 +420,11 @@ export default function CreativeReview() {
         <EmptyState icon={<CheckSquare size={28} />} title="Nothing to review" hint="Generate content from the Content Factory — it lands here once ready." />
       ) : (
         <>
+          <div className="flex gap-3 mb-5">
+            <StatTile icon={Clock} label="Ready for review" value={statusCounts.ready} accent="var(--accent-orange)" />
+            <StatTile icon={Undo2} label="Sent back" value={statusCounts.revision} accent="var(--accent-blue)" />
+          </div>
+          <StatusPills value={statusFilter} onChange={setStatusFilter} counts={statusCounts} />
           {filteredItems.length === 0 ? (
             <EmptyState icon={<Filter size={28} />} title="No items match these filters" hint="Try a different platform or content type." />
           ) : (
