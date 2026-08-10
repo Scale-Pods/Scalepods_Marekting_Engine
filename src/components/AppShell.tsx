@@ -64,10 +64,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       {/* Sidebar */}
       <aside className="sidebar w-64 shrink-0 flex flex-col sticky top-0 h-screen">
         <div className="p-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-          <div className="inline-flex items-center rounded-lg px-3 py-2 bg-white/5 dark:bg-white/5">
-            <img src={logo} alt="ScalePods" className="h-6" />
-          </div>
-          <div className="badge mt-3"><Sparkles size={12} /> Growth OS</div>
+          <img src={logo} alt="ScalePods" className="h-9" />
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
