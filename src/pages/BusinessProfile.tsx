@@ -16,7 +16,41 @@ const EMPTY: BusinessProfileInput = {
   target_platforms: ['linkedin', 'instagram'],
   competitors: '', website_url: '',
   social_media_urls: {}, assets: [], additional_notes: '',
+  phone: '', email: '', address: '', hours: '', service_areas: [],
   fb_page_id: '', status: 'active',
+}
+
+function TagsEditor({ value, onChange, placeholder }: { value: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
+  const [draft, setDraft] = useState('')
+  function commit() {
+    const v = draft.trim()
+    if (v && !value.includes(v)) onChange([...value, v])
+    setDraft('')
+  }
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {value.map((tag) => (
+          <span key={tag} className="badge inline-flex items-center gap-1">
+            {tag}
+            <button type="button" onClick={() => onChange(value.filter((t) => t !== tag))} className="hover:text-[var(--accent-orange)]">
+              <X size={11} />
+            </button>
+          </span>
+        ))}
+      </div>
+      <input
+        className="input"
+        value={draft}
+        placeholder={placeholder}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commit() }
+        }}
+        onBlur={commit}
+      />
+    </div>
+  )
 }
 
 export default function BusinessProfile() {
@@ -101,11 +135,51 @@ export default function BusinessProfile() {
 
   return (
     <div>
-      <PageHeader
-        accent={<Badge><Building2 size={12} /> Business</Badge>}
-        title={isNew ? 'New business profile' : form.business_name || 'Business profile'}
-        subtitle="Saving fires the AI Business Analysis engine automatically."
-      />
+      {isNew ? (
+        <PageHeader
+          accent={<Badge><Building2 size={12} /> Business</Badge>}
+          title="New business profile"
+          subtitle="Saving fires the AI Business Analysis engine automatically."
+        />
+      ) : (
+        <div className="card overflow-hidden mb-6 p-0">
+          <div
+            className="h-24 relative"
+            style={{ background: 'linear-gradient(135deg, var(--accent-green) 0%, var(--accent-blue) 100%)' }}
+          >
+            <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 30%, #fff 0, transparent 45%), radial-gradient(circle at 80% 70%, #fff 0, transparent 45%)' }} />
+          </div>
+          <div className="px-6 pb-5">
+            <div className="flex items-end justify-between -mt-8 mb-3">
+              <div
+                className="h-16 w-16 rounded-2xl flex items-center justify-center text-xl font-semibold shrink-0"
+                style={{ background: 'var(--bg-layer3)', border: '3px solid var(--glass-fill)', color: 'var(--accent-green)' }}
+              >
+                {(form.business_name || 'SP').slice(0, 2).toUpperCase()}
+              </div>
+            </div>
+            <h1 className="text-xl font-semibold">{form.business_name || 'Business profile'}</h1>
+            {form.tagline && <p className="text-muted text-sm italic mt-0.5">"{form.tagline}"</p>}
+            <div className="flex flex-wrap items-center gap-2 mt-3 mb-4">
+              <Badge tone={form.status === 'active' ? 'green' : 'orange'}>{form.status}</Badge>
+              {form.industry && <Badge tone="blue">{form.industry}</Badge>}
+            </div>
+            <div className="grid grid-cols-4 rounded-panel overflow-hidden panel !p-0">
+              {[
+                { label: 'Service areas', value: (form.service_areas || []).length || '—' },
+                { label: 'Platforms', value: (form.target_platforms || []).length || '—' },
+                { label: 'Website', value: form.website_url ? 'Linked' : '—' },
+                { label: 'Status', value: (form.status || '').charAt(0).toUpperCase() + (form.status || '').slice(1) },
+              ].map((s, i) => (
+                <div key={s.label} className="text-center py-3 px-2" style={i > 0 ? { borderLeft: '1px solid var(--border-subtle)' } : undefined}>
+                  <div className="text-lg font-semibold tracking-tightest">{s.value}</div>
+                  <div className="text-muted text-[10px] uppercase tracking-wide mt-0.5">{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={onSubmit} className="space-y-5 max-w-3xl">
         <Panel>
@@ -223,6 +297,34 @@ export default function BusinessProfile() {
             <div>
               <label className="label">Facebook Page ID</label>
               <input className="input mt-1 font-mono text-xs" value={form.fb_page_id ?? ''} onChange={(e) => set('fb_page_id', e.target.value)} />
+            </div>
+          </div>
+        </Panel>
+
+        <Panel>
+          <div className="font-medium mb-4">Contact &amp; location</div>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Phone</label>
+              <input className="input mt-1" type="tel" value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Email</label>
+              <input className="input mt-1" type="email" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Address</label>
+              <input className="input mt-1" value={form.address ?? ''} onChange={(e) => set('address', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Operating hours</label>
+              <input className="input mt-1" value={form.hours ?? ''} onChange={(e) => set('hours', e.target.value)} placeholder="Mon–Fri, 9am–6pm IST" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <label className="label">Service areas</label>
+            <div className="mt-1">
+              <TagsEditor value={form.service_areas ?? []} onChange={(v) => set('service_areas', v)} placeholder="Add a region, press Enter…" />
             </div>
           </div>
         </Panel>

@@ -17,6 +17,11 @@ export interface BusinessProfile {
   social_media_urls: Record<string, string>
   assets: { name: string; url: string }[]
   additional_notes: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  hours: string | null
+  service_areas: string[]
   fb_page_id: string | null
   status: string
   created_at: string

@@ -109,6 +109,22 @@ export default function Intelligence() {
         </Link>
       )}
 
+      {isActive && (
+        <div className="card p-5 mb-6 flex flex-wrap items-center gap-2">
+          <span className="text-muted text-xs mr-1">Running:</span>
+          {['Website', 'Instagram', 'Facebook', 'LinkedIn', 'Competitors', 'SEO', 'Synthesis'].map((step, i) => (
+            <span
+              key={step}
+              className="badge badge-blue"
+              style={{ animation: `spFadeInUp 0.4s ease ${i * 0.12}s both` }}
+            >
+              {step}
+            </span>
+          ))}
+          <style>{`@keyframes spFadeInUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+        </div>
+      )}
+
       {history.length > 1 && (
         <>
           <div className="text-sm font-medium text-secondary mb-3">History</div>
