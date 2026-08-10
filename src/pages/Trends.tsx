@@ -4,6 +4,78 @@ import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { getLatestRun, listSignals, triggerTrends, type TrendRun, type TrendSignal } from '../lib/trends'
 import { PageHeader, Badge, Button, EmptyState, Spinner } from '../components/ui'
 
+// Real-world brand colors for the platform sources; ScalePods' own accent tokens for the two
+// non-platform categories (SEO Keywords, Competitor campaigns) — no invented colors either way.
+const SOURCE_COLOR: Record<string, string> = {
+  'Google Trends': '#4285F4',
+  'Google News': '#EA4335',
+  Reddit: '#FF4500',
+  Instagram: '#E1306C',
+  YouTube: '#FF0000',
+  LinkedIn: '#0A66C2',
+  Facebook: '#1877F2',
+  'SEO Keywords': 'var(--accent-green)',
+  'Competitor campaigns': 'var(--accent-blue)',
+}
+
+function sourceColor(source: string) {
+  return SOURCE_COLOR[source] ?? 'var(--fill-tertiary)'
+}
+
+function relevanceColor(score: number) {
+  return score >= 70 ? 'var(--accent-green)' : score >= 40 ? 'var(--accent-orange)' : 'var(--text-muted)'
+}
+
+function SignalCard({ sig }: { sig: TrendSignal }) {
+  const rel = sig.relevance_score ?? 0
+  const relColor = relevanceColor(rel)
+  const isKeywordPhrase = sig.source === 'SEO Keywords' && !sig.url
+  const href = sig.url || (isKeywordPhrase ? `https://www.google.com/search?q=${encodeURIComponent(sig.topic)}` : null)
+
+  return (
+    <div className="card p-4 flex flex-col">
+      <div className="flex items-center gap-2 mb-3">
+        <span
+          className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-white"
+          style={{ background: sourceColor(sig.source) }}
+        >
+          {sig.source}
+        </span>
+        <span
+          className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1"
+          style={{ color: relColor, border: `1px solid ${relColor}` }}
+          title="AI relevance score (0-100) — how relevant this trend is to ScalePods"
+        >
+          <TrendingUp size={11} /> {rel} relevance
+        </span>
+      </div>
+
+      <div className="font-semibold text-[15px] leading-snug mb-2">{sig.topic}</div>
+
+      {sig.relevance_reason && (
+        <div className="text-xs text-muted italic panel !p-2.5 mb-3 leading-relaxed">
+          &ldquo;{sig.relevance_reason}&rdquo;
+        </div>
+      )}
+
+      <div className="mt-auto">
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-ghost w-full !py-2 text-xs justify-center"
+          >
+            {isKeywordPhrase ? 'Search this keyword' : 'View source'} <ExternalLink size={12} />
+          </a>
+        ) : (
+          <div className="text-muted text-xs text-center py-2">No source link for this signal</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Trends() {
   const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
   const [run, setRun] = useState<TrendRun | null>(null)
@@ -102,42 +174,59 @@ export default function Trends() {
 
           {sources.length > 0 && (
             <div className="flex gap-2 flex-wrap mb-5">
-              <button onClick={() => setSourceFilter(null)} className={!sourceFilter ? 'badge badge-blue' : 'badge badge-blue opacity-40'}>
-                All ({signals.length})
-              </button>
-              {sources.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setSourceFilter(s)}
-                  className={sourceFilter === s ? 'badge badge-blue' : 'badge badge-blue opacity-40'}
+              <button
+                onClick={() => setSourceFilter(null)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                style={{
+                  background: !sourceFilter ? 'var(--accent-blue)' : 'var(--fill-secondary)',
+                  color: !sourceFilter ? '#fff' : 'var(--text-primary)',
+                  border: `1.5px solid ${!sourceFilter ? 'var(--accent-blue)' : 'var(--border-subtle)'}`,
+                }}
+              >
+                All
+                <span
+                  className="text-[10px] px-1.5 rounded-full"
+                  style={{ background: !sourceFilter ? 'rgba(255,255,255,0.25)' : 'var(--fill-tertiary)' }}
                 >
-                  {s} ({signals.filter((x) => x.source === s).length})
-                </button>
-              ))}
+                  {signals.length}
+                </span>
+              </button>
+              {sources.map((s) => {
+                const active = sourceFilter === s
+                const color = sourceColor(s)
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setSourceFilter(s)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                    style={{
+                      background: active ? color : 'var(--fill-secondary)',
+                      color: active ? '#fff' : 'var(--text-primary)',
+                      border: `1.5px solid ${active ? color : 'var(--border-subtle)'}`,
+                    }}
+                  >
+                    {s}
+                    <span
+                      className="text-[10px] px-1.5 rounded-full"
+                      style={{ background: active ? 'rgba(255,255,255,0.25)' : 'var(--fill-tertiary)' }}
+                    >
+                      {signals.filter((x) => x.source === s).length}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           )}
 
-          <div className="space-y-3">
-            {visible.map((s) => (
-              <div key={s.id} className="card p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <Badge tone="blue">{s.source}</Badge>
-                      <span className="text-muted text-xs">Relevance {s.relevance_score}</span>
-                    </div>
-                    <div className="font-medium">{s.topic}</div>
-                    {s.relevance_reason && <div className="text-secondary text-sm mt-1">{s.relevance_reason}</div>}
-                  </div>
-                  {s.url && (
-                    <a href={s.url} target="_blank" rel="noreferrer" className="text-muted hover:text-sage shrink-0">
-                      <ExternalLink size={16} />
-                    </a>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          {visible.length === 0 ? (
+            <EmptyState icon={<TrendingUp size={28} />} title="No signals for this source" />
+          ) : (
+            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+              {visible.map((s) => (
+                <SignalCard key={s.id} sig={s} />
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>
