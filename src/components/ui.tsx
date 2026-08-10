@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Loader2, X } from 'lucide-react'
 
 // --- Buttons --------------------------------------------------------------
@@ -77,7 +78,11 @@ export function Modal({
   children: ReactNode
   wide?: boolean
 }) {
-  return (
+  // Rendered via portal straight onto <body> — a `fixed`-positioned overlay nested inside
+  // any ancestor with backdrop-filter/filter/transform (e.g. `.card`, `.panel`) would
+  // otherwise be scoped to that ancestor's box instead of the viewport (CSS containing-block
+  // rule), which is exactly what backdrop-filter on `.card` does throughout this app.
+  return createPortal(
     <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
         className={`modal-panel w-full ${wide ? 'max-w-2xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto p-7`}
@@ -91,7 +96,8 @@ export function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

@@ -15,7 +15,10 @@ const CORS_HEADERS = {
 
 async function getAccessToken(supabase: SupabaseClient): Promise<string> {
   const { data: conn } = await supabase.from('canva_connections').select('*').eq('key', 'default').maybeSingle()
-  if (!conn || conn.status !== 'connected') throw new Error('Canva is not connected yet')
+  // `status` can get reset to 'pending' by a hit to canva-oauth-start that never completes
+  // (e.g. an abandoned reconnect attempt) even though a still-valid token pair from an
+  // earlier successful connection is sitting right there — trust the token, not the label.
+  if (!conn || !conn.access_token || !conn.refresh_token) throw new Error('Canva is not connected yet')
   if (conn.token_expires_at && new Date(conn.token_expires_at).getTime() > Date.now() + 60_000) {
     return conn.access_token
   }
