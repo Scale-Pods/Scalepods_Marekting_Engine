@@ -154,3 +154,43 @@ export async function reviseWithAi(itemId: string, notes: string): Promise<void>
   if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
   await fireWebhook('sp-content-revise', { itemId, notes })
 }
+
+/**
+ * Hand-authored post from the "Create post" composer (Content Factory / Creative Review).
+ * Inserted directly as `approved` — there's no AI draft to review, the user already finished
+ * it in the composer — so it lands straight in Publishing's "Ready to publish" list and flows
+ * through the exact same real Post now / Schedule pipeline as an AI-generated item.
+ */
+export async function createManualItem(input: {
+  profileId: string
+  platform: string
+  contentType: 'static_image' | 'social_caption'
+  title: string | null
+  body: string
+  mediaUrl: string | null
+  hashtags: string[]
+  cta: string
+  scheduledDate: string | null
+}): Promise<ContentItem> {
+  const { data, error } = await supabase
+    .from('content_items')
+    .insert({
+      run_id: null,
+      profile_id: input.profileId,
+      strategy_id: null,
+      calendar_index: null,
+      content_type: input.contentType,
+      status: 'approved',
+      approved_at: new Date().toISOString(),
+      platform: input.platform,
+      scheduled_date: input.scheduledDate,
+      title: input.title,
+      body: input.body,
+      media_url: input.mediaUrl,
+      metadata: { hashtags: input.hashtags, ...(input.cta ? { cta: input.cta } : {}) },
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as ContentItem
+}

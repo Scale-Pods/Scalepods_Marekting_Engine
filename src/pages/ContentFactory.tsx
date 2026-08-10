@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check, Filter, Hash, Megaphone } from 'lucide-react'
+import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check, Filter, Hash, Megaphone, Plus } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { getLatestStrategy, type MarketingStrategy } from '../lib/strategy'
 import {
@@ -9,17 +9,12 @@ import {
   type ContentRun, type ContentItem,
 } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
+import { PLATFORM_OPTIONS } from '../components/mediaUi'
+import CreatePostModal from '../components/CreatePostModal'
 
 const PLATFORM_TONE: Record<string, 'green' | 'blue' | 'orange'> = {
   linkedin: 'blue', instagram: 'green', facebook: 'blue', youtube: 'orange',
 }
-
-const PLATFORM_OPTIONS = [
-  { value: 'instagram', label: 'Instagram' },
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'facebook', label: 'Facebook' },
-  { value: 'youtube', label: 'YouTube' },
-]
 
 // Per-type badge tint — ScalePods' own accent tokens rotated across the generic types, plus
 // LinkedIn's real brand blue for the one type actually tied to that platform (already used
@@ -210,6 +205,7 @@ export default function ContentFactory() {
   const [generating, setGenerating] = useState(false)
   const [platformFilter, setPlatformFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [composerOpen, setComposerOpen] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async (profileId: string) => {
@@ -284,15 +280,26 @@ export default function ContentFactory() {
   if (!strategy || strategy.status !== 'approved') {
     return (
       <div>
-        <PageHeader accent={<Badge><Sparkles size={12} /> Content Factory</Badge>} title="Content Factory" />
+        <PageHeader
+          accent={<Badge><Sparkles size={12} /> Content Factory</Badge>}
+          title="Content Factory"
+          actions={
+            <Button variant="ghost" onClick={() => setComposerOpen(true)}>
+              <Plus size={15} /> Create post
+            </Button>
+          }
+        />
         <EmptyState
           icon={<Sparkles size={28} />}
           title="Approve a strategy first"
-          hint="The Content Factory reads the approved calendar. Go to Strategy and approve one before generating content."
+          hint="The Content Factory reads the approved calendar. Go to Strategy and approve one before generating content — or create a post manually with the button above."
         />
         <div className="flex justify-center mt-4">
           <Link to="/strategy" className="btn-primary">Go to Strategy</Link>
         </div>
+        {composerOpen && (
+          <CreatePostModal profileId={profile.id} onClose={() => setComposerOpen(false)} onCreated={() => setComposerOpen(false)} />
+        )}
       </div>
     )
   }
@@ -337,6 +344,9 @@ export default function ContentFactory() {
             <Button variant="ghost" onClick={onGenerate} loading={generating} disabled={!GENERATION_ENABLED}>
               <RefreshCw size={15} /> {run ? 'Regenerate' : 'Generate content'}
             </Button>
+            <Button variant="ghost" onClick={() => setComposerOpen(true)}>
+              <Plus size={15} /> Create post
+            </Button>
           </div>
         }
       />
@@ -377,6 +387,9 @@ export default function ContentFactory() {
             </div>
           )}
         </>
+      )}
+      {composerOpen && (
+        <CreatePostModal profileId={profile.id} onClose={() => setComposerOpen(false)} onCreated={() => setComposerOpen(false)} />
       )}
     </div>
   )

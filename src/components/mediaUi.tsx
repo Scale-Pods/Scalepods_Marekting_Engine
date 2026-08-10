@@ -47,6 +47,13 @@ function platformStyle(platform?: string | null): PlatformStyle {
   return { bg: 'var(--fill-tertiary)', label: platform || '—' }
 }
 
+export const PLATFORM_OPTIONS = [
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'youtube', label: 'YouTube' },
+]
+
 export function PlatformBadge({ platform, size = 'md' }: { platform?: string | null; size?: 'sm' | 'md' }) {
   const s = platformStyle(platform)
   const neutral = s.bg.startsWith('var(')
@@ -62,6 +69,47 @@ export function PlatformBadge({ platform, size = 'md' }: { platform?: string | n
     >
       {s.glyph}{s.label}
     </span>
+  )
+}
+
+// Platform-styled post-card preview — shows exactly how a piece of content will look once
+// published. IG/FB/LinkedIn get a feed-card treatment; YouTube gets a video-frame treatment
+// with a caption overlay. (TikTok/blog intentionally not ported — out of scope per CLAUDE.md.)
+// Shared by MediaEditor's crop/filter preview tab and CreatePostModal's composer preview.
+export function PlatformMockup({ platform, img, aspect, caption }: { platform: string; img: string | null; aspect: number; caption?: string | null }) {
+  const isVideoFrame = platform.toLowerCase() === 'youtube'
+  const maxW = aspect < 1 ? Math.round(300 * aspect) : undefined
+  return (
+    <div
+      className="rounded-panel overflow-hidden mx-auto"
+      style={{ border: '1px solid var(--border-subtle)', background: isVideoFrame ? '#000' : 'var(--fill-tertiary)', maxWidth: maxW }}
+    >
+      {!isVideoFrame && (
+        <div className="flex items-center gap-2 px-2.5 py-2">
+          <div className="h-6 w-6 rounded-full shrink-0" style={{ background: 'var(--accent-green)' }} />
+          <div className="text-xs font-semibold">scalepods</div>
+          <div className="ml-auto"><PlatformBadge platform={platform} size="sm" /></div>
+        </div>
+      )}
+      <div className="relative w-full" style={{ aspectRatio: String(aspect), background: 'var(--fill-tertiary)' }}>
+        {img ? (
+          <img src={img} alt="preview" className="w-full h-full object-cover block" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-muted text-xs">Adjust the crop →</div>
+        )}
+        {isVideoFrame && (
+          <div className="absolute bottom-2.5 left-2.5 right-2.5 text-white">
+            <div className="text-xs font-bold mb-0.5">@scalepods</div>
+            {caption && <div className="text-[11px] opacity-90 line-clamp-2">{caption}</div>}
+          </div>
+        )}
+      </div>
+      {!isVideoFrame && caption && (
+        <div className="px-2.5 py-2">
+          <div className="text-secondary text-[11.5px] leading-snug line-clamp-3">{caption}</div>
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon, Filter, Clock,
+  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon, Filter, Clock, Plus,
 } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import {
@@ -10,16 +10,10 @@ import {
 } from '../lib/content'
 import { connectCanva, listCanvaDesigns, importCanvaDesign, importFigmaFrame, type CanvaDesign } from '../lib/designer'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
-import { PlatformBadge, CarouselViewer } from '../components/mediaUi'
+import { PlatformBadge, CarouselViewer, PLATFORM_OPTIONS } from '../components/mediaUi'
 import AssetUploader from '../components/AssetUploader'
 import MediaEditor from '../components/MediaEditor'
-
-const PLATFORM_OPTIONS = [
-  { value: 'instagram', label: 'Instagram' },
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'facebook', label: 'Facebook' },
-  { value: 'youtube', label: 'YouTube' },
-]
+import CreatePostModal from '../components/CreatePostModal'
 
 function FilterBar({
   platform, onPlatform, type, onType, typeOptions,
@@ -318,6 +312,7 @@ export default function CreativeReview() {
   const [platformFilter, setPlatformFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'revision'>('all')
+  const [composerOpen, setComposerOpen] = useState(false)
 
   async function load(profileId: string) {
     setItems(await listReviewItems(profileId))
@@ -397,8 +392,8 @@ export default function CreativeReview() {
         title={`Creative Review — ${profile.business_name}`}
         subtitle="Approve, send back, replace, or edit each piece. Designer replace/edit tools and Canva/Figma import live here too."
         actions={
-          items.length > 0 ? (
-            <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {items.length > 0 && (
               <FilterBar
                 platform={platformFilter}
                 onPlatform={onPlatformFilterChange}
@@ -406,18 +401,21 @@ export default function CreativeReview() {
                 onType={setTypeFilter}
                 typeOptions={typeOptions}
               />
-              {selected.size > 0 && (
-                <Button onClick={onApproveAll} loading={approvingAll}>
-                  <CheckCircle2 size={15} /> Approve {selected.size} selected
-                </Button>
-              )}
-            </div>
-          ) : undefined
+            )}
+            {selected.size > 0 && (
+              <Button onClick={onApproveAll} loading={approvingAll}>
+                <CheckCircle2 size={15} /> Approve {selected.size} selected
+              </Button>
+            )}
+            <Button variant="ghost" onClick={() => setComposerOpen(true)}>
+              <Plus size={15} /> Create post
+            </Button>
+          </div>
         }
       />
 
       {items.length === 0 ? (
-        <EmptyState icon={<CheckSquare size={28} />} title="Nothing to review" hint="Generate content from the Content Factory — it lands here once ready." />
+        <EmptyState icon={<CheckSquare size={28} />} title="Nothing to review" hint="Generate content from the Content Factory, or create a post manually with the button above." />
       ) : (
         <>
           <div className="flex gap-3 mb-5">
@@ -441,6 +439,9 @@ export default function CreativeReview() {
             </div>
           )}
         </>
+      )}
+      {composerOpen && (
+        <CreatePostModal profileId={profile.id} onClose={() => setComposerOpen(false)} onCreated={() => setComposerOpen(false)} />
       )}
     </div>
   )

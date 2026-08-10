@@ -3,7 +3,7 @@ import Cropper, { type Area } from 'react-easy-crop'
 import { RotateCw, Check, X, Sparkles } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { Button } from './ui'
-import { PlatformBadge } from './mediaUi'
+import { PlatformMockup } from './mediaUi'
 
 const PRESETS: Record<string, { label: string; ratio: number }[]> = {
   instagram: [{ label: '1:1', ratio: 1 }, { label: '4:5', ratio: 4 / 5 }, { label: '9:16', ratio: 9 / 16 }],
@@ -79,47 +79,6 @@ async function buildExport(
   return new Promise((resolve, reject) => {
     outCanvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Canvas export failed'))), 'image/png')
   })
-}
-
-// Platform-styled post-card preview — shows exactly how the current crop + filters will
-// look once published. IG/FB/LinkedIn get a feed-card treatment; YouTube gets a
-// video-frame treatment with a caption overlay. (TikTok/blog intentionally not ported —
-// out of scope per CLAUDE.md.)
-function PlatformMockup({ platform, img, aspect, caption }: { platform: string; img: string | null; aspect: number; caption?: string | null }) {
-  const isVideoFrame = platform.toLowerCase() === 'youtube'
-  const maxW = aspect < 1 ? Math.round(300 * aspect) : undefined
-  return (
-    <div
-      className="rounded-panel overflow-hidden mx-auto"
-      style={{ border: '1px solid var(--border-subtle)', background: isVideoFrame ? '#000' : 'var(--fill-tertiary)', maxWidth: maxW }}
-    >
-      {!isVideoFrame && (
-        <div className="flex items-center gap-2 px-2.5 py-2">
-          <div className="h-6 w-6 rounded-full shrink-0" style={{ background: 'var(--accent-green)' }} />
-          <div className="text-xs font-semibold">scalepods</div>
-          <div className="ml-auto"><PlatformBadge platform={platform} size="sm" /></div>
-        </div>
-      )}
-      <div className="relative w-full" style={{ aspectRatio: String(aspect), background: 'var(--fill-tertiary)' }}>
-        {img ? (
-          <img src={img} alt="preview" className="w-full h-full object-cover block" />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-muted text-xs">Adjust the crop →</div>
-        )}
-        {isVideoFrame && (
-          <div className="absolute bottom-2.5 left-2.5 right-2.5 text-white">
-            <div className="text-xs font-bold mb-0.5">@scalepods</div>
-            {caption && <div className="text-[11px] opacity-90 line-clamp-2">{caption}</div>}
-          </div>
-        )}
-      </div>
-      {!isVideoFrame && caption && (
-        <div className="px-2.5 py-2">
-          <div className="text-secondary text-[11.5px] leading-snug line-clamp-3">{caption}</div>
-        </div>
-      )}
-    </div>
-  )
 }
 
 export default function MediaEditor({
