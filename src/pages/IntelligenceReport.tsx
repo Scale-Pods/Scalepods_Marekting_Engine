@@ -1,11 +1,53 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  ArrowLeft, BrainCircuit, Globe, Instagram, Facebook, Linkedin, TrendingUp, Search, Users, FileText,
+  ArrowLeft, Globe, Instagram, Facebook, Linkedin, TrendingUp, Search, Users, FileText,
 } from 'lucide-react'
 import { getReport, type BIReport } from '../lib/clients'
 import { Spinner, EmptyState } from '../components/ui'
 import Markdown from '../components/Markdown'
+
+function humanize(key: string) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+// The per-section analysis fields (website_analysis, competitor_analysis, etc.) come back
+// from the n8n workflow as JSON objects (shape varies per section — some have
+// strengths/weaknesses/opportunities/threats, others have presence/recommendations, etc.),
+// while full_report is real markdown prose. Detect which one we've got and render
+// accordingly instead of ever dumping raw JSON text.
+function SectionBody({ text }: { text: string }) {
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    // not JSON — fall through to markdown rendering below
+  }
+
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const entries = Object.entries(parsed as Record<string, unknown>)
+    return (
+      <div className="space-y-4">
+        {entries.map(([key, value]) => (
+          <div key={key}>
+            <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-1.5">{humanize(key)}</div>
+            {Array.isArray(value) ? (
+              <ul className="list-disc ml-5 space-y-1">
+                {value.map((item, i) => (
+                  <li key={i} className="text-sm text-secondary">{String(item)}</li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-sm text-secondary">{String(value)}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  return <Markdown text={text} />
+}
 
 const SECTIONS: { key: keyof BIReport; label: string; icon: typeof Globe; color: string }[] = [
   { key: 'website_analysis', label: 'Website', icon: Globe, color: 'var(--accent-blue)' },
@@ -47,21 +89,25 @@ export default function IntelligenceReport() {
 
       <div className="card overflow-hidden mb-6 p-0">
         <div
-          className="h-20 relative"
-          style={{ background: 'linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-green) 100%)' }}
-        >
-          <div
-            className="absolute inset-0 opacity-10"
-            style={{ backgroundImage: 'radial-gradient(circle at 15% 30%, #fff 0, transparent 40%), radial-gradient(circle at 85% 70%, #fff 0, transparent 40%)' }}
-          />
-        </div>
+          className="relative w-full"
+          style={{
+            aspectRatio: '1709 / 285',
+            backgroundImage: "url('/brand/profile-banner.png')",
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundColor: '#04070D',
+          }}
+        />
         <div className="px-6 pb-5">
-          <div className="flex items-end justify-between -mt-7 mb-2">
+          {/* z-10 needed: the banner above is position:relative, which paints above static
+              content regardless of DOM order per CSS stacking rules (same fix as the
+              BusinessProfile logo overlap bug). */}
+          <div className="-mt-10 mb-2 relative z-10">
             <div
-              className="h-14 w-14 rounded-2xl flex items-center justify-center shrink-0"
-              style={{ background: 'var(--bg-layer3)', border: '3px solid var(--glass-fill)' }}
+              className="h-16 w-16 rounded-xl overflow-hidden"
+              style={{ background: 'var(--bg-layer3)', border: '4px solid var(--bg-card)', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}
             >
-              <BrainCircuit size={24} style={{ color: 'var(--accent-green)' }} />
+              <img src="/brand/logo-square.jpg" alt="ScalePods" className="h-full w-full object-cover" />
             </div>
           </div>
           <h1 className="text-xl font-semibold">Business Intelligence Report</h1>
@@ -120,7 +166,7 @@ export default function IntelligenceReport() {
                 )}
               </div>
             )}
-            {body ? <Markdown text={body} /> : <div className="text-muted text-sm">No content for this section yet.</div>}
+            {body ? <SectionBody text={body} /> : <div className="text-muted text-sm">No content for this section yet.</div>}
           </div>
         </>
       )}
