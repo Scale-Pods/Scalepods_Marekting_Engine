@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle } from 'lucide-react'
+import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { getLatestStrategy, type MarketingStrategy } from '../lib/strategy'
 import {
@@ -20,6 +20,19 @@ function ItemCard({ item, onCarousel }: { item: ContentItem; onCarousel: (id: st
   const isCarousel = item.content_type === 'carousel'
   const waitingOnImage = isImage && !item.media_url && item.status !== 'failed'
   const [firingCarousel, setFiringCarousel] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  async function onCopy() {
+    const hashtags = item.metadata?.hashtags?.join(' ') ?? ''
+    const text = [item.body, hashtags].filter(Boolean).join('\n\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      // Clipboard API unavailable (e.g. insecure context) — silently no-op.
+    }
+  }
 
   return (
     <div className="card p-4">
@@ -27,6 +40,13 @@ function ItemCard({ item, onCarousel }: { item: ContentItem; onCarousel: (id: st
         <Badge tone={PLATFORM_TONE[item.platform?.toLowerCase()] ?? 'blue'}>{item.platform}</Badge>
         <Badge tone="orange">{item.content_type.replace(/_/g, ' ')}</Badge>
         {item.scheduled_date && <span className="text-muted text-xs">{item.scheduled_date}</span>}
+        <button
+          onClick={onCopy}
+          className="ml-auto text-muted hover:text-sage transition-colors"
+          title="Copy caption + hashtags"
+        >
+          {copied ? <Check size={14} className="text-sage" /> : <Copy size={14} />}
+        </button>
       </div>
 
       {item.media_url ? (
