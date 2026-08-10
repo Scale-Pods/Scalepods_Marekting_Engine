@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { BarChart3, RefreshCw, Sparkles, Heart, MessageCircle, Eye, Zap, Clock } from 'lucide-react'
+import {
+  BarChart3, RefreshCw, Sparkles, Heart, MessageCircle, Eye, Zap, Clock, Gauge, Quote, Users, Star,
+} from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import {
   listPostAnalytics, getAnalyticsState, triggerAnalyticsRefresh,
@@ -10,15 +12,121 @@ import {
 } from '../lib/analytics'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
 import { PlatformBadge } from '../components/mediaUi'
-import JsonBlock from '../components/JsonBlock'
 
-const INSIGHT_SECTIONS: { key: keyof AiInsight; label: string }[] = [
-  { key: 'content_scores', label: 'Content Scores' },
-  { key: 'winning_hooks', label: 'Winning Hooks' },
-  { key: 'audience_behaviour', label: 'Audience Behaviour' },
-  { key: 'best_posting_time', label: 'Best Posting Time' },
-  { key: 'top_creatives', label: 'Top Creatives' },
-]
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function humanize(key: string) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+// Scores in this app's real ai_insights data come back on a 0-10 scale (confirmed against
+// live rows), not 0-100 like a percentage.
+function ScoreBar({ label, value }: { label: string; value: number }) {
+  const pct = Math.max(0, Math.min(100, value * 10))
+  const color = value >= 7 ? 'var(--accent-green)' : value >= 4 ? 'var(--accent-orange)' : 'var(--text-muted)'
+  return (
+    <div className="mb-2.5 last:mb-0">
+      <div className="flex items-center justify-between text-xs mb-1">
+        <span className="text-secondary capitalize">{humanize(label)}</span>
+        <span className="font-medium" style={{ color }}>{value}/10</span>
+      </div>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--fill-tertiary)' }}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+      </div>
+    </div>
+  )
+}
+
+function ContentScoresPanel({ value }: { value: unknown }) {
+  if (!isRecord(value) || Object.keys(value).length === 0) return null
+  return (
+    <Panel>
+      <div className="font-medium mb-3 flex items-center gap-2"><Gauge size={16} className="text-sage" /> Content Scores</div>
+      {Object.entries(value).map(([k, v]) => (typeof v === 'number' ? <ScoreBar key={k} label={k} value={v} /> : null))}
+    </Panel>
+  )
+}
+
+function WinningHooksPanel({ value }: { value: unknown }) {
+  if (!Array.isArray(value) || value.length === 0) return null
+  return (
+    <Panel>
+      <div className="font-medium mb-3 flex items-center gap-2"><Quote size={16} className="text-sage" /> Winning Hooks</div>
+      <ul className="space-y-2.5">
+        {value.map((h, i) => (
+          <li key={i} className="text-sm text-secondary flex gap-2">
+            <Quote size={12} className="text-sage shrink-0 mt-1" />
+            <span>{String(h)}</span>
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  )
+}
+
+function AudienceBehaviourPanel({ value }: { value: unknown }) {
+  if (!isRecord(value) || Object.keys(value).length === 0) return null
+  return (
+    <Panel>
+      <div className="font-medium mb-3 flex items-center gap-2"><Users size={16} className="text-sage" /> Audience Behaviour</div>
+      {Object.entries(value).map(([k, v]) => (
+        <div key={k} className="mb-2.5 last:mb-0">
+          <div className="text-xs font-semibold text-secondary mb-0.5">{humanize(k)}</div>
+          <div className="text-sm text-secondary">{String(v)}</div>
+        </div>
+      ))}
+    </Panel>
+  )
+}
+
+function BestPostingTimePanel({ value }: { value: unknown }) {
+  if (!isRecord(value) || Object.keys(value).length === 0) return null
+  return (
+    <Panel>
+      <div className="font-medium mb-3 flex items-center gap-2"><Clock size={16} className="text-sage" /> Best Posting Time</div>
+      <div className="space-y-2.5">
+        {Object.entries(value).map(([platform, iso]) => {
+          const date = new Date(String(iso))
+          const valid = !isNaN(date.getTime())
+          return (
+            <div key={platform} className="flex items-center justify-between gap-2">
+              <PlatformBadge platform={platform} size="sm" />
+              <span className="text-sm text-secondary text-right">
+                {valid ? date.toLocaleString(undefined, { weekday: 'long', hour: '2-digit', minute: '2-digit' }) : String(iso)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </Panel>
+  )
+}
+
+function TopCreativesPanel({ value }: { value: unknown }) {
+  if (!Array.isArray(value) || value.length === 0) return null
+  return (
+    <Panel className="sm:col-span-2">
+      <div className="font-medium mb-3 flex items-center gap-2"><Star size={16} className="text-sage" /> Top Creatives to Reuse</div>
+      <div className="grid sm:grid-cols-3 gap-3">
+        {value.map((c, i) => {
+          const item = isRecord(c) ? c : {}
+          const title = typeof item.title === 'string' ? item.title : null
+          const caption = typeof item.caption === 'string' ? item.caption : null
+          const imageUrl = typeof item.image_url === 'string' ? item.image_url : null
+          return (
+            <div key={i} className="panel !p-2">
+              {imageUrl && <img src={imageUrl} alt={title ?? ''} className="w-full h-24 object-cover rounded mb-2" />}
+              {title && <div className="text-xs font-semibold mb-1">{title}</div>}
+              {caption && <div className="text-xs text-muted line-clamp-2">{caption}</div>}
+            </div>
+          )
+        })}
+      </div>
+    </Panel>
+  )
+}
 
 function Tile({ icon: Icon, label, value, accent = 'var(--accent-green)' }: { icon: typeof Heart; label: string; value: number | string; accent?: string }) {
   return (
@@ -204,12 +312,11 @@ export default function Analytics() {
             </div>
           )}
           <div className="grid sm:grid-cols-2 gap-4">
-            {INSIGHT_SECTIONS.map((s) => (
-              <Panel key={s.key}>
-                <div className="font-medium mb-3">{s.label}</div>
-                <JsonBlock value={insights[s.key]} />
-              </Panel>
-            ))}
+            <BestPostingTimePanel value={insights.best_posting_time} />
+            <WinningHooksPanel value={insights.winning_hooks} />
+            <ContentScoresPanel value={insights.content_scores} />
+            <AudienceBehaviourPanel value={insights.audience_behaviour} />
+            <TopCreativesPanel value={insights.top_creatives} />
           </div>
         </>
       )}
