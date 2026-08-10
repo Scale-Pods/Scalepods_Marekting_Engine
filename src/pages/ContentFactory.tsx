@@ -252,12 +252,23 @@ export default function ContentFactory() {
 
   const textDone = run ? items.length >= run.total_items : false
   const pendingCount = run ? Math.max(run.total_items - items.length, 0) : 0
-  const typeOptions = Array.from(new Set(items.map((i) => i.content_type))).sort()
+  // Content-type options are scoped to whichever platform is currently selected, so the
+  // dropdown never offers a type that platform doesn't actually have (e.g. no "linkedin
+  // article" while "Instagram" is selected).
+  const typeOptions = Array.from(
+    new Set(items.filter((i) => platformFilter === 'all' || i.platform?.toLowerCase() === platformFilter).map((i) => i.content_type)),
+  ).sort()
   const filteredItems = items.filter(
     (i) =>
       (platformFilter === 'all' || i.platform?.toLowerCase() === platformFilter) &&
       (typeFilter === 'all' || i.content_type === typeFilter),
   )
+
+  function onPlatformFilterChange(v: string) {
+    setPlatformFilter(v)
+    const nextOptions = new Set<string>(items.filter((i) => v === 'all' || i.platform?.toLowerCase() === v).map((i) => i.content_type))
+    if (typeFilter !== 'all' && !nextOptions.has(typeFilter)) setTypeFilter('all')
+  }
 
   return (
     <div>
@@ -270,7 +281,7 @@ export default function ContentFactory() {
             {textDone && items.length > 0 && (
               <FilterBar
                 platform={platformFilter}
-                onPlatform={setPlatformFilter}
+                onPlatform={onPlatformFilterChange}
                 type={typeFilter}
                 onType={setTypeFilter}
                 typeOptions={typeOptions}
