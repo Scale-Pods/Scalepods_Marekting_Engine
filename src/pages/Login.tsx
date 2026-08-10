@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Sun, Moon, Sparkles, ArrowRight, ShieldCheck, User, Palette } from 'lucide-react'
+import { Sun, Moon, Sparkles, ArrowRight, ShieldCheck, User, Palette, Send } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { toggleTheme, getTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
 
@@ -18,7 +18,10 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [resetMode, setResetMode] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
+  const [resetBusy, setResetBusy] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
   const navigate = useNavigate()
 
   const logo = theme === 'dark' ? '/brand/logo-white.png' : '/brand/logo-black.png'
@@ -33,11 +36,25 @@ export default function Login() {
     else navigate('/')
   }
 
-  async function onReset() {
+  function openResetPanel() {
     if (!email) return setError('Enter your email first')
+    setError(null)
+    setResetMode(true)
+  }
+
+  function closeResetPanel() {
+    setResetMode(false)
+    setResetSent(false)
+    setResetError(null)
+  }
+
+  async function sendResetLink() {
+    setResetBusy(true)
+    setResetError(null)
     const { error } = await sendReset(email)
-    setError(error)
-    if (!error) setNotice('Password reset email sent.')
+    setResetBusy(false)
+    if (error) setResetError(error)
+    else setResetSent(true)
   }
 
   return (
@@ -90,65 +107,96 @@ export default function Login() {
           <h2 className="text-2xl mb-1">Welcome back</h2>
           <p className="text-muted text-sm mb-6">Sign in to your Growth OS workspace.</p>
 
-          {/* Role selector */}
-          <div className="grid grid-cols-3 gap-2 mb-6">
-            {ROLES.map((r) => {
-              const active = role === r.id
-              const Icon = r.icon
-              return (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => setRole(r.id)}
-                  className={`panel !p-3 flex flex-col items-center gap-1 text-center transition-all ${
-                    active ? 'ring-2' : 'opacity-70 hover:opacity-100'
-                  }`}
-                  style={active ? ({ '--tw-ring-color': ROLE_ACCENT[r.id] } as React.CSSProperties) : undefined}
+          {resetMode ? (
+            <div>
+              <div className="font-medium mb-1.5">Reset password</div>
+              <p className="text-secondary text-sm mb-5 leading-relaxed">
+                A password reset link will be sent to <b className="text-ink">{email}</b>.
+              </p>
+
+              {resetSent ? (
+                <div
+                  className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm mb-4"
+                  style={{ background: 'rgb(var(--accent-green-rgb) / 0.12)', border: '1px solid rgb(var(--accent-green-rgb) / 0.3)', color: 'var(--accent-green)' }}
                 >
-                  <Icon size={18} style={{ color: ROLE_ACCENT[r.id] }} />
-                  <span className="text-xs font-medium">{r.label}</span>
-                  <span className="text-[10px] text-muted">{r.blurb}</span>
-                </button>
-              )
-            })}
-          </div>
+                  <Send size={16} className="shrink-0" />
+                  <span>Reset link sent — check <b>{email}</b></span>
+                </div>
+              ) : (
+                <>
+                  {resetError && <div className="text-sm text-[var(--accent-orange)] mb-3">{resetError}</div>}
+                  <button className="btn-primary w-full mb-3" onClick={sendResetLink} disabled={resetBusy}>
+                    {resetBusy ? 'Sending…' : 'Send reset link'}
+                  </button>
+                </>
+              )}
 
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div>
-              <label className="label">Email</label>
-              <input
-                className="input mt-1"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="username"
-                required
-              />
+              <button onClick={closeResetPanel} className="text-sm text-muted hover:text-sage underline">
+                ← Back to sign in
+              </button>
             </div>
-            <div>
-              <div className="flex justify-between items-center">
-                <label className="label">Password</label>
-                <button type="button" onClick={onReset} className="text-xs text-sage hover:underline">
-                  Forgot?
-                </button>
+          ) : (
+            <>
+              {/* Role selector */}
+              <div className="grid grid-cols-3 gap-2 mb-6">
+                {ROLES.map((r) => {
+                  const active = role === r.id
+                  const Icon = r.icon
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setRole(r.id)}
+                      className={`panel !p-3 flex flex-col items-center gap-1 text-center transition-all ${
+                        active ? 'ring-2' : 'opacity-70 hover:opacity-100'
+                      }`}
+                      style={active ? ({ '--tw-ring-color': ROLE_ACCENT[r.id] } as React.CSSProperties) : undefined}
+                    >
+                      <Icon size={18} style={{ color: ROLE_ACCENT[r.id] }} />
+                      <span className="text-xs font-medium">{r.label}</span>
+                      <span className="text-[10px] text-muted">{r.blurb}</span>
+                    </button>
+                  )
+                })}
               </div>
-              <input
-                className="input mt-1"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-              />
-            </div>
 
-            {error && <div className="text-sm text-[var(--accent-orange)]">{error}</div>}
-            {notice && <div className="text-sm text-sage">{notice}</div>}
+              <form onSubmit={onSubmit} className="space-y-4">
+                <div>
+                  <label className="label">Email</label>
+                  <input
+                    className="input mt-1"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="username"
+                    required
+                  />
+                </div>
+                <div>
+                  <div className="flex justify-between items-center">
+                    <label className="label">Password</label>
+                    <button type="button" onClick={openResetPanel} className="text-xs text-sage hover:underline">
+                      Forgot?
+                    </button>
+                  </div>
+                  <input
+                    className="input mt-1"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                </div>
 
-            <button type="submit" className="btn-primary w-full" disabled={busy}>
-              {busy ? 'Signing in…' : 'Sign in'} <ArrowRight size={16} />
-            </button>
-          </form>
+                {error && <div className="text-sm text-[var(--accent-orange)]">{error}</div>}
+
+                <button type="submit" className="btn-primary w-full" disabled={busy}>
+                  {busy ? 'Signing in…' : 'Sign in'} <ArrowRight size={16} />
+                </button>
+              </form>
+            </>
+          )}
         </div>
       </div>
     </div>
