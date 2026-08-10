@@ -7,6 +7,12 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const CANVA_CLIENT_ID = Deno.env.get('CANVA_CLIENT_ID') ?? ''
 const CANVA_CLIENT_SECRET = Deno.env.get('CANVA_CLIENT_SECRET') ?? ''
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
 async function getAccessToken(supabase: SupabaseClient): Promise<string> {
   const { data: conn } = await supabase.from('canva_connections').select('*').eq('key', 'default').maybeSingle()
   if (!conn || conn.status !== 'connected') throw new Error('Canva is not connected yet')
@@ -31,7 +37,8 @@ async function getAccessToken(supabase: SupabaseClient): Promise<string> {
   return tok.access_token
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
     const accessToken = await getAccessToken(supabase)
@@ -43,8 +50,8 @@ Deno.serve(async () => {
       title: (d as { title?: string }).title ?? 'Untitled',
       thumbnailUrl: (d as { thumbnail?: { url?: string } }).thumbnail?.url ?? null,
     }))
-    return new Response(JSON.stringify({ designs }), { headers: { 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ designs }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
   }
 })

@@ -6,14 +6,21 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const FIGMA_PAT = Deno.env.get('FIGMA_PAT') ?? ''
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
 Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
   try {
     if (!FIGMA_PAT) {
-      return new Response(JSON.stringify({ error: 'Figma is not configured yet — set FIGMA_PAT as a Supabase secret.' }), { status: 500 })
+      return new Response(JSON.stringify({ error: 'Figma is not configured yet — set FIGMA_PAT as a Supabase secret.' }), { status: 500, headers: CORS_HEADERS })
     }
     const { fileKey, nodeId, itemId } = await req.json()
     if (!fileKey || !nodeId) {
-      return new Response(JSON.stringify({ error: 'fileKey and nodeId are required' }), { status: 400 })
+      return new Response(JSON.stringify({ error: 'fileKey and nodeId are required' }), { status: 400, headers: CORS_HEADERS })
     }
 
     const imgRes = await fetch(
@@ -34,8 +41,8 @@ Deno.serve(async (req: Request) => {
     if (uploadError) throw uploadError
 
     const { data } = supabase.storage.from('content-media').getPublicUrl(path)
-    return new Response(JSON.stringify({ url: data.publicUrl }), { headers: { 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ url: data.publicUrl }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
   }
 })
