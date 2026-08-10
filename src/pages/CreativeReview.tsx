@@ -185,6 +185,7 @@ function ReviewCard({ item, selected, onToggle, onChanged }: {
             imageUrl={item.media_url}
             platform={item.platform}
             itemId={item.id}
+            caption={item.body}
             onCancel={() => setEditOpen(false)}
             onSave={async (url) => {
               await replaceItemMedia(item.id, url)
