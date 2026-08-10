@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check, Filter } from 'lucide-react'
+import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check, Filter, Hash, Megaphone } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { getLatestStrategy, type MarketingStrategy } from '../lib/strategy'
 import {
@@ -20,6 +20,24 @@ const PLATFORM_OPTIONS = [
   { value: 'facebook', label: 'Facebook' },
   { value: 'youtube', label: 'YouTube' },
 ]
+
+// Per-type badge tint — ScalePods' own accent tokens rotated across the generic types, plus
+// LinkedIn's real brand blue for the one type actually tied to that platform (already used
+// this same way in mediaUi.tsx's PlatformBadge — not a new invented color).
+const CONTENT_TYPE_COLOR: Record<string, string> = {
+  static_image: 'var(--accent-green)',
+  carousel: 'var(--accent-blue)',
+  social_caption: 'var(--accent-orange)',
+  linkedin_article: '#0A66C2',
+  story: 'var(--accent-green)',
+  ugc_video: 'var(--accent-orange)',
+  motion_graphics: 'var(--accent-blue)',
+  product_video: 'var(--accent-green)',
+}
+
+function typeColor(type: string) {
+  return CONTENT_TYPE_COLOR[type] ?? 'var(--fill-tertiary)'
+}
 
 function FilterBar({
   platform, onPlatform, type, onType, typeOptions,
@@ -65,10 +83,14 @@ function ItemCard({ item, onCarousel }: { item: ContentItem; onCarousel: (id: st
   const waitingOnImage = isImage && !item.media_url && item.status !== 'failed'
   const [firingCarousel, setFiringCarousel] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const color = typeColor(item.content_type)
+  const hashtags = item.metadata?.hashtags ?? []
+  const bodyLong = (item.body?.length ?? 0) > 240
 
   async function onCopy() {
-    const hashtags = item.metadata?.hashtags?.join(' ') ?? ''
-    const text = [item.body, hashtags].filter(Boolean).join('\n\n')
+    const tags = hashtags.join(' ')
+    const text = [item.body, tags].filter(Boolean).join('\n\n')
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
@@ -82,7 +104,12 @@ function ItemCard({ item, onCarousel }: { item: ContentItem; onCarousel: (id: st
     <div className="card p-4">
       <div className="flex items-center gap-2 flex-wrap mb-3">
         <Badge tone={PLATFORM_TONE[item.platform?.toLowerCase()] ?? 'blue'}>{item.platform}</Badge>
-        <Badge tone="orange">{item.content_type.replace(/_/g, ' ')}</Badge>
+        <span
+          className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-white capitalize"
+          style={{ background: color }}
+        >
+          {item.content_type.replace(/_/g, ' ')}
+        </span>
         {item.scheduled_date && <span className="text-muted text-xs">{item.scheduled_date}</span>}
         <button
           onClick={onCopy}
@@ -120,10 +147,30 @@ function ItemCard({ item, onCarousel }: { item: ContentItem; onCarousel: (id: st
       )}
 
       <div className="font-medium text-sm mb-1">{item.title}</div>
-      <div className="text-secondary text-sm line-clamp-3">{item.body}</div>
+      <div className={expanded ? 'text-secondary text-sm whitespace-pre-wrap' : 'text-secondary text-sm line-clamp-3'}>
+        {item.body}
+      </div>
+      {bodyLong && (
+        <button onClick={() => setExpanded((e) => !e)} className="text-xs text-sage hover:underline mt-1">
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
 
-      {item.metadata?.hashtags && item.metadata.hashtags.length > 0 && (
-        <div className="text-muted text-xs mt-2 truncate">{item.metadata.hashtags.join(' ')}</div>
+      {hashtags.length > 0 && (
+        <div className="flex gap-2 flex-wrap mt-2">
+          {hashtags.slice(0, 8).map((h, i) => (
+            <span key={i} className="text-xs flex items-center" style={{ color }}>
+              <Hash size={10} className="shrink-0" />{h.replace(/^#/, '')}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {item.metadata?.cta && (
+        <div className="text-xs text-secondary panel !p-2 mt-2.5 flex items-center gap-1.5">
+          <Megaphone size={13} style={{ color }} className="shrink-0" />
+          <span><b className="text-ink">CTA:</b> {item.metadata.cta}</span>
+        </div>
       )}
 
       <div className="flex items-center justify-between mt-3">
@@ -301,6 +348,15 @@ export default function ContentFactory() {
           <Spinner size={22} />
           <div className="text-sm text-secondary">
             Writing copy — {items.length}/{run.total_items} posts{pendingCount > 0 ? ` (${pendingCount} remaining)` : ''}…
+          </div>
+          <div className="w-full max-w-xs h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--fill-tertiary)' }}>
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${run.total_items ? Math.round((items.length / run.total_items) * 100) : 0}%`,
+                background: 'var(--accent-green)',
+              }}
+            />
           </div>
         </div>
       ) : (
