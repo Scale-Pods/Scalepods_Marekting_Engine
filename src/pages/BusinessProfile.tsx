@@ -143,10 +143,11 @@ export default function BusinessProfile() {
         />
       ) : (
         <div className="card overflow-hidden mb-6 p-0">
+          {/* Cover banner */}
           <div
             className="relative w-full"
             style={{
-              aspectRatio: '804 / 134',
+              aspectRatio: '1709 / 285',
               backgroundImage: "url('/brand/profile-banner.png')",
               backgroundSize: 'cover',
               backgroundPosition: 'center',
@@ -154,32 +155,30 @@ export default function BusinessProfile() {
             }}
           />
           <div className="px-6 pb-5">
-            <div className="flex items-end justify-between -mt-8 mb-3">
+            {/* Logo tile overlapping the banner, LinkedIn-page style */}
+            <div className="-mt-12 mb-3">
               <div
-                className="h-16 w-16 rounded-2xl overflow-hidden shrink-0"
-                style={{ background: 'var(--bg-layer3)', border: '3px solid var(--glass-fill)' }}
+                className="h-24 w-24 rounded-xl overflow-hidden"
+                style={{ background: 'var(--bg-layer3)', border: '4px solid var(--bg-card)', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}
               >
                 <img src="/brand/logo-square.jpg" alt="ScalePods" className="h-full w-full object-cover" />
               </div>
             </div>
-            <h1 className="text-xl font-semibold">{form.business_name || 'Business profile'}</h1>
-            {form.tagline && <p className="text-muted text-sm italic mt-0.5">"{form.tagline}"</p>}
-            <div className="flex flex-wrap items-center gap-2 mt-3 mb-4">
-              <Badge tone={form.status === 'active' ? 'green' : 'orange'}>{form.status}</Badge>
-              {form.industry && <Badge tone="blue">{form.industry}</Badge>}
-            </div>
-            <div className="grid grid-cols-4 rounded-panel overflow-hidden panel !p-0">
-              {[
-                { label: 'Service areas', value: (form.service_areas || []).length || '—' },
-                { label: 'Platforms', value: (form.target_platforms || []).length || '—' },
-                { label: 'Website', value: form.website_url ? 'Linked' : '—' },
-                { label: 'Status', value: (form.status || '').charAt(0).toUpperCase() + (form.status || '').slice(1) },
-              ].map((s, i) => (
-                <div key={s.label} className="text-center py-3 px-2" style={i > 0 ? { borderLeft: '1px solid var(--border-subtle)' } : undefined}>
-                  <div className="text-lg font-semibold tracking-tightest">{s.value}</div>
-                  <div className="text-muted text-[10px] uppercase tracking-wide mt-0.5">{s.label}</div>
-                </div>
-              ))}
+
+            <h1 className="text-2xl font-semibold">{form.business_name || 'Business profile'}</h1>
+            {form.tagline && <p className="text-secondary text-sm mt-1">{form.tagline}</p>}
+
+            {/* LinkedIn-style single meta line: Industry · Service areas · Platforms · Status */}
+            <div className="text-muted text-sm mt-2 flex items-center gap-1.5 flex-wrap">
+              {form.industry && <span>{form.industry}</span>}
+              {form.industry && <span>·</span>}
+              <span>{(form.service_areas || []).length ? `${form.service_areas!.length} region${form.service_areas!.length === 1 ? '' : 's'}` : 'Global'}</span>
+              <span>·</span>
+              <span>{(form.target_platforms || []).length} platform{(form.target_platforms || []).length === 1 ? '' : 's'}</span>
+              <span>·</span>
+              <span className="capitalize" style={{ color: form.status === 'active' ? 'var(--accent-green)' : 'var(--accent-orange)' }}>
+                {form.status}
+              </span>
             </div>
           </div>
         </div>
