@@ -1,9 +1,9 @@
 import { Fragment } from 'react'
 
 // Minimal markdown renderer for GPT-generated reports: headings, bold, bullet/numbered
-// lists, paragraphs. Builds React elements directly (no HTML parsing) so it's safe by
-// construction — no dangerouslySetInnerHTML.
-function renderInline(text: string, key: number) {
+// lists, tables, paragraphs. Builds React elements directly (no HTML parsing) so it's safe
+// by construction — no dangerouslySetInnerHTML.
+function renderInline(text: string, key: number | string) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g)
   return (
     <Fragment key={key}>
@@ -18,13 +18,66 @@ function renderInline(text: string, key: number) {
   )
 }
 
+// Detects a markdown table starting at line `i` (a `| ... |` row followed by a
+// `|---|---|` divider row). Returns [element, linesConsumed] or null if line i isn't one.
+function tryRenderTable(lines: string[], i: number) {
+  const isRow = (l: string) => l.trim().startsWith('|') && l.trim().endsWith('|')
+  const isDivider = (l: string) => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes('-')
+  if (!isRow(lines[i]) || i + 1 >= lines.length || !isDivider(lines[i + 1])) return null
+
+  const splitCells = (l: string) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+  const header = splitCells(lines[i])
+  let j = i + 2
+  const rows: string[][] = []
+  while (j < lines.length && isRow(lines[j]) && !isDivider(lines[j])) {
+    rows.push(splitCells(lines[j]))
+    j++
+  }
+
+  const el = (
+    <div key={`tbl-${i}`} className="overflow-x-auto my-3 panel !p-0">
+      <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            {header.map((h, hi) => (
+              <th
+                key={hi}
+                className="text-left font-semibold whitespace-nowrap"
+                style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+              >
+                {renderInline(h, `th${i}-${hi}`)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, ri) => (
+            <tr key={ri}>
+              {r.map((c, ci) => (
+                <td
+                  key={ci}
+                  className="text-secondary align-top"
+                  style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)' }}
+                >
+                  {renderInline(c, `td${i}-${ri}-${ci}`)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+  return [el, j - i] as const
+}
+
 export default function Markdown({ text }: { text: string }) {
   const lines = (text || '').replace(/\r\n/g, '\n').split('\n')
   const blocks: JSX.Element[] = []
   let list: string[] = []
   let listType: 'ul' | 'ol' | null = null
 
-  const flushList = (key: number) => {
+  const flushList = (key: number | string) => {
     if (!list.length) return
     const items = list.map((li, i) => <li key={i}>{renderInline(li, i)}</li>)
     blocks.push(
@@ -42,12 +95,22 @@ export default function Markdown({ text }: { text: string }) {
     listType = null
   }
 
-  lines.forEach((line, i) => {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
     const trimmed = line.trim()
     if (!trimmed) {
       flushList(i)
-      return
+      continue
     }
+
+    const table = tryRenderTable(lines, i)
+    if (table) {
+      flushList(i)
+      blocks.push(table[0])
+      i += table[1] - 1
+      continue
+    }
+
     const heading = trimmed.match(/^(#{1,6})\s+(.*)/)
     const ol = trimmed.match(/^\d+[.)]\s+(.*)/)
     const ul = trimmed.match(/^[-*]\s+(.*)/)
@@ -59,19 +122,19 @@ export default function Markdown({ text }: { text: string }) {
       if (level === 1) blocks.push(<h2 key={i} className="text-xl mt-5 mb-2">{renderInline(content, i)}</h2>)
       else if (level === 2) blocks.push(<h3 key={i} className="text-lg mt-4 mb-2 text-sage">{renderInline(content, i)}</h3>)
       else blocks.push(<h4 key={i} className="text-base mt-3 mb-1 font-semibold">{renderInline(content, i)}</h4>)
-      return
+      continue
     }
     if (ol) {
       if (listType !== 'ol') flushList(i)
       listType = 'ol'
       list.push(ol[1])
-      return
+      continue
     }
     if (ul) {
       if (listType !== 'ul') flushList(i)
       listType = 'ul'
       list.push(ul[1])
-      return
+      continue
     }
     flushList(i)
     blocks.push(
@@ -79,7 +142,7 @@ export default function Markdown({ text }: { text: string }) {
         {renderInline(trimmed, i)}
       </p>,
     )
-  })
+  }
   flushList(lines.length)
 
   return <div className="text-sm">{blocks}</div>
