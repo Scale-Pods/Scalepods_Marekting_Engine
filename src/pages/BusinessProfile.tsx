@@ -145,17 +145,19 @@ export default function BusinessProfile() {
         <div className="card overflow-hidden mb-6 p-0">
           <div
             className="h-24 relative"
-            style={{ background: 'linear-gradient(135deg, var(--accent-green) 0%, var(--accent-blue) 100%)' }}
-          >
-            <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 30%, #fff 0, transparent 45%), radial-gradient(circle at 80% 70%, #fff 0, transparent 45%)' }} />
-          </div>
+            style={{
+              backgroundImage: "url('/brand/profile-banner.png')",
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+          />
           <div className="px-6 pb-5">
             <div className="flex items-end justify-between -mt-8 mb-3">
               <div
-                className="h-16 w-16 rounded-2xl flex items-center justify-center text-xl font-semibold shrink-0"
-                style={{ background: 'var(--bg-layer3)', border: '3px solid var(--glass-fill)', color: 'var(--accent-green)' }}
+                className="h-16 w-16 rounded-2xl overflow-hidden shrink-0"
+                style={{ background: 'var(--bg-layer3)', border: '3px solid var(--glass-fill)' }}
               >
-                {(form.business_name || 'SP').slice(0, 2).toUpperCase()}
+                <img src="/brand/logo-square.jpg" alt="ScalePods" className="h-full w-full object-cover" />
               </div>
             </div>
             <h1 className="text-xl font-semibold">{form.business_name || 'Business profile'}</h1>
