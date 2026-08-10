@@ -14,6 +14,45 @@ const STATUS_META: Record<string, { label: string; tone: 'green' | 'blue' | 'ora
   failed: { label: 'Failed', tone: 'orange', icon: XCircle },
 }
 
+const ACTIVITY_FILTERS = ['all', 'published', 'scheduled', 'failed'] as const
+type ActivityFilter = (typeof ACTIVITY_FILTERS)[number]
+
+function ActivityFilterPills({
+  value, onChange, counts,
+}: {
+  value: ActivityFilter
+  onChange: (v: ActivityFilter) => void
+  counts: Record<ActivityFilter, number>
+}) {
+  return (
+    <div className="flex gap-2 flex-wrap mb-3">
+      {ACTIVITY_FILTERS.map((f) => {
+        const active = value === f
+        return (
+          <button
+            key={f}
+            onClick={() => onChange(f)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition-all"
+            style={{
+              background: active ? 'var(--accent-blue)' : 'var(--fill-secondary)',
+              color: active ? '#fff' : 'var(--text-primary)',
+              border: `1.5px solid ${active ? 'var(--accent-blue)' : 'var(--border-subtle)'}`,
+            }}
+          >
+            {f}
+            <span
+              className="text-[10px] px-1.5 rounded-full"
+              style={{ background: active ? 'rgba(255,255,255,0.25)' : 'var(--fill-tertiary)' }}
+            >
+              {counts[f]}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function PublishCard({ item, onDone }: { item: ContentItem; onDone: () => void }) {
   const [busy, setBusy] = useState<'now' | 'schedule' | null>(null)
 
@@ -64,6 +103,7 @@ export default function Publishing() {
   const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
   const [items, setItems] = useState<ContentItem[]>([])
   const [posts, setPosts] = useState<ScheduledPost[]>([])
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
 
   async function load(profileId: string) {
     const [i, p] = await Promise.all([listApprovedItems(profileId), listScheduledPosts(profileId)])
@@ -119,33 +159,52 @@ export default function Publishing() {
       {posts.length === 0 ? (
         <EmptyState icon={<Clock size={24} />} title="No publish activity yet" />
       ) : (
-        <div className="space-y-2">
-          {posts.map((p) => {
-            const meta = STATUS_META[p.status] ?? STATUS_META.pending
-            const Icon = meta.icon
-            return (
-              <Panel key={p.id} className="!p-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <Icon size={16} className={p.status === 'publishing' || p.status === 'pending' ? 'animate-spin text-electric' : meta.tone === 'orange' ? 'text-terracotta' : 'text-sage'} />
-                  <PlatformBadge platform={p.platform} />
-                  <div className="text-sm truncate">{p.title || p.caption?.slice(0, 60)}</div>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-muted text-xs">
-                    {p.published_at ? new Date(p.published_at).toLocaleString() : p.scheduled_time ? new Date(p.scheduled_time).toLocaleString() : ''}
-                  </span>
-                  {p.error && <span className="text-terracotta text-xs">{p.error}</span>}
-                  <Badge tone={meta.tone}>{meta.label}</Badge>
-                  {p.post_url && (
-                    <a href={p.post_url} target="_blank" rel="noreferrer" className="text-muted hover:text-sage">
-                      <ExternalLink size={14} />
-                    </a>
-                  )}
-                </div>
-              </Panel>
+        <>
+          <ActivityFilterPills
+            value={activityFilter}
+            onChange={setActivityFilter}
+            counts={{
+              all: posts.length,
+              published: posts.filter((p) => p.status === 'published').length,
+              scheduled: posts.filter((p) => p.status === 'scheduled').length,
+              failed: posts.filter((p) => p.status === 'failed').length,
+            }}
+          />
+          {(() => {
+            const filteredPosts = activityFilter === 'all' ? posts : posts.filter((p) => p.status === activityFilter)
+            return filteredPosts.length === 0 ? (
+              <EmptyState icon={<Clock size={24} />} title="No activity matches this filter" />
+            ) : (
+              <div className="space-y-2">
+                {filteredPosts.map((p) => {
+                  const meta = STATUS_META[p.status] ?? STATUS_META.pending
+                  const Icon = meta.icon
+                  return (
+                    <Panel key={p.id} className="!p-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Icon size={16} className={p.status === 'publishing' || p.status === 'pending' ? 'animate-spin text-electric' : meta.tone === 'orange' ? 'text-terracotta' : 'text-sage'} />
+                        <PlatformBadge platform={p.platform} />
+                        <div className="text-sm truncate">{p.title || p.caption?.slice(0, 60)}</div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-muted text-xs">
+                          {p.published_at ? new Date(p.published_at).toLocaleString() : p.scheduled_time ? new Date(p.scheduled_time).toLocaleString() : ''}
+                        </span>
+                        {p.error && <span className="text-terracotta text-xs">{p.error}</span>}
+                        <Badge tone={meta.tone}>{meta.label}</Badge>
+                        {p.post_url && (
+                          <a href={p.post_url} target="_blank" rel="noreferrer" className="text-muted hover:text-sage">
+                            <ExternalLink size={14} />
+                          </a>
+                        )}
+                      </div>
+                    </Panel>
+                  )
+                })}
+              </div>
             )
-          })}
-        </div>
+          })()}
+        </>
       )}
     </div>
   )
