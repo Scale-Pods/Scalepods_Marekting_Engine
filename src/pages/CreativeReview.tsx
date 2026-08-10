@@ -32,7 +32,7 @@ function FilterBar({
 }) {
   const hasFilter = platform !== 'all' || type !== 'all'
   return (
-    <div className="flex items-center gap-2 mb-4 flex-wrap">
+    <div className="flex items-center gap-2 flex-wrap">
       <Filter size={14} className="text-muted shrink-0" />
       <select className="input !w-auto !py-1.5 text-xs" value={platform} onChange={(e) => onPlatform(e.target.value)}>
         <option value="all">All platforms</option>
@@ -325,10 +325,21 @@ export default function CreativeReview() {
         title={`Creative Review — ${profile.business_name}`}
         subtitle="Approve, send back, replace, or edit each piece. Designer replace/edit tools and Canva/Figma import live here too."
         actions={
-          selected.size > 0 ? (
-            <Button onClick={onApproveAll} loading={approvingAll}>
-              <CheckCircle2 size={15} /> Approve {selected.size} selected
-            </Button>
+          items.length > 0 ? (
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <FilterBar
+                platform={platformFilter}
+                onPlatform={setPlatformFilter}
+                type={typeFilter}
+                onType={setTypeFilter}
+                typeOptions={typeOptions}
+              />
+              {selected.size > 0 && (
+                <Button onClick={onApproveAll} loading={approvingAll}>
+                  <CheckCircle2 size={15} /> Approve {selected.size} selected
+                </Button>
+              )}
+            </div>
           ) : undefined
         }
       />
@@ -337,13 +348,6 @@ export default function CreativeReview() {
         <EmptyState icon={<CheckSquare size={28} />} title="Nothing to review" hint="Generate content from the Content Factory — it lands here once ready." />
       ) : (
         <>
-          <FilterBar
-            platform={platformFilter}
-            onPlatform={setPlatformFilter}
-            type={typeFilter}
-            onType={setTypeFilter}
-            typeOptions={typeOptions}
-          />
           {filteredItems.length === 0 ? (
             <EmptyState icon={<Filter size={28} />} title="No items match these filters" hint="Try a different platform or content type." />
           ) : (

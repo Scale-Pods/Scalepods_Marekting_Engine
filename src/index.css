@@ -48,6 +48,7 @@
 
 /* --- Tokens: DARK (default) — "cyber navy" liquid glass -------------------- */
 :root, :root[data-theme='dark'] {
+  color-scheme: dark;
   --bg-page:        #04070D;
   --bg-card:        #080A0E;
   --bg-panel:       #10131C;
@@ -104,6 +105,7 @@
 
 /* --- Tokens: LIGHT — "mint alabaster" frosted daylight ---------------------- */
 :root[data-theme='light'] {
+  color-scheme: light;
   --bg-page:        #F8FAF7;
   --bg-card:        #FFFFFF;
   --bg-panel:       #EEF3EA;
@@ -290,6 +292,12 @@
   .input:focus {
     outline: none; border-color: var(--accent-green);
     box-shadow: 0 0 0 3px rgb(var(--accent-green-rgb) / 0.22);
+  }
+  /* Native <select> popup — color-scheme (set on :root above) handles most browsers, this
+     is the explicit fallback so the dropdown list never renders as unstyled browser-white. */
+  select.input option {
+    background: var(--bg-card);
+    color: var(--text-primary);
   }
   .label { font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); letter-spacing: -0.006em; }
 

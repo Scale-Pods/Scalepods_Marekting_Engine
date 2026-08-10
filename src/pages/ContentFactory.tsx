@@ -32,7 +32,7 @@ function FilterBar({
 }) {
   const hasFilter = platform !== 'all' || type !== 'all'
   return (
-    <div className="flex items-center gap-2 mb-4 flex-wrap">
+    <div className="flex items-center gap-2 flex-wrap">
       <Filter size={14} className="text-muted shrink-0" />
       <select className="input !w-auto !py-1.5 text-xs" value={platform} onChange={(e) => onPlatform(e.target.value)}>
         <option value="all">All platforms</option>
@@ -266,9 +266,20 @@ export default function ContentFactory() {
         title={`Content Factory — ${profile.business_name}`}
         subtitle="GPT-4o copy + gpt-image-1 images + brand overlay, generated from the approved calendar. Video is manual-only — never auto-generated."
         actions={
-          <Button variant="ghost" onClick={onGenerate} loading={generating} disabled={!GENERATION_ENABLED}>
-            <RefreshCw size={15} /> {run ? 'Regenerate' : 'Generate content'}
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {textDone && items.length > 0 && (
+              <FilterBar
+                platform={platformFilter}
+                onPlatform={setPlatformFilter}
+                type={typeFilter}
+                onType={setTypeFilter}
+                typeOptions={typeOptions}
+              />
+            )}
+            <Button variant="ghost" onClick={onGenerate} loading={generating} disabled={!GENERATION_ENABLED}>
+              <RefreshCw size={15} /> {run ? 'Regenerate' : 'Generate content'}
+            </Button>
+          </div>
         }
       />
 
@@ -289,13 +300,6 @@ export default function ContentFactory() {
               {items.length} posts generated. Images and brand overlay fill in automatically — video items are stubbed for manual generation.
             </span>
           </Panel>
-          <FilterBar
-            platform={platformFilter}
-            onPlatform={setPlatformFilter}
-            type={typeFilter}
-            onType={setTypeFilter}
-            typeOptions={typeOptions}
-          />
           {filteredItems.length === 0 ? (
             <EmptyState icon={<Filter size={28} />} title="No posts match these filters" hint="Try a different platform or content type." />
           ) : (
