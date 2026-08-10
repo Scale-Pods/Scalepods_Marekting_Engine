@@ -41,10 +41,10 @@ export default function Clients() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <div
-                    className="h-11 w-11 rounded-xl flex items-center justify-center text-sm font-semibold shrink-0"
-                    style={{ background: 'var(--bg-layer3)', color: 'var(--accent-green)' }}
+                    className="h-11 w-11 rounded-xl overflow-hidden shrink-0"
+                    style={{ background: 'var(--bg-layer3)' }}
                   >
-                    {(p.business_name || 'SP').slice(0, 2).toUpperCase()}
+                    <img src="/brand/logo-square.jpg" alt={p.business_name || 'ScalePods'} className="h-full w-full object-cover" />
                   </div>
                   <div className="min-w-0">
                     <div className="font-medium truncate">{p.business_name || 'Untitled business'}</div>
