@@ -155,8 +155,11 @@ export default function BusinessProfile() {
             }}
           />
           <div className="px-6 pb-5">
-            {/* Logo tile overlapping the banner, LinkedIn-page style */}
-            <div className="-mt-12 mb-3">
+            {/* Logo tile overlapping the banner, LinkedIn-page style. Needs an explicit
+                z-index: the banner div is `position: relative`, and per CSS stacking rules
+                any positioned element (even z-index:auto) paints above static in-flow
+                content regardless of DOM order — without this the banner covered the logo. */}
+            <div className="-mt-12 mb-3 relative z-10">
               <div
                 className="h-24 w-24 rounded-xl overflow-hidden"
                 style={{ background: 'var(--bg-layer3)', border: '4px solid var(--bg-card)', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}
