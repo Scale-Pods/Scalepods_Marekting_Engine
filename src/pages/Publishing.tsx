@@ -107,6 +107,7 @@ function ActivityPreviewModal({ post, onClose }: { post: ScheduledPost; onClose:
         img={post.media_url}
         aspect={PLATFORM_ASPECT[post.platform?.toLowerCase()] ?? 1}
         caption={post.caption || post.title}
+        fit="contain"
       />
       <div className="flex items-center gap-2 mt-4 flex-wrap">
         <Badge tone={meta.tone}>{meta.label}</Badge>

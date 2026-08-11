@@ -85,9 +85,18 @@ export function PlatformBadge({ platform, size = 'md' }: { platform?: string | n
 // published. IG/FB/LinkedIn get a feed-card treatment; YouTube gets a video-frame treatment
 // with a caption overlay. (TikTok/blog intentionally not ported — out of scope per CLAUDE.md.)
 // Shared by MediaEditor's crop/filter preview tab and CreatePostModal's composer preview.
-export function PlatformMockup({ platform, img, aspect, caption }: { platform: string; img: string | null; aspect: number; caption?: string | null }) {
+//
+// `fit` controls how the image fills the frame:
+//  - "cover" (default): crops to the platform aspect ratio — right for MediaEditor/composer,
+//    where you're actively deciding the crop and the box IS the real output shape.
+//  - "contain": shows the whole image at its own natural ratio, letterboxed if needed — right
+//    for reviewing an already-published post, where cropping to a guessed aspect can hide part
+//    of the real image (e.g. a tall LinkedIn document graphic inside a 1.91:1 box).
+export function PlatformMockup({
+  platform, img, aspect, caption, fit = 'cover',
+}: { platform: string; img: string | null; aspect: number; caption?: string | null; fit?: 'cover' | 'contain' }) {
   const isVideoFrame = platform.toLowerCase() === 'youtube'
-  const maxW = aspect < 1 ? Math.round(300 * aspect) : undefined
+  const maxW = fit === 'cover' && aspect < 1 ? Math.round(300 * aspect) : undefined
   return (
     <div
       className="rounded-panel overflow-hidden mx-auto"
@@ -100,11 +109,20 @@ export function PlatformMockup({ platform, img, aspect, caption }: { platform: s
           <div className="ml-auto"><PlatformBadge platform={platform} size="sm" /></div>
         </div>
       )}
-      <div className="relative w-full" style={{ aspectRatio: String(aspect), background: 'var(--fill-tertiary)' }}>
+      <div
+        className="relative w-full"
+        style={fit === 'cover' ? { aspectRatio: String(aspect), background: 'var(--fill-tertiary)' } : { background: 'var(--fill-tertiary)' }}
+      >
         {img ? (
-          <img src={img} alt="preview" className="w-full h-full object-cover block" />
-        ) : (
+          fit === 'cover' ? (
+            <img src={img} alt="preview" className="w-full h-full object-cover block" />
+          ) : (
+            <img src={img} alt="preview" className="w-full h-auto max-h-[65vh] object-contain block" />
+          )
+        ) : fit === 'cover' ? (
           <div className="absolute inset-0 flex items-center justify-center text-muted text-xs">Adjust the crop →</div>
+        ) : (
+          <div className="flex items-center justify-center text-muted text-xs py-16">No image</div>
         )}
         {isVideoFrame && (
           <div className="absolute bottom-2.5 left-2.5 right-2.5 text-white">
