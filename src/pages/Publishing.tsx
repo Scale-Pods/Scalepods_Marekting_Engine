@@ -148,7 +148,7 @@ export default function Publishing() {
       {items.length === 0 ? (
         <EmptyState icon={<Send size={28} />} title="Nothing approved yet" hint="Approve items in Creative Review — they land here once approved." />
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 mb-8">
           {items.map((item) => (
             <PublishCard key={item.id} item={item} onDone={() => load(profile.id)} />
           ))}

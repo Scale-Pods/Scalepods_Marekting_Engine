@@ -184,7 +184,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <main className="flex-1 min-w-0">
-          <div className="max-w-6xl mx-auto p-8">{children}</div>
+          {/* Fluid up to a generous cap — fills real monitor width instead of leaving dead
+              gutters (was a fixed max-w-6xl/1152px regardless of viewport), but still centers
+              with a ceiling so prose/cards don't stretch edge-to-edge on ultra-wide displays. */}
+          <div className="max-w-[1680px] mx-auto p-8">{children}</div>
         </main>
       </div>
     </div>

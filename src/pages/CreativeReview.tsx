@@ -426,7 +426,7 @@ export default function CreativeReview() {
           {filteredItems.length === 0 ? (
             <EmptyState icon={<Filter size={28} />} title="No items match these filters" hint="Try a different platform or content type." />
           ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
               {filteredItems.map((item) => (
                 <ReviewCard
                   key={item.id}
