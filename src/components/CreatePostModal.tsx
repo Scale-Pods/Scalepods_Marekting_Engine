@@ -3,17 +3,8 @@ import { Link } from 'react-router-dom'
 import { Send, CheckCircle2, X } from 'lucide-react'
 import { createManualItem } from '../lib/content'
 import { Modal, Button } from './ui'
-import { PlatformBadge, PlatformMockup, PLATFORM_OPTIONS } from './mediaUi'
+import { PlatformBadge, PlatformMockup, PLATFORM_OPTIONS, PLATFORM_ASPECT } from './mediaUi'
 import AssetUploader from './AssetUploader'
-
-// Same aspect presets MediaEditor uses per platform, so the live preview here matches what
-// you'd see after cropping in Creative Review too.
-const PREVIEW_ASPECT: Record<string, number> = {
-  instagram: 1,
-  facebook: 1.91,
-  linkedin: 1.91,
-  youtube: 16 / 9,
-}
 
 export default function CreatePostModal({
   profileId,
@@ -201,7 +192,7 @@ export default function CreatePostModal({
           <PlatformMockup
             platform={platform}
             img={mediaUrl}
-            aspect={PREVIEW_ASPECT[platform] ?? 1}
+            aspect={PLATFORM_ASPECT[platform] ?? 1}
             caption={[caption, hashtags.map((h) => `#${h}`).join(' ')].filter(Boolean).join('\n\n')}
           />
         </div>

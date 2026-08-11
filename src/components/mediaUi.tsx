@@ -54,6 +54,15 @@ export const PLATFORM_OPTIONS = [
   { value: 'youtube', label: 'YouTube' },
 ]
 
+// Feed-card aspect ratio per platform — shared by CreatePostModal's live preview and
+// Publishing's activity-preview modal so "how it looked" always renders consistently.
+export const PLATFORM_ASPECT: Record<string, number> = {
+  instagram: 1,
+  facebook: 1.91,
+  linkedin: 1.91,
+  youtube: 16 / 9,
+}
+
 export function PlatformBadge({ platform, size = 'md' }: { platform?: string | null; size?: 'sm' | 'md' }) {
   const s = platformStyle(platform)
   const neutral = s.bg.startsWith('var(')

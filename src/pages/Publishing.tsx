@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Send, Clock, ExternalLink, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { Send, Clock, ExternalLink, CheckCircle2, XCircle, Loader2, Eye } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { listApprovedItems, listScheduledPosts, triggerPublish, type ScheduledPost } from '../lib/publishing'
 import { PUBLISHING_ENABLED, type ContentItem } from '../lib/content'
-import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
-import { PlatformBadge } from '../components/mediaUi'
+import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
+import { PlatformBadge, PlatformMockup, PLATFORM_ASPECT } from '../components/mediaUi'
 
 const STATUS_META: Record<string, { label: string; tone: 'green' | 'blue' | 'orange'; icon: typeof CheckCircle2 }> = {
   published: { label: 'Published', tone: 'green', icon: CheckCircle2 },
@@ -50,6 +50,75 @@ function ActivityFilterPills({
         )
       })}
     </div>
+  )
+}
+
+// Square Instagram-grid-style tile — thumbnail-first, minimal chrome. Platform badge and a
+// status icon sit as overlays in the corners (like an IG grid's like-count overlay), full
+// details only show once you click through to ActivityPreviewModal.
+function ActivityTile({ post, onClick }: { post: ScheduledPost; onClick: () => void }) {
+  const meta = STATUS_META[post.status] ?? STATUS_META.pending
+  const Icon = meta.icon
+  return (
+    <button
+      onClick={onClick}
+      className="relative aspect-square rounded-lg overflow-hidden group text-left"
+      style={{ background: 'var(--fill-tertiary)' }}
+    >
+      {post.media_url ? (
+        <img
+          src={post.media_url}
+          alt={post.title ?? ''}
+          className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center p-3 text-center text-xs text-secondary line-clamp-4">
+          {post.title || post.caption?.slice(0, 80)}
+        </div>
+      )}
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors flex items-center justify-center">
+        <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-semibold flex items-center gap-1.5">
+          <Eye size={14} /> View post
+        </span>
+      </div>
+      <div className="absolute top-1.5 left-1.5"><PlatformBadge platform={post.platform} size="sm" /></div>
+      <Icon
+        size={14}
+        className={`absolute top-1.5 right-1.5 text-white ${post.status === 'publishing' || post.status === 'pending' ? 'animate-spin' : ''}`}
+        style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.7))' }}
+      />
+    </button>
+  )
+}
+
+// Click-through preview — reuses the same PlatformMockup used in the Create post composer and
+// MediaEditor, so "how it looked" is rendered identically everywhere in the app.
+function ActivityPreviewModal({ post, onClose }: { post: ScheduledPost; onClose: () => void }) {
+  const meta = STATUS_META[post.status] ?? STATUS_META.pending
+  const when = post.published_at
+    ? new Date(post.published_at).toLocaleString()
+    : post.scheduled_time
+      ? new Date(post.scheduled_time).toLocaleString()
+      : ''
+  return (
+    <Modal title={`How it looked on ${post.platform}`} onClose={onClose}>
+      <PlatformMockup
+        platform={post.platform}
+        img={post.media_url}
+        aspect={PLATFORM_ASPECT[post.platform?.toLowerCase()] ?? 1}
+        caption={post.caption || post.title}
+      />
+      <div className="flex items-center gap-2 mt-4 flex-wrap">
+        <Badge tone={meta.tone}>{meta.label}</Badge>
+        <span className="text-muted text-xs">{when}</span>
+        {post.post_url && (
+          <a href={post.post_url} target="_blank" rel="noreferrer" className="ml-auto text-sage hover:underline text-xs inline-flex items-center gap-1">
+            View live <ExternalLink size={12} />
+          </a>
+        )}
+      </div>
+      {post.error && <div className="text-terracotta text-xs mt-2">{post.error}</div>}
+    </Modal>
   )
 }
 
@@ -104,6 +173,7 @@ export default function Publishing() {
   const [items, setItems] = useState<ContentItem[]>([])
   const [posts, setPosts] = useState<ScheduledPost[]>([])
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
+  const [previewPost, setPreviewPost] = useState<ScheduledPost | null>(null)
 
   async function load(profileId: string) {
     const [i, p] = await Promise.all([listApprovedItems(profileId), listScheduledPosts(profileId)])
@@ -175,39 +245,17 @@ export default function Publishing() {
             return filteredPosts.length === 0 ? (
               <EmptyState icon={<Clock size={24} />} title="No activity matches this filter" />
             ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
-                {filteredPosts.map((p) => {
-                  const meta = STATUS_META[p.status] ?? STATUS_META.pending
-                  const Icon = meta.icon
-                  const when = p.published_at ? new Date(p.published_at).toLocaleString() : p.scheduled_time ? new Date(p.scheduled_time).toLocaleString() : ''
-                  return (
-                    <Panel key={p.id} className="!p-4">
-                      {p.media_url && (
-                        <img src={p.media_url} alt={p.title ?? ''} className="w-full h-32 object-cover rounded-lg mb-3" />
-                      )}
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <Icon size={15} className={p.status === 'publishing' || p.status === 'pending' ? 'animate-spin text-electric shrink-0' : meta.tone === 'orange' ? 'text-terracotta shrink-0' : 'text-sage shrink-0'} />
-                        <PlatformBadge platform={p.platform} />
-                        <Badge tone={meta.tone} className="ml-auto">{meta.label}</Badge>
-                      </div>
-                      <div className="text-sm line-clamp-2 min-h-[2.5em]">{p.title || p.caption?.slice(0, 80)}</div>
-                      {p.error && <div className="text-terracotta text-xs mt-2 line-clamp-2">{p.error}</div>}
-                      <div className="flex items-center justify-between gap-2 mt-3">
-                        <span className="text-muted text-xs truncate">{when}</span>
-                        {p.post_url && (
-                          <a href={p.post_url} target="_blank" rel="noreferrer" className="text-muted hover:text-sage shrink-0">
-                            <ExternalLink size={14} />
-                          </a>
-                        )}
-                      </div>
-                    </Panel>
-                  )
-                })}
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-1.5">
+                {filteredPosts.map((p) => (
+                  <ActivityTile key={p.id} post={p} onClick={() => setPreviewPost(p)} />
+                ))}
               </div>
             )
           })()}
         </>
       )}
+
+      {previewPost && <ActivityPreviewModal post={previewPost} onClose={() => setPreviewPost(null)} />}
     </div>
   )
 }
