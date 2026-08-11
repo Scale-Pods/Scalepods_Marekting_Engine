@@ -182,6 +182,9 @@ export default function Publishing() {
                   const when = p.published_at ? new Date(p.published_at).toLocaleString() : p.scheduled_time ? new Date(p.scheduled_time).toLocaleString() : ''
                   return (
                     <Panel key={p.id} className="!p-4">
+                      {p.media_url && (
+                        <img src={p.media_url} alt={p.title ?? ''} className="w-full h-32 object-cover rounded-lg mb-3" />
+                      )}
                       <div className="flex items-center gap-2 mb-2.5">
                         <Icon size={15} className={p.status === 'publishing' || p.status === 'pending' ? 'animate-spin text-electric shrink-0' : meta.tone === 'orange' ? 'text-terracotta shrink-0' : 'text-sage shrink-0'} />
                         <PlatformBadge platform={p.platform} />
