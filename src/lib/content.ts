@@ -34,6 +34,10 @@ export interface ContentItemMetadata {
   pillar?: string
   slides?: ContentSlide[]
   branded?: boolean
+  /** 24h "HH:mm" — paired with scheduled_date (a DATE column with no time component) so a
+   *  manually-created post can carry an exact target time. Informational only; Publishing's
+   *  own Post now / Schedule buttons are still what actually fires the real post. */
+  scheduled_time?: string
 }
 
 export interface ContentItem {
@@ -171,6 +175,7 @@ export async function createManualItem(input: {
   hashtags: string[]
   cta: string
   scheduledDate: string | null
+  scheduledTime: string | null
 }): Promise<ContentItem> {
   const { data, error } = await supabase
     .from('content_items')
@@ -187,7 +192,11 @@ export async function createManualItem(input: {
       title: input.title,
       body: input.body,
       media_url: input.mediaUrl,
-      metadata: { hashtags: input.hashtags, ...(input.cta ? { cta: input.cta } : {}) },
+      metadata: {
+        hashtags: input.hashtags,
+        ...(input.cta ? { cta: input.cta } : {}),
+        ...(input.scheduledTime ? { scheduled_time: input.scheduledTime } : {}),
+      },
     })
     .select()
     .single()

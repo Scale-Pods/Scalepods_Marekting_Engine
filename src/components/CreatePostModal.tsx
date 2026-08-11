@@ -31,6 +31,7 @@ export default function CreatePostModal({
   const [cta, setCta] = useState('')
   const [when, setWhen] = useState<'now' | 'date'>('now')
   const [scheduledDate, setScheduledDate] = useState('')
+  const [scheduledTime, setScheduledTime] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -56,6 +57,7 @@ export default function CreatePostModal({
         hashtags,
         cta: cta.trim(),
         scheduledDate: when === 'date' && scheduledDate ? scheduledDate : null,
+        scheduledTime: when === 'date' && scheduledDate && scheduledTime ? scheduledTime : null,
       })
       setDone(true)
     } catch (err) {
@@ -173,16 +175,24 @@ export default function CreatePostModal({
               Set a target date
             </button>
             {when === 'date' && (
-              <input
-                type="date"
-                className="input !w-auto !py-1.5 text-xs"
-                value={scheduledDate}
-                onChange={(e) => setScheduledDate(e.target.value)}
-              />
+              <>
+                <input
+                  type="date"
+                  className="input !w-auto !py-1.5 text-xs"
+                  value={scheduledDate}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                />
+                <input
+                  type="time"
+                  className="input !w-auto !py-1.5 text-xs"
+                  value={scheduledTime}
+                  onChange={(e) => setScheduledTime(e.target.value)}
+                />
+              </>
             )}
           </div>
           <p className="text-muted text-xs mt-1.5">
-            This just tags the post with a target date — you still post it or schedule it for real from Publishing.
+            This just tags the post with a target date{when === 'date' && scheduledTime ? ' and time' : ''} — you still post it or schedule it for real from Publishing.
           </p>
         </div>
 
