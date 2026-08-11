@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Send, Clock, ExternalLink, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { listApprovedItems, listScheduledPosts, triggerPublish, type ScheduledPost } from '../lib/publishing'
-import { PUBLISHING_ENABLED, type ContentItem } from '../lib/content'
+import { PUBLISHING_ENABLED, isActivePlatform, type ContentItem } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner } from '../components/ui'
 import { PostTile, PostPreviewModal, ContentTypeChip } from '../components/postPreview'
 
@@ -101,8 +101,8 @@ export default function Publishing() {
 
   async function load(profileId: string) {
     const [i, p] = await Promise.all([listApprovedItems(profileId), listScheduledPosts(profileId)])
-    setItems(i)
-    setPosts(p)
+    setItems(i.filter((x) => isActivePlatform(x.platform)))
+    setPosts(p.filter((x) => isActivePlatform(x.platform)))
   }
 
   useEffect(() => {

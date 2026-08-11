@@ -5,7 +5,7 @@ import {
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import {
   listReviewItems, approveItem, approveAllItems, sendBackItem, reviseWithAi,
-  replaceItemMedia, IMAGE_CONTENT_TYPES, VIDEO_CONTENT_TYPES, GENERATION_ENABLED,
+  replaceItemMedia, IMAGE_CONTENT_TYPES, VIDEO_CONTENT_TYPES, GENERATION_ENABLED, isActivePlatform,
   type ContentItem,
 } from '../lib/content'
 import { connectCanva, listCanvaDesigns, importCanvaDesign, importFigmaFrame, type CanvaDesign } from '../lib/designer'
@@ -275,7 +275,7 @@ export default function CreativeReview() {
   const [replaceOpen, setReplaceOpen] = useState(false)
 
   async function load(profileId: string) {
-    setItems(await listReviewItems(profileId))
+    setItems((await listReviewItems(profileId)).filter((i) => isActivePlatform(i.platform)))
   }
 
   useEffect(() => {

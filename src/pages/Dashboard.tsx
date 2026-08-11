@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
+import { ACTIVE_PLATFORMS } from '../lib/content'
 import { PageHeader, Badge, Panel } from '../components/ui'
 import { PlatformBadge } from '../components/mediaUi'
 
@@ -57,8 +58,8 @@ async function loadDashboardData(profile: BusinessProfile): Promise<DashboardDat
     supabase.from('scheduled_posts').select('id', { count: 'exact', head: true }).eq('profile_id', profile.id).eq('status', 'published').gte('published_at', monthStart),
     supabase.from('post_analytics').select('engagement').eq('profile_id', profile.id),
     supabase.from('content_items').select('id', { count: 'exact', head: true }).eq('profile_id', profile.id).in('status', ['ready', 'revision']),
-    supabase.from('content_items').select('title,platform,scheduled_date').eq('profile_id', profile.id).gte('scheduled_date', todayStr).lte('scheduled_date', weekEndStr),
-    supabase.from('content_items').select('id,title,platform,status,updated_at').eq('profile_id', profile.id).order('updated_at', { ascending: false }).limit(4),
+    supabase.from('content_items').select('title,platform,scheduled_date').eq('profile_id', profile.id).in('platform', ACTIVE_PLATFORMS).gte('scheduled_date', todayStr).lte('scheduled_date', weekEndStr),
+    supabase.from('content_items').select('id,title,platform,status,updated_at').eq('profile_id', profile.id).in('platform', ACTIVE_PLATFORMS).order('updated_at', { ascending: false }).limit(4),
   ])
 
   const week: DayBucket[] = Array.from({ length: 7 }, (_, i) => {

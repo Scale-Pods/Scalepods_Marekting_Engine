@@ -5,7 +5,7 @@ import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { getLatestStrategy, type MarketingStrategy } from '../lib/strategy'
 import {
   getLatestRun, listItemsForRun, triggerContentGeneration, triggerCarousel,
-  IMAGE_CONTENT_TYPES, VIDEO_CONTENT_TYPES, GENERATION_ENABLED,
+  IMAGE_CONTENT_TYPES, VIDEO_CONTENT_TYPES, GENERATION_ENABLED, isActivePlatform,
   type ContentRun, type ContentItem,
 } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
@@ -109,6 +109,11 @@ export default function ContentFactory() {
   const load = useCallback(async (profileId: string) => {
     const r = await getLatestRun(profileId)
     setRun(r)
+    // Kept unfiltered — items.length is compared against run.total_items to know when text
+    // generation is done, and total_items counts every calendar slot including any historical
+    // youtube/facebook ones from before Content Text Engine stopped generating them. Filtering
+    // here would make that comparison never resolve for older runs. Youtube/facebook items are
+    // filtered out only where they're actually displayed, in filteredItems below.
     setItems(r ? await listItemsForRun(r.id) : [])
     return r
   }, [])
@@ -208,10 +213,16 @@ export default function ContentFactory() {
   // dropdown never offers a type that platform doesn't actually have (e.g. no "linkedin
   // article" while "Instagram" is selected).
   const typeOptions = Array.from(
-    new Set(items.filter((i) => platformFilter === 'all' || i.platform?.toLowerCase() === platformFilter).map((i) => i.content_type)),
+    new Set(
+      items
+        .filter((i) => isActivePlatform(i.platform))
+        .filter((i) => platformFilter === 'all' || i.platform?.toLowerCase() === platformFilter)
+        .map((i) => i.content_type),
+    ),
   ).sort()
   const filteredItems = items.filter(
     (i) =>
+      isActivePlatform(i.platform) &&
       (platformFilter === 'all' || i.platform?.toLowerCase() === platformFilter) &&
       (typeFilter === 'all' || i.content_type === typeFilter),
   )

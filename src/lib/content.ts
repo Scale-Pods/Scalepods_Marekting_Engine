@@ -18,6 +18,18 @@ export type ContentStatus =
 export const IMAGE_CONTENT_TYPES: ContentType[] = ['static_image', 'carousel', 'social_caption']
 export const VIDEO_CONTENT_TYPES: ContentType[] = ['ugc_video', 'motion_graphics', 'product_video']
 
+/**
+ * Platforms actually in use — YouTube/Facebook are still part of the wider platform surface
+ * (Meta Graph publish nodes, PlatformBadge glyphs, etc.) but generate/show no content right
+ * now. Content Text Engine (n8n) filters its calendar to this same list before generating, so
+ * this FE filter and that generation-side filter always agree. Update both together.
+ */
+export const ACTIVE_PLATFORMS = ['instagram', 'linkedin'] as const
+
+export function isActivePlatform(platform?: string | null): boolean {
+  return (ACTIVE_PLATFORMS as readonly string[]).includes((platform || '').toLowerCase())
+}
+
 export interface ContentSlide {
   idx: number
   title: string
