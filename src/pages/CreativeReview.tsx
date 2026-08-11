@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon, Filter, Clock, Plus,
+  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon, Filter, Clock, Plus, Check,
 } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import {
@@ -10,7 +10,8 @@ import {
 } from '../lib/content'
 import { connectCanva, listCanvaDesigns, importCanvaDesign, importFigmaFrame, type CanvaDesign } from '../lib/designer'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
-import { PlatformBadge, CarouselViewer, PLATFORM_OPTIONS } from '../components/mediaUi'
+import { PLATFORM_OPTIONS } from '../components/mediaUi'
+import { PostTile, PostPreviewModal, ContentTypeChip } from '../components/postPreview'
 import AssetUploader from '../components/AssetUploader'
 import MediaEditor from '../components/MediaEditor'
 import CreatePostModal from '../components/CreatePostModal'
@@ -185,66 +186,52 @@ function ReplacePanel({ item, onDone }: { item: ContentItem; onDone: (url: strin
   )
 }
 
-function ReviewCard({ item, selected, onToggle, onChanged }: {
+// Footer actions inside the click-through preview. `onDismiss` (approve / send back) reloads
+// AND closes the preview, since the item leaves the current filtered list either way and
+// leaving the modal open risks silently swapping to whichever item shifts into the same index.
+// `onUpdated` (edit / replace / revise) just reloads — the item stays put, updated in place,
+// matching the old inline-card behaviour.
+function ReviewPreviewActions({
+  item, onUpdated, onDismiss, onEdit, onReplace,
+}: {
   item: ContentItem
-  selected: boolean
-  onToggle: () => void
-  onChanged: () => void
+  onUpdated: () => void
+  onDismiss: () => void
+  onEdit: () => void
+  onReplace: () => void
 }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [showNotes, setShowNotes] = useState(false)
   const [notes, setNotes] = useState('')
-  const [editOpen, setEditOpen] = useState(false)
-  const [replaceOpen, setReplaceOpen] = useState(false)
-
   const isImage = IMAGE_CONTENT_TYPES.includes(item.content_type)
   const isVideo = VIDEO_CONTENT_TYPES.includes(item.content_type)
-  const slides = item.metadata?.slides
 
-  async function run(action: string, fn: () => Promise<void>) {
+  async function run(action: string, fn: () => Promise<void>, dismiss = false) {
     setBusy(action)
     try {
       await fn()
-      onChanged()
+      if (dismiss) onDismiss()
+      else onUpdated()
     } finally {
       setBusy(null)
     }
   }
 
   return (
-    <div className="card p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <input type="checkbox" checked={selected} onChange={onToggle} />
-        <PlatformBadge platform={item.platform} />
-        <Badge tone="orange">{item.content_type.replace(/_/g, ' ')}</Badge>
-        {item.status === 'revision' && <Badge tone="orange">Sent back</Badge>}
-      </div>
-
-      {slides && slides.length > 0 ? (
-        <CarouselViewer slides={slides} />
-      ) : item.media_url ? (
-        <img src={item.media_url} alt={item.title ?? ''} className="w-full h-48 object-cover rounded-lg mb-3" />
-      ) : isVideo ? (
-        <div className="w-full h-32 rounded-lg panel flex items-center justify-center text-muted text-xs mb-3">Manual video — n8n trigger only</div>
-      ) : null}
-
-      <div className="font-medium text-sm mt-3">{item.title}</div>
-      <div className="text-secondary text-sm line-clamp-3 mt-1">{item.body}</div>
-      {item.review_notes && <div className="text-xs text-terracotta mt-2">Notes: {item.review_notes}</div>}
-
-      <div className="flex items-center gap-2 mt-4 flex-wrap">
-        <Button className="!py-1.5 !px-3 text-xs" loading={busy === 'approve'} onClick={() => run('approve', () => approveItem(item.id))}>
+    <>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button className="!py-1.5 !px-3 text-xs" loading={busy === 'approve'} onClick={() => run('approve', () => approveItem(item.id), true)}>
           <CheckCircle2 size={13} /> Approve
         </Button>
         <Button variant="ghost" className="!py-1.5 !px-3 text-xs" onClick={() => setShowNotes((s) => !s)}>
           <Undo2 size={13} /> Send back
         </Button>
         {(isImage || isVideo) && (
-          <Button variant="ghost" className="!py-1.5 !px-3 text-xs" onClick={() => setEditOpen(true)} disabled={!item.media_url}>
+          <Button variant="ghost" className="!py-1.5 !px-3 text-xs" onClick={onEdit} disabled={!item.media_url}>
             <Pencil size={13} /> Edit
           </Button>
         )}
-        <Button variant="ghost" className="!py-1.5 !px-3 text-xs" onClick={() => setReplaceOpen(true)}>
+        <Button variant="ghost" className="!py-1.5 !px-3 text-xs" onClick={onReplace}>
           <Replace size={13} /> Replace
         </Button>
         <Button
@@ -259,48 +246,18 @@ function ReviewCard({ item, selected, onToggle, onChanged }: {
       </div>
 
       {showNotes && (
-        <div className="mt-3 space-y-2">
+        <div className="space-y-2">
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="What needs to change?" />
           <Button
-            className="!py-1.5 !px-3 text-xs"
+            className="!py-1.5 !px-3 text-xs w-full justify-center"
             loading={busy === 'sendback'}
-            onClick={() => run('sendback', async () => { await sendBackItem(item.id, notes); setShowNotes(false) })}
+            onClick={() => run('sendback', async () => { await sendBackItem(item.id, notes) }, true)}
           >
             Confirm send back
           </Button>
         </div>
       )}
-
-      {editOpen && item.media_url && (
-        <Modal title="Edit creative" onClose={() => setEditOpen(false)} wide>
-          <MediaEditor
-            imageUrl={item.media_url}
-            platform={item.platform}
-            itemId={item.id}
-            caption={item.body}
-            onCancel={() => setEditOpen(false)}
-            onSave={async (url) => {
-              await replaceItemMedia(item.id, url)
-              setEditOpen(false)
-              onChanged()
-            }}
-          />
-        </Modal>
-      )}
-
-      {replaceOpen && (
-        <Modal title="Replace creative" onClose={() => setReplaceOpen(false)}>
-          <ReplacePanel
-            item={item}
-            onDone={async (url) => {
-              await replaceItemMedia(item.id, url)
-              setReplaceOpen(false)
-              onChanged()
-            }}
-          />
-        </Modal>
-      )}
-    </div>
+    </>
   )
 }
 
@@ -313,6 +270,9 @@ export default function CreativeReview() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'revision'>('all')
   const [composerOpen, setComposerOpen] = useState(false)
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
+  const [replaceOpen, setReplaceOpen] = useState(false)
 
   async function load(profileId: string) {
     setItems(await listReviewItems(profileId))
@@ -342,6 +302,12 @@ export default function CreativeReview() {
     setSelected(new Set())
     await load(profile.id)
     setApprovingAll(false)
+  }
+
+  function navPreview(i: number | null) {
+    setPreviewIndex(i)
+    setEditOpen(false)
+    setReplaceOpen(false)
   }
 
   if (profile === undefined) {
@@ -378,6 +344,7 @@ export default function CreativeReview() {
     ready: items.filter((i) => i.status === 'ready').length,
     revision: items.filter((i) => i.status === 'revision').length,
   } as const
+  const activeItem = previewIndex !== null ? filteredItems[previewIndex] : null
 
   function onPlatformFilterChange(v: string) {
     setPlatformFilter(v)
@@ -426,20 +393,108 @@ export default function CreativeReview() {
           {filteredItems.length === 0 ? (
             <EmptyState icon={<Filter size={28} />} title="No items match these filters" hint="Try a different platform or content type." />
           ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
-              {filteredItems.map((item) => (
-                <ReviewCard
-                  key={item.id}
-                  item={item}
-                  selected={selected.has(item.id)}
-                  onToggle={() => toggle(item.id)}
-                  onChanged={() => load(profile.id)}
-                />
-              ))}
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-1.5">
+              {filteredItems.map((item, i) => {
+                const thumb = item.media_url || item.metadata?.slides?.[0]?.url || null
+                const isSelected = selected.has(item.id)
+                return (
+                  <PostTile
+                    key={item.id}
+                    img={thumb}
+                    platform={item.platform}
+                    placeholder={item.title || item.body?.slice(0, 80)}
+                    topRight={item.status === 'revision' ? (
+                      <Badge tone="orange" className="!text-[10px] !px-1.5 !py-0.5">Sent back</Badge>
+                    ) : (
+                      <ContentTypeChip type={item.content_type} />
+                    )}
+                    bottomLeft={
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggle(item.id) }}
+                        className="h-6 w-6 rounded-md flex items-center justify-center transition-colors"
+                        style={{
+                          background: isSelected ? 'var(--accent-green)' : 'rgba(0,0,0,0.55)',
+                          border: isSelected ? 'none' : '1.5px solid rgba(255,255,255,0.7)',
+                        }}
+                        aria-label={isSelected ? 'Deselect' : 'Select'}
+                      >
+                        {isSelected && <Check size={14} className="text-white" />}
+                      </button>
+                    }
+                    onClick={() => navPreview(i)}
+                  />
+                )
+              })}
             </div>
           )}
         </>
       )}
+
+      {activeItem && (
+        <PostPreviewModal
+          img={activeItem.media_url || activeItem.metadata?.slides?.[0]?.url || null}
+          platform={activeItem.platform}
+          caption={activeItem.body}
+          headerExtra={activeItem.status === 'revision' ? <Badge tone="orange">Sent back</Badge> : <ContentTypeChip type={activeItem.content_type} />}
+          body={
+            <>
+              {activeItem.content_type === 'carousel' && activeItem.metadata?.slides && activeItem.metadata.slides.length > 1 && (
+                <div className="flex gap-1.5 overflow-x-auto">
+                  {activeItem.metadata.slides.map((s) => (
+                    <img key={s.idx} src={s.url} alt={s.title} className="h-14 w-14 object-cover rounded shrink-0" />
+                  ))}
+                </div>
+              )}
+              {activeItem.review_notes && <div className="text-xs text-terracotta">Notes: {activeItem.review_notes}</div>}
+            </>
+          }
+          footer={
+            <ReviewPreviewActions
+              item={activeItem}
+              onUpdated={() => load(profile.id)}
+              onDismiss={() => { navPreview(null); load(profile.id) }}
+              onEdit={() => setEditOpen(true)}
+              onReplace={() => setReplaceOpen(true)}
+            />
+          }
+          onClose={() => navPreview(null)}
+          hasPrev={(previewIndex ?? 0) > 0}
+          hasNext={(previewIndex ?? 0) < filteredItems.length - 1}
+          onPrev={() => navPreview((previewIndex ?? 0) - 1)}
+          onNext={() => navPreview((previewIndex ?? 0) + 1)}
+        />
+      )}
+
+      {activeItem && editOpen && activeItem.media_url && (
+        <Modal title="Edit creative" onClose={() => setEditOpen(false)} wide>
+          <MediaEditor
+            imageUrl={activeItem.media_url}
+            platform={activeItem.platform}
+            itemId={activeItem.id}
+            caption={activeItem.body}
+            onCancel={() => setEditOpen(false)}
+            onSave={async (url) => {
+              await replaceItemMedia(activeItem.id, url)
+              setEditOpen(false)
+              await load(profile.id)
+            }}
+          />
+        </Modal>
+      )}
+
+      {activeItem && replaceOpen && (
+        <Modal title="Replace creative" onClose={() => setReplaceOpen(false)}>
+          <ReplacePanel
+            item={activeItem}
+            onDone={async (url) => {
+              await replaceItemMedia(activeItem.id, url)
+              setReplaceOpen(false)
+              await load(profile.id)
+            }}
+          />
+        </Modal>
+      )}
+
       {composerOpen && (
         <CreatePostModal profileId={profile.id} onClose={() => setComposerOpen(false)} onCreated={() => setComposerOpen(false)} />
       )}

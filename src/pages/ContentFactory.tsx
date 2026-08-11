@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check, Filter, Hash, Megaphone, Plus } from 'lucide-react'
+import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check, Filter, Megaphone, Plus } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { getLatestStrategy, type MarketingStrategy } from '../lib/strategy'
 import {
@@ -10,29 +10,8 @@ import {
 } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
 import { PLATFORM_OPTIONS } from '../components/mediaUi'
+import { PostTile, PostPreviewModal, ContentTypeChip, typeColor } from '../components/postPreview'
 import CreatePostModal from '../components/CreatePostModal'
-
-const PLATFORM_TONE: Record<string, 'green' | 'blue' | 'orange'> = {
-  linkedin: 'blue', instagram: 'green', facebook: 'blue', youtube: 'orange',
-}
-
-// Per-type badge tint — ScalePods' own accent tokens rotated across the generic types, plus
-// LinkedIn's real brand blue for the one type actually tied to that platform (already used
-// this same way in mediaUi.tsx's PlatformBadge — not a new invented color).
-const CONTENT_TYPE_COLOR: Record<string, string> = {
-  static_image: 'var(--accent-green)',
-  carousel: 'var(--accent-blue)',
-  social_caption: 'var(--accent-orange)',
-  linkedin_article: '#0A66C2',
-  story: 'var(--accent-green)',
-  ugc_video: 'var(--accent-orange)',
-  motion_graphics: 'var(--accent-blue)',
-  product_video: 'var(--accent-green)',
-}
-
-function typeColor(type: string) {
-  return CONTENT_TYPE_COLOR[type] ?? 'var(--fill-tertiary)'
-}
 
 function FilterBar({
   platform, onPlatform, type, onType, typeOptions,
@@ -71,20 +50,17 @@ function FilterBar({
   )
 }
 
-function ItemCard({ item, onCarousel }: { item: ContentItem; onCarousel: (id: string) => void }) {
-  const isImage = IMAGE_CONTENT_TYPES.includes(item.content_type)
-  const isVideo = VIDEO_CONTENT_TYPES.includes(item.content_type)
-  const isCarousel = item.content_type === 'carousel'
-  const waitingOnImage = isImage && !item.media_url && item.status !== 'failed'
-  const [firingCarousel, setFiringCarousel] = useState(false)
+// Footer actions inside the click-through preview — copy caption+hashtags, and generate
+// carousel slides for items that need it. Same actions ItemCard used to run inline.
+function ItemPreviewFooter({ item, onCarousel }: { item: ContentItem; onCarousel: (id: string) => void }) {
   const [copied, setCopied] = useState(false)
-  const [expanded, setExpanded] = useState(false)
-  const color = typeColor(item.content_type)
+  const [firingCarousel, setFiringCarousel] = useState(false)
+  const isCarousel = item.content_type === 'carousel'
   const hashtags = item.metadata?.hashtags ?? []
-  const bodyLong = (item.body?.length ?? 0) > 240
+  const needsSlides = isCarousel && !item.metadata?.slides?.length
 
   async function onCopy() {
-    const tags = hashtags.join(' ')
+    const tags = hashtags.map((h) => `#${h.replace(/^#/, '')}`).join(' ')
     const text = [item.body, tags].filter(Boolean).join('\n\n')
     try {
       await navigator.clipboard.writeText(text)
@@ -96,103 +72,24 @@ function ItemCard({ item, onCarousel }: { item: ContentItem; onCarousel: (id: st
   }
 
   return (
-    <div className="card p-4">
-      <div className="flex items-center gap-2 flex-wrap mb-3">
-        <Badge tone={PLATFORM_TONE[item.platform?.toLowerCase()] ?? 'blue'}>{item.platform}</Badge>
-        <span
-          className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-white capitalize"
-          style={{ background: color }}
+    <div className="flex gap-2">
+      <Button variant="ghost" className="flex-1 justify-center !py-2 text-xs" onClick={onCopy}>
+        {copied ? <Check size={13} className="text-sage" /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy caption'}
+      </Button>
+      {needsSlides && (
+        <Button
+          variant="ghost"
+          className="flex-1 justify-center !py-2 text-xs"
+          loading={firingCarousel}
+          onClick={async () => {
+            setFiringCarousel(true)
+            await onCarousel(item.id)
+            setFiringCarousel(false)
+          }}
         >
-          {item.content_type.replace(/_/g, ' ')}
-        </span>
-        {item.scheduled_date && <span className="text-muted text-xs">{item.scheduled_date}</span>}
-        <button
-          onClick={onCopy}
-          className="ml-auto text-muted hover:text-sage transition-colors"
-          title="Copy caption + hashtags"
-        >
-          {copied ? <Check size={14} className="text-sage" /> : <Copy size={14} />}
-        </button>
-      </div>
-
-      {item.media_url ? (
-        <img src={item.media_url} alt={item.title ?? ''} className="w-full h-40 object-cover rounded-lg mb-3" />
-      ) : waitingOnImage ? (
-        <div className="w-full h-40 rounded-lg panel flex flex-col items-center justify-center gap-2 mb-3">
-          <Spinner size={18} />
-          <span className="text-muted text-xs">Generating image…</span>
-        </div>
-      ) : isVideo ? (
-        <div className="w-full h-40 rounded-lg panel flex flex-col items-center justify-center gap-2 mb-3">
-          <Video size={20} className="text-terracotta" />
-          <span className="text-muted text-xs text-center px-4">Manual video — trigger HeyGen/fal.ai in n8n</span>
-        </div>
-      ) : (
-        <div className="w-full h-24 rounded-lg panel flex items-center justify-center gap-2 mb-3">
-          <FileText size={18} className="text-muted" />
-        </div>
+          <ImageIcon size={13} /> Generate slides
+        </Button>
       )}
-
-      {isCarousel && item.metadata?.slides && item.metadata.slides.length > 0 && (
-        <div className="flex gap-1.5 mb-3 overflow-x-auto">
-          {item.metadata.slides.map((s) => (
-            <img key={s.idx} src={s.url} alt={s.title} className="h-14 w-14 object-cover rounded shrink-0" />
-          ))}
-        </div>
-      )}
-
-      <div className="font-medium text-sm mb-1">{item.title}</div>
-      <div className={expanded ? 'text-secondary text-sm whitespace-pre-wrap' : 'text-secondary text-sm line-clamp-3'}>
-        {item.body}
-      </div>
-      {bodyLong && (
-        <button onClick={() => setExpanded((e) => !e)} className="text-xs text-sage hover:underline mt-1">
-          {expanded ? 'Show less' : 'Show more'}
-        </button>
-      )}
-
-      {hashtags.length > 0 && (
-        <div className="flex gap-2 flex-wrap mt-2">
-          {hashtags.slice(0, 8).map((h, i) => (
-            <span key={i} className="text-xs flex items-center" style={{ color }}>
-              <Hash size={10} className="shrink-0" />{h.replace(/^#/, '')}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {item.metadata?.cta && (
-        <div className="text-xs text-secondary panel !p-2 mt-2.5 flex items-center gap-1.5">
-          <Megaphone size={13} style={{ color }} className="shrink-0" />
-          <span><b className="text-ink">CTA:</b> {item.metadata.cta}</span>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between mt-3">
-        <div className="flex items-center gap-1.5 text-xs">
-          {item.status === 'failed' ? (
-            <><XCircle size={13} className="text-terracotta" /> <span className="text-terracotta">Failed</span></>
-          ) : item.status === 'ready' ? (
-            <><CheckCircle2 size={13} className="text-sage" /> <span className="text-muted">Ready for review</span></>
-          ) : (
-            <span className="text-muted capitalize">{item.status}</span>
-          )}
-        </div>
-        {isCarousel && !item.metadata?.slides?.length && (
-          <Button
-            variant="ghost"
-            className="!py-1 !px-2 text-xs"
-            loading={firingCarousel}
-            onClick={async () => {
-              setFiringCarousel(true)
-              await onCarousel(item.id)
-              setFiringCarousel(false)
-            }}
-          >
-            <ImageIcon size={13} /> Generate slides
-          </Button>
-        )}
-      </div>
     </div>
   )
 }
@@ -206,6 +103,7 @@ export default function ContentFactory() {
   const [platformFilter, setPlatformFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [composerOpen, setComposerOpen] = useState(false)
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async (profileId: string) => {
@@ -317,6 +215,7 @@ export default function ContentFactory() {
       (platformFilter === 'all' || i.platform?.toLowerCase() === platformFilter) &&
       (typeFilter === 'all' || i.content_type === typeFilter),
   )
+  const activeItem = previewIndex !== null ? filteredItems[previewIndex] : null
 
   function onPlatformFilterChange(v: string) {
     setPlatformFilter(v)
@@ -380,14 +279,101 @@ export default function ContentFactory() {
           {filteredItems.length === 0 ? (
             <EmptyState icon={<Filter size={28} />} title="No posts match these filters" hint="Try a different platform or content type." />
           ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
-              {filteredItems.map((item) => (
-                <ItemCard key={item.id} item={item} onCarousel={onCarousel} />
-              ))}
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-1.5">
+              {filteredItems.map((item, i) => {
+                const isImage = IMAGE_CONTENT_TYPES.includes(item.content_type)
+                const isVideo = VIDEO_CONTENT_TYPES.includes(item.content_type)
+                const waitingOnImage = isImage && !item.media_url && item.status !== 'failed'
+                const thumb = item.media_url || item.metadata?.slides?.[0]?.url || null
+                return (
+                  <PostTile
+                    key={item.id}
+                    img={thumb}
+                    platform={item.platform}
+                    topRight={<ContentTypeChip type={item.content_type} />}
+                    busyNote={
+                      waitingOnImage ? (
+                        <>
+                          <Spinner size={18} />
+                          <span className="text-muted text-[10px]">Generating…</span>
+                        </>
+                      ) : undefined
+                    }
+                    placeholder={
+                      isVideo ? (
+                        <div className="flex flex-col items-center gap-1.5">
+                          <Video size={18} className="text-terracotta" />
+                          <span className="text-muted text-[10px] text-center px-2">Manual video</span>
+                        </div>
+                      ) : item.status === 'failed' ? (
+                        <div className="flex flex-col items-center gap-1.5">
+                          <XCircle size={18} className="text-terracotta" />
+                          <span className="text-terracotta text-[10px]">Failed</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-1.5">
+                          <FileText size={18} className="text-muted" />
+                          <span className="line-clamp-3">{item.title || item.body?.slice(0, 60)}</span>
+                        </div>
+                      )
+                    }
+                    onClick={() => setPreviewIndex(i)}
+                  />
+                )
+              })}
             </div>
           )}
         </>
       )}
+
+      {activeItem && (
+        <PostPreviewModal
+          img={activeItem.media_url || activeItem.metadata?.slides?.[0]?.url || null}
+          platform={activeItem.platform}
+          caption={activeItem.body}
+          headerExtra={<ContentTypeChip type={activeItem.content_type} />}
+          body={
+            <>
+              {(activeItem.metadata?.hashtags ?? []).length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  {activeItem.metadata!.hashtags!.map((h, i) => (
+                    <span key={i} className="text-xs" style={{ color: 'var(--accent-blue)' }}>#{h.replace(/^#/, '')}</span>
+                  ))}
+                </div>
+              )}
+              {activeItem.metadata?.cta && (
+                <div className="text-xs text-secondary panel !p-2 flex items-center gap-1.5">
+                  <Megaphone size={13} className="shrink-0" style={{ color: typeColor(activeItem.content_type) }} />
+                  <span><b className="text-ink">CTA:</b> {activeItem.metadata.cta}</span>
+                </div>
+              )}
+              {activeItem.content_type === 'carousel' && activeItem.metadata?.slides && activeItem.metadata.slides.length > 0 && (
+                <div className="flex gap-1.5 overflow-x-auto">
+                  {activeItem.metadata.slides.map((s) => (
+                    <img key={s.idx} src={s.url} alt={s.title} className="h-14 w-14 object-cover rounded shrink-0" />
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 text-xs">
+                {activeItem.status === 'failed' ? (
+                  <><XCircle size={13} className="text-terracotta" /> <span className="text-terracotta">Failed</span></>
+                ) : activeItem.status === 'ready' ? (
+                  <><CheckCircle2 size={13} className="text-sage" /> <span className="text-muted">Ready for review</span></>
+                ) : (
+                  <span className="text-muted capitalize">{activeItem.status}</span>
+                )}
+              </div>
+            </>
+          }
+          footer={<ItemPreviewFooter item={activeItem} onCarousel={onCarousel} />}
+          onClose={() => setPreviewIndex(null)}
+          hasPrev={(previewIndex ?? 0) > 0}
+          hasNext={(previewIndex ?? 0) < filteredItems.length - 1}
+          onPrev={() => setPreviewIndex((i) => (i !== null ? i - 1 : i))}
+          onNext={() => setPreviewIndex((i) => (i !== null ? i + 1 : i))}
+        />
+      )}
+
       {composerOpen && (
         <CreatePostModal profileId={profile.id} onClose={() => setComposerOpen(false)} onCreated={() => setComposerOpen(false)} />
       )}

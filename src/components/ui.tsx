@@ -82,12 +82,18 @@ export function Modal({
   onClose,
   children,
   wide,
+  size,
 }: {
   title: string
   onClose: () => void
   children: ReactNode
   wide?: boolean
+  /** Overrides `wide` when given. "xl" (max-w-4xl) is for two-column layouts (form + live
+   *  preview side by side), e.g. the Create post composer. */
+  size?: 'md' | 'lg' | 'xl'
 }) {
+  const resolvedSize = size ?? (wide ? 'lg' : 'md')
+  const maxWidthClass = resolvedSize === 'xl' ? 'max-w-4xl' : resolvedSize === 'lg' ? 'max-w-2xl' : 'max-w-md'
   // Rendered via portal straight onto <body> — a `fixed`-positioned overlay nested inside
   // any ancestor with backdrop-filter/filter/transform (e.g. `.card`, `.panel`) would
   // otherwise be scoped to that ancestor's box instead of the viewport (CSS containing-block
@@ -95,7 +101,7 @@ export function Modal({
   return createPortal(
     <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className={`modal-panel w-full ${wide ? 'max-w-2xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto p-7`}
+        className={`modal-panel w-full ${maxWidthClass} max-h-[90vh] overflow-y-auto p-7`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">

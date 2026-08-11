@@ -79,115 +79,129 @@ export default function CreatePostModal({
   }
 
   return (
-    <Modal title="Create post" onClose={onClose} wide>
-      <div className="space-y-5">
-        <div>
-          <div className="label mb-2">Platform</div>
-          <div className="flex gap-2 flex-wrap">
-            {PLATFORM_OPTIONS.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => setPlatform(p.value)}
-                className="rounded-full transition-all"
-                style={{ opacity: platform === p.value ? 1 : 0.45, transform: platform === p.value ? 'scale(1.03)' : undefined }}
-              >
-                <PlatformBadge platform={p.value} />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div className="label mb-2">Image</div>
-          {mediaUrl ? (
-            <div className="relative w-40">
-              <img src={mediaUrl} alt="Upload preview" className="w-40 h-40 object-cover rounded-lg" />
-              <button
-                type="button"
-                onClick={() => setMediaUrl(null)}
-                className="absolute -top-2 -right-2 h-6 w-6 rounded-full flex items-center justify-center text-white"
-                style={{ background: 'var(--accent-orange)' }}
-                aria-label="Remove image"
-              >
-                <X size={13} />
-              </button>
-            </div>
-          ) : (
-            <AssetUploader pathPrefix={`manual/${profileId}`} label="Upload image" onUploaded={(url) => setMediaUrl(url)} />
-          )}
-          <p className="text-muted text-xs mt-1.5">Optional — leave blank for a text-only post.</p>
-        </div>
-
-        <div>
-          <label className="label">Caption</label>
-          <textarea
-            className="input mt-1.5"
-            rows={4}
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            placeholder="Write your post…"
-          />
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-3">
+    <Modal title="Create post" onClose={onClose} size="xl">
+      {/* Horizontal layout — form on the left, live "how it'll look" preview pinned on the
+          right, same split used by the post-preview modals elsewhere in the app. Stacks to a
+          single column on narrow screens. */}
+      <div className="flex flex-col md:flex-row gap-6">
+        <div className="flex-1 min-w-0 space-y-5">
           <div>
-            <label className="label">Hashtags</label>
-            <input
+            <div className="label mb-2">Platform</div>
+            <div className="flex gap-2 flex-wrap">
+              {PLATFORM_OPTIONS.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setPlatform(p.value)}
+                  className="rounded-full transition-all"
+                  style={{ opacity: platform === p.value ? 1 : 0.45, transform: platform === p.value ? 'scale(1.03)' : undefined }}
+                >
+                  <PlatformBadge platform={p.value} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="label mb-2">Image</div>
+            {mediaUrl ? (
+              <div className="relative w-40">
+                <img src={mediaUrl} alt="Upload preview" className="w-40 h-40 object-cover rounded-lg" />
+                <button
+                  type="button"
+                  onClick={() => setMediaUrl(null)}
+                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full flex items-center justify-center text-white"
+                  style={{ background: 'var(--accent-orange)' }}
+                  aria-label="Remove image"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ) : (
+              <AssetUploader pathPrefix={`manual/${profileId}`} label="Upload image" onUploaded={(url) => setMediaUrl(url)} />
+            )}
+            <p className="text-muted text-xs mt-1.5">Optional — leave blank for a text-only post.</p>
+          </div>
+
+          <div>
+            <label className="label">Caption</label>
+            <textarea
               className="input mt-1.5"
-              value={hashtagsInput}
-              onChange={(e) => setHashtagsInput(e.target.value)}
-              placeholder="#GrowthOS #B2B"
+              rows={4}
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              placeholder="Write your post…"
             />
           </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Hashtags</label>
+              <input
+                className="input mt-1.5"
+                value={hashtagsInput}
+                onChange={(e) => setHashtagsInput(e.target.value)}
+                placeholder="#GrowthOS #B2B"
+              />
+            </div>
+            <div>
+              <label className="label">CTA (optional)</label>
+              <input className="input mt-1.5" value={cta} onChange={(e) => setCta(e.target.value)} placeholder="Book a demo" />
+            </div>
+          </div>
+
           <div>
-            <label className="label">CTA (optional)</label>
-            <input className="input mt-1.5" value={cta} onChange={(e) => setCta(e.target.value)} placeholder="Book a demo" />
+            <div className="label mb-2">When</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setWhen('now')}
+                className={when === 'now' ? 'badge' : 'badge opacity-40'}
+                style={{ textTransform: 'none' }}
+              >
+                Save to Publishing
+              </button>
+              <button
+                type="button"
+                onClick={() => setWhen('date')}
+                className={when === 'date' ? 'badge badge-blue' : 'badge badge-blue opacity-40'}
+                style={{ textTransform: 'none' }}
+              >
+                Set a target date
+              </button>
+              {when === 'date' && (
+                <>
+                  <input
+                    type="date"
+                    className="input !w-auto !py-1.5 text-xs"
+                    value={scheduledDate}
+                    onChange={(e) => setScheduledDate(e.target.value)}
+                  />
+                  <input
+                    type="time"
+                    className="input !w-auto !py-1.5 text-xs"
+                    value={scheduledTime}
+                    onChange={(e) => setScheduledTime(e.target.value)}
+                  />
+                </>
+              )}
+            </div>
+            <p className="text-muted text-xs mt-1.5">
+              This just tags the post with a target date{when === 'date' && scheduledTime ? ' and time' : ''} — you still post it or schedule it for real from Publishing.
+            </p>
+          </div>
+
+          {error && <div className="text-sm text-[var(--accent-orange)]">{error}</div>}
+
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button onClick={onSave} loading={saving} disabled={!canSave}>
+              <Send size={15} /> Save post
+            </Button>
           </div>
         </div>
 
-        <div>
-          <div className="label mb-2">When</div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => setWhen('now')}
-              className={when === 'now' ? 'badge' : 'badge opacity-40'}
-              style={{ textTransform: 'none' }}
-            >
-              Save to Publishing
-            </button>
-            <button
-              type="button"
-              onClick={() => setWhen('date')}
-              className={when === 'date' ? 'badge badge-blue' : 'badge badge-blue opacity-40'}
-              style={{ textTransform: 'none' }}
-            >
-              Set a target date
-            </button>
-            {when === 'date' && (
-              <>
-                <input
-                  type="date"
-                  className="input !w-auto !py-1.5 text-xs"
-                  value={scheduledDate}
-                  onChange={(e) => setScheduledDate(e.target.value)}
-                />
-                <input
-                  type="time"
-                  className="input !w-auto !py-1.5 text-xs"
-                  value={scheduledTime}
-                  onChange={(e) => setScheduledTime(e.target.value)}
-                />
-              </>
-            )}
-          </div>
-          <p className="text-muted text-xs mt-1.5">
-            This just tags the post with a target date{when === 'date' && scheduledTime ? ' and time' : ''} — you still post it or schedule it for real from Publishing.
-          </p>
-        </div>
-
-        <div>
+        <div className="w-full md:w-[300px] shrink-0">
           <div className="label mb-2 text-center">How it'll look</div>
           <PlatformMockup
             platform={platform}
@@ -195,15 +209,6 @@ export default function CreatePostModal({
             aspect={PLATFORM_ASPECT[platform] ?? 1}
             caption={[caption, hashtags.map((h) => `#${h}`).join(' ')].filter(Boolean).join('\n\n')}
           />
-        </div>
-
-        {error && <div className="text-sm text-[var(--accent-orange)]">{error}</div>}
-
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={onSave} loading={saving} disabled={!canSave}>
-            <Send size={15} /> Save post
-          </Button>
         </div>
       </div>
     </Modal>
