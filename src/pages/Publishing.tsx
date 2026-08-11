@@ -175,25 +175,24 @@ export default function Publishing() {
             return filteredPosts.length === 0 ? (
               <EmptyState icon={<Clock size={24} />} title="No activity matches this filter" />
             ) : (
-              <div className="space-y-2">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
                 {filteredPosts.map((p) => {
                   const meta = STATUS_META[p.status] ?? STATUS_META.pending
                   const Icon = meta.icon
+                  const when = p.published_at ? new Date(p.published_at).toLocaleString() : p.scheduled_time ? new Date(p.scheduled_time).toLocaleString() : ''
                   return (
-                    <Panel key={p.id} className="!p-3 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Icon size={16} className={p.status === 'publishing' || p.status === 'pending' ? 'animate-spin text-electric' : meta.tone === 'orange' ? 'text-terracotta' : 'text-sage'} />
+                    <Panel key={p.id} className="!p-4">
+                      <div className="flex items-center gap-2 mb-2.5">
+                        <Icon size={15} className={p.status === 'publishing' || p.status === 'pending' ? 'animate-spin text-electric shrink-0' : meta.tone === 'orange' ? 'text-terracotta shrink-0' : 'text-sage shrink-0'} />
                         <PlatformBadge platform={p.platform} />
-                        <div className="text-sm truncate">{p.title || p.caption?.slice(0, 60)}</div>
+                        <Badge tone={meta.tone} className="ml-auto">{meta.label}</Badge>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-muted text-xs">
-                          {p.published_at ? new Date(p.published_at).toLocaleString() : p.scheduled_time ? new Date(p.scheduled_time).toLocaleString() : ''}
-                        </span>
-                        {p.error && <span className="text-terracotta text-xs">{p.error}</span>}
-                        <Badge tone={meta.tone}>{meta.label}</Badge>
+                      <div className="text-sm line-clamp-2 min-h-[2.5em]">{p.title || p.caption?.slice(0, 80)}</div>
+                      {p.error && <div className="text-terracotta text-xs mt-2 line-clamp-2">{p.error}</div>}
+                      <div className="flex items-center justify-between gap-2 mt-3">
+                        <span className="text-muted text-xs truncate">{when}</span>
                         {p.post_url && (
-                          <a href={p.post_url} target="_blank" rel="noreferrer" className="text-muted hover:text-sage">
+                          <a href={p.post_url} target="_blank" rel="noreferrer" className="text-muted hover:text-sage shrink-0">
                             <ExternalLink size={14} />
                           </a>
                         )}
