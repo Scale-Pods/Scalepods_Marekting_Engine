@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Send, Clock, ExternalLink, CheckCircle2, XCircle, Loader2, Eye } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { Send, Clock, ExternalLink, CheckCircle2, XCircle, Loader2, Eye, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { listApprovedItems, listScheduledPosts, triggerPublish, type ScheduledPost } from '../lib/publishing'
 import { PUBLISHING_ENABLED, type ContentItem } from '../lib/content'
-import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
-import { PlatformBadge, PlatformMockup, PLATFORM_ASPECT } from '../components/mediaUi'
+import { PageHeader, Badge, Button, EmptyState, Spinner } from '../components/ui'
+import { PlatformBadge } from '../components/mediaUi'
 
 const STATUS_META: Record<string, { label: string; tone: 'green' | 'blue' | 'orange'; icon: typeof CheckCircle2 }> = {
   published: { label: 'Published', tone: 'green', icon: CheckCircle2 },
@@ -91,35 +92,134 @@ function ActivityTile({ post, onClick }: { post: ScheduledPost; onClick: () => v
   )
 }
 
-// Click-through preview — reuses the same PlatformMockup used in the Create post composer and
-// MediaEditor, so "how it looked" is rendered identically everywhere in the app.
-function ActivityPreviewModal({ post, onClose }: { post: ScheduledPost; onClose: () => void }) {
+// Renders caption text with #hashtags picked out in accent-blue, the way every real platform
+// styles them — small touch that makes the preview read as a native post rather than a form.
+function CaptionText({ text }: { text?: string | null }) {
+  if (!text) return null
+  const parts = text.split(/(#\w+)/g)
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith('#') ? (
+          <span key={i} style={{ color: 'var(--accent-blue)' }}>{part}</span>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </>
+  )
+}
+
+// Native post-detail layout — image full-bleed on one side, account/caption/status panel on
+// the other, prev/next between posts and a floating close — modeled on how Instagram/LinkedIn
+// themselves show a single post when you click into it from a grid. Portaled straight onto
+// <body> (same reason as Modal: avoids getting scoped by an ancestor's backdrop-filter).
+function ActivityPreviewModal({
+  posts, index, onClose, onNavigate,
+}: {
+  posts: ScheduledPost[]
+  index: number
+  onClose: () => void
+  onNavigate: (i: number) => void
+}) {
+  const post = posts[index]
   const meta = STATUS_META[post.status] ?? STATUS_META.pending
   const when = post.published_at
     ? new Date(post.published_at).toLocaleString()
     : post.scheduled_time
       ? new Date(post.scheduled_time).toLocaleString()
       : ''
-  return (
-    <Modal title={`How it looked on ${post.platform}`} onClose={onClose}>
-      <PlatformMockup
-        platform={post.platform}
-        img={post.media_url}
-        aspect={PLATFORM_ASPECT[post.platform?.toLowerCase()] ?? 1}
-        caption={post.caption || post.title}
-        fit="contain"
-      />
-      <div className="flex items-center gap-2 mt-4 flex-wrap">
-        <Badge tone={meta.tone}>{meta.label}</Badge>
-        <span className="text-muted text-xs">{when}</span>
-        {post.post_url && (
-          <a href={post.post_url} target="_blank" rel="noreferrer" className="ml-auto text-sage hover:underline text-xs inline-flex items-center gap-1">
-            View live <ExternalLink size={12} />
-          </a>
-        )}
+  const hasPrev = index > 0
+  const hasNext = index < posts.length - 1
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+      else if (e.key === 'ArrowLeft' && hasPrev) onNavigate(index - 1)
+      else if (e.key === 'ArrowRight' && hasNext) onNavigate(index + 1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [index, hasPrev, hasNext, onClose, onNavigate])
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-5"
+      style={{ background: 'rgba(0,0,0,0.88)' }}
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-5 right-5 h-10 w-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors"
+        style={{ background: 'rgba(255,255,255,0.1)' }}
+        aria-label="Close"
+      >
+        <X size={20} />
+      </button>
+      {hasPrev && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onNavigate(index - 1) }}
+          className="absolute left-5 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors"
+          style={{ background: 'rgba(255,255,255,0.1)' }}
+          aria-label="Previous post"
+        >
+          <ChevronLeft size={22} />
+        </button>
+      )}
+      {hasNext && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onNavigate(index + 1) }}
+          className="absolute right-5 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-colors"
+          style={{ background: 'rgba(255,255,255,0.1)' }}
+          aria-label="Next post"
+        >
+          <ChevronRight size={22} />
+        </button>
+      )}
+
+      <div
+        className="flex flex-col md:flex-row w-full max-w-4xl max-h-[85vh] rounded-xl overflow-hidden"
+        style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Media side */}
+        <div className="flex-1 min-w-0 flex items-center justify-center" style={{ background: '#000' }}>
+          {post.media_url ? (
+            <img src={post.media_url} alt={post.title ?? ''} className="max-h-[45vh] md:max-h-[85vh] w-full object-contain" />
+          ) : (
+            <div className="text-white/60 text-sm p-10 text-center max-w-xs">{post.title || post.caption}</div>
+          )}
+        </div>
+
+        {/* Account / caption / status panel */}
+        <div className="w-full md:w-[340px] shrink-0 flex flex-col min-h-0" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+          <div className="flex items-center gap-2.5 px-4 py-3.5 shrink-0" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+            <div className="h-8 w-8 rounded-full shrink-0" style={{ background: 'var(--accent-green)' }} />
+            <div className="text-sm font-semibold">scalepods</div>
+            <div className="ml-auto"><PlatformBadge platform={post.platform} size="sm" /></div>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 py-3.5 max-h-[220px] md:max-h-none">
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+              <span className="font-semibold mr-1.5">scalepods</span>
+              <CaptionText text={post.caption || post.title} />
+            </p>
+          </div>
+          <div className="px-4 py-3.5 space-y-2.5 shrink-0" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+            <div className="flex items-center gap-2">
+              <Badge tone={meta.tone}>{meta.label}</Badge>
+              <span className="text-muted text-xs ml-auto">{when}</span>
+            </div>
+            {post.error && <div className="text-terracotta text-xs">{post.error}</div>}
+            {post.post_url && (
+              <a href={post.post_url} target="_blank" rel="noreferrer" className="btn-primary w-full !py-2 text-xs justify-center">
+                View live <ExternalLink size={13} />
+              </a>
+            )}
+          </div>
+        </div>
       </div>
-      {post.error && <div className="text-terracotta text-xs mt-2">{post.error}</div>}
-    </Modal>
+    </div>,
+    document.body,
   )
 }
 
@@ -174,7 +274,7 @@ export default function Publishing() {
   const [items, setItems] = useState<ContentItem[]>([])
   const [posts, setPosts] = useState<ScheduledPost[]>([])
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
-  const [previewPost, setPreviewPost] = useState<ScheduledPost | null>(null)
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null)
 
   async function load(profileId: string) {
     const [i, p] = await Promise.all([listApprovedItems(profileId), listScheduledPosts(profileId)])
@@ -206,6 +306,8 @@ export default function Publishing() {
       </div>
     )
   }
+
+  const filteredPosts = activityFilter === 'all' ? posts : posts.filter((p) => p.status === activityFilter)
 
   return (
     <div>
@@ -241,22 +343,21 @@ export default function Publishing() {
               failed: posts.filter((p) => p.status === 'failed').length,
             }}
           />
-          {(() => {
-            const filteredPosts = activityFilter === 'all' ? posts : posts.filter((p) => p.status === activityFilter)
-            return filteredPosts.length === 0 ? (
-              <EmptyState icon={<Clock size={24} />} title="No activity matches this filter" />
-            ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-1.5">
-                {filteredPosts.map((p) => (
-                  <ActivityTile key={p.id} post={p} onClick={() => setPreviewPost(p)} />
-                ))}
-              </div>
-            )
-          })()}
+          {filteredPosts.length === 0 ? (
+            <EmptyState icon={<Clock size={24} />} title="No activity matches this filter" />
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-1.5">
+              {filteredPosts.map((p, i) => (
+                <ActivityTile key={p.id} post={p} onClick={() => setPreviewIndex(i)} />
+              ))}
+            </div>
+          )}
         </>
       )}
 
-      {previewPost && <ActivityPreviewModal post={previewPost} onClose={() => setPreviewPost(null)} />}
+      {previewIndex !== null && filteredPosts[previewIndex] && (
+        <ActivityPreviewModal posts={filteredPosts} index={previewIndex} onClose={() => setPreviewIndex(null)} onNavigate={setPreviewIndex} />
+      )}
     </div>
   )
 }
