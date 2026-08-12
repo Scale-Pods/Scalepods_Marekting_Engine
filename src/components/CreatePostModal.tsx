@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Send, CheckCircle2, X } from 'lucide-react'
-import { createManualItem } from '../lib/content'
+import { createManualItem, LINKEDIN_ACCOUNTS } from '../lib/content'
 import { Modal, Button } from './ui'
 import { PlatformBadge, PlatformMockup, PLATFORM_OPTIONS, PLATFORM_ASPECT } from './mediaUi'
 import AssetUploader from './AssetUploader'
@@ -16,6 +16,7 @@ export default function CreatePostModal({
   onCreated: () => void
 }) {
   const [platform, setPlatform] = useState('instagram')
+  const [linkedinAccount, setLinkedinAccount] = useState(LINKEDIN_ACCOUNTS[0].value)
   const [mediaUrl, setMediaUrl] = useState<string | null>(null)
   const [caption, setCaption] = useState('')
   const [hashtagsInput, setHashtagsInput] = useState('')
@@ -49,6 +50,7 @@ export default function CreatePostModal({
         cta: cta.trim(),
         scheduledDate: when === 'date' && scheduledDate ? scheduledDate : null,
         scheduledTime: when === 'date' && scheduledDate && scheduledTime ? scheduledTime : null,
+        linkedinAccount: platform === 'linkedin' ? linkedinAccount : null,
       })
       setDone(true)
     } catch (err) {
@@ -101,6 +103,26 @@ export default function CreatePostModal({
               ))}
             </div>
           </div>
+
+          {platform === 'linkedin' && (
+            <div>
+              <label className="label">LinkedIn account</label>
+              <select
+                className="input mt-1.5"
+                value={linkedinAccount}
+                onChange={(e) => setLinkedinAccount(e.target.value)}
+              >
+                {LINKEDIN_ACCOUNTS.map((a) => (
+                  <option key={a.value} value={a.value}>{a.label}</option>
+                ))}
+              </select>
+              {linkedinAccount === 'company_page' && (
+                <p className="text-muted text-xs mt-1.5">
+                  Page posting is still pending LinkedIn's Community Management API approval — this option is ready for once that's live.
+                </p>
+              )}
+            </div>
+          )}
 
           <div>
             <div className="label mb-2">Image</div>

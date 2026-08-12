@@ -30,6 +30,20 @@ export function isActivePlatform(platform?: string | null): boolean {
   return (ACTIVE_PLATFORMS as readonly string[]).includes((platform || '').toLowerCase())
 }
 
+/**
+ * Which LinkedIn identity a post goes out as — three real accounts share one LinkedIn
+ * Developer app (LinkedIn issues per-member/per-org tokens, not per-app), so this is what
+ * distinguishes them once a post reaches the Publishing Engine. "company_page" needs the
+ * Community Management API's w_organization_social approval to actually post (pending as of
+ * 2026-08-12) — it's offered here regardless so the composer doesn't need a follow-up change
+ * once that approval lands.
+ */
+export const LINKEDIN_ACCOUNTS: { value: string; label: string }[] = [
+  { value: 'hrishikesh', label: 'Hrishikesh (Founder)' },
+  { value: 'founder2', label: 'Founder 2' },
+  { value: 'company_page', label: 'ScalePods Page' },
+]
+
 export interface ContentSlide {
   idx: number
   title: string
@@ -50,6 +64,9 @@ export interface ContentItemMetadata {
    *  manually-created post can carry an exact target time. Informational only; Publishing's
    *  own Post now / Schedule buttons are still what actually fires the real post. */
   scheduled_time?: string
+  /** Which of LINKEDIN_ACCOUNTS this post goes out as — only meaningful when platform is
+   *  linkedin. Read by the Publishing Engine (n8n) to pick the right credential/author URN. */
+  linkedin_account?: string
 }
 
 export interface ContentItem {
@@ -188,6 +205,7 @@ export async function createManualItem(input: {
   cta: string
   scheduledDate: string | null
   scheduledTime: string | null
+  linkedinAccount: string | null
 }): Promise<ContentItem> {
   const { data, error } = await supabase
     .from('content_items')
@@ -208,6 +226,7 @@ export async function createManualItem(input: {
         hashtags: input.hashtags,
         ...(input.cta ? { cta: input.cta } : {}),
         ...(input.scheduledTime ? { scheduled_time: input.scheduledTime } : {}),
+        ...(input.linkedinAccount ? { linkedin_account: input.linkedinAccount } : {}),
       },
     })
     .select()
