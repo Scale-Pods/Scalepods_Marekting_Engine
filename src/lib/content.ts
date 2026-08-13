@@ -64,10 +64,17 @@ export interface ContentItemMetadata {
   pillar?: string
   slides?: ContentSlide[]
   branded?: boolean
-  /** 24h "HH:mm" — paired with scheduled_date (a DATE column with no time component) so a
-   *  manually-created post can carry an exact target time. Informational only; Publishing's
-   *  own Post now / Schedule buttons are still what actually fires the real post. */
+  /** 24h "HH:mm", local to whoever composed the post — kept for display alongside
+   *  scheduled_date (a DATE column with no time component). Not used for the actual firing:
+   *  see scheduled_at, which is the unambiguous instant. */
   scheduled_time?: string
+  /**
+   * Absolute target instant as a UTC ISO string, computed in the browser where the composer's
+   * timezone is actually known. n8n has no idea what timezone the user is in, so it must never
+   * reconstruct this from scheduled_date + scheduled_time (doing so treated IST wall-clock as
+   * UTC and scheduled posts 5.5h late). This is what the Publishing Engine schedules on.
+   */
+  scheduled_at?: string
   /** Which of LINKEDIN_ACCOUNTS this post goes out as — only meaningful when platform is
    *  linkedin. Read by the Publishing Engine (n8n) to pick the right credential/author URN. */
   linkedin_account?: string
@@ -209,6 +216,7 @@ export async function createManualItem(input: {
   cta: string
   scheduledDate: string | null
   scheduledTime: string | null
+  scheduledAt: string | null
   linkedinAccount: string | null
 }): Promise<ContentItem> {
   const { data, error } = await supabase
@@ -230,6 +238,7 @@ export async function createManualItem(input: {
         hashtags: input.hashtags,
         ...(input.cta ? { cta: input.cta } : {}),
         ...(input.scheduledTime ? { scheduled_time: input.scheduledTime } : {}),
+        ...(input.scheduledAt ? { scheduled_at: input.scheduledAt } : {}),
         ...(input.linkedinAccount ? { linkedin_account: input.linkedinAccount } : {}),
       },
     })

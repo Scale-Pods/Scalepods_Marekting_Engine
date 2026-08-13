@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Suspense, lazy, type ReactNode } from 'react'
 import { AuthProvider, useAuth } from './lib/auth'
+import { ToastProvider } from './components/Toast'
 import { Spinner } from './components/ui'
 import AppShell from './components/AppShell'
 import Login from './pages/Login'
@@ -52,29 +53,31 @@ function PublicOnly({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-          <Route path="/reset-password" element={<ResetPassword />} />
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
-          <Route path="/" element={<Protected><Dashboard /></Protected>} />
-          <Route path="/clients" element={<Protected><Clients /></Protected>} />
-          <Route path="/clients/new" element={<Protected><BusinessProfile /></Protected>} />
-          <Route path="/clients/:id" element={<Protected><BusinessProfile /></Protected>} />
-          <Route path="/intelligence" element={<Protected><Intelligence /></Protected>} />
-          <Route path="/intelligence/:id" element={<Protected><IntelligenceReport /></Protected>} />
-          <Route path="/trends" element={<Protected><Trends /></Protected>} />
-          <Route path="/strategy" element={<Protected><Strategy /></Protected>} />
-          <Route path="/content" element={<Protected><ContentFactory /></Protected>} />
-          <Route path="/review" element={<Protected><CreativeReview /></Protected>} />
-          <Route path="/calendar" element={<Protected><Calendar /></Protected>} />
-          <Route path="/publishing" element={<Protected><Publishing /></Protected>} />
-          <Route path="/analytics" element={<Protected><Analytics /></Protected>} />
-          <Route path="/settings" element={<Protected><Settings /></Protected>} />
+            <Route path="/" element={<Protected><Dashboard /></Protected>} />
+            <Route path="/clients" element={<Protected><Clients /></Protected>} />
+            <Route path="/clients/new" element={<Protected><BusinessProfile /></Protected>} />
+            <Route path="/clients/:id" element={<Protected><BusinessProfile /></Protected>} />
+            <Route path="/intelligence" element={<Protected><Intelligence /></Protected>} />
+            <Route path="/intelligence/:id" element={<Protected><IntelligenceReport /></Protected>} />
+            <Route path="/trends" element={<Protected><Trends /></Protected>} />
+            <Route path="/strategy" element={<Protected><Strategy /></Protected>} />
+            <Route path="/content" element={<Protected><ContentFactory /></Protected>} />
+            <Route path="/review" element={<Protected><CreativeReview /></Protected>} />
+            <Route path="/calendar" element={<Protected><Calendar /></Protected>} />
+            <Route path="/publishing" element={<Protected><Publishing /></Protected>} />
+            <Route path="/analytics" element={<Protected><Analytics /></Protected>} />
+            <Route path="/settings" element={<Protected><Settings /></Protected>} />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   )
 }

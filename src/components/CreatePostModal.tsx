@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Send, CheckCircle2, X } from 'lucide-react'
 import { createManualItem, LINKEDIN_ACCOUNTS } from '../lib/content'
+import { triggerPublish } from '../lib/publishing'
+import { toastMessage } from './Toast'
 import { Modal, Button } from './ui'
 import { PlatformBadge, PlatformMockup, PLATFORM_OPTIONS, PLATFORM_ASPECT } from './mediaUi'
 import AssetUploader from './AssetUploader'
@@ -33,13 +35,26 @@ export default function CreatePostModal({
     .map((h) => h.trim().replace(/^#/, ''))
     .filter(Boolean)
 
-  const canSave = Boolean(mediaUrl || caption.trim())
+  const scheduling = when === 'date'
+  // Built from the date+time inputs as LOCAL time (no trailing Z), then converted to an
+  // absolute UTC instant — the browser is the only place that knows the composer's timezone.
+  const targetInstant = scheduling && scheduledDate && scheduledTime
+    ? new Date(`${scheduledDate}T${scheduledTime}`)
+    : null
+  const targetValid = Boolean(targetInstant && !Number.isNaN(targetInstant.getTime()))
+  const targetInPast = targetValid && targetInstant!.getTime() <= Date.now()
+
+  const hasContent = Boolean(mediaUrl || caption.trim())
+  // Previously this ignored `when` entirely, so you could pick "Set a target date", leave the
+  // date blank, and save — the empty date was silently coerced to null and the post behaved
+  // like an immediate one. That's the bug that made a scheduled post publish instantly.
+  const canSave = hasContent && (!scheduling || (targetValid && !targetInPast))
 
   async function onSave() {
     setSaving(true)
     setError(null)
     try {
-      await createManualItem({
+      const item = await createManualItem({
         profileId,
         platform,
         contentType: mediaUrl ? 'static_image' : 'social_caption',
@@ -48,13 +63,19 @@ export default function CreatePostModal({
         mediaUrl,
         hashtags,
         cta: cta.trim(),
-        scheduledDate: when === 'date' && scheduledDate ? scheduledDate : null,
-        scheduledTime: when === 'date' && scheduledDate && scheduledTime ? scheduledTime : null,
+        scheduledDate: scheduling && scheduledDate ? scheduledDate : null,
+        scheduledTime: scheduling && scheduledTime ? scheduledTime : null,
+        scheduledAt: targetInstant ? targetInstant.toISOString() : null,
         linkedinAccount: platform === 'linkedin' ? linkedinAccount : null,
       })
+      // A target date now actually schedules. Before this the date was only a tag: the post
+      // landed in "Ready to publish" and you still had to click Schedule there — and clicking
+      // the adjacent, primary-styled "Post now" silently discarded the date and published
+      // immediately, which is exactly what testing hit.
+      if (targetInstant) await triggerPublish(item.id, false)
       setDone(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save this post')
+      setError(toastMessage(err, 'Could not save this post'))
     } finally {
       setSaving(false)
     }
@@ -65,9 +86,11 @@ export default function CreatePostModal({
       <Modal title="Post created" onClose={onCreated}>
         <div className="flex flex-col items-center text-center gap-3 py-4">
           <CheckCircle2 size={32} className="text-sage" />
-          <div className="font-medium">Sent to Publishing</div>
+          <div className="font-medium">{targetInstant ? 'Scheduled' : 'Sent to Publishing'}</div>
           <p className="text-secondary text-sm max-w-xs">
-            Your post is saved and ready — head to Publishing to post it now or schedule it.
+            {targetInstant
+              ? `Your post is scheduled for ${targetInstant.toLocaleString()} and will publish automatically. You can see it under Publishing → Scheduled.`
+              : 'Your post is saved and ready — head to Publishing to post it now or schedule it.'}
           </p>
           <div className="flex gap-2 mt-2">
             <Button variant="ghost" onClick={onCreated}>Close</Button>
@@ -208,8 +231,20 @@ export default function CreatePostModal({
                 </>
               )}
             </div>
+            {scheduling && !targetValid && (
+              <p className="text-[var(--accent-orange)] text-xs mt-1.5">
+                Pick both a date and a time to schedule this post.
+              </p>
+            )}
+            {targetInPast && (
+              <p className="text-[var(--accent-orange)] text-xs mt-1.5">
+                That time has already passed — pick a time in the future.
+              </p>
+            )}
             <p className="text-muted text-xs mt-1.5">
-              This just tags the post with a target date{when === 'date' && scheduledTime ? ' and time' : ''} — you still post it or schedule it for real from Publishing.
+              {scheduling
+                ? 'The post will publish automatically at this time — no further action needed.'
+                : 'The post goes to Publishing, where you decide when to post it.'}
             </p>
           </div>
 
@@ -218,7 +253,7 @@ export default function CreatePostModal({
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
             <Button onClick={onSave} loading={saving} disabled={!canSave}>
-              <Send size={15} /> Save post
+              <Send size={15} /> {scheduling ? 'Schedule post' : 'Save post'}
             </Button>
           </div>
         </div>

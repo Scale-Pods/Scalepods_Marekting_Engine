@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Send, Clock, ExternalLink, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { useToast, toastMessage } from '../components/Toast'
 import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { listApprovedItems, listScheduledPosts, triggerPublish, type ScheduledPost } from '../lib/publishing'
 import { PUBLISHING_ENABLED, isActivePlatform, type ContentItem } from '../lib/content'
@@ -57,13 +58,23 @@ function ActivityFilterPills({
 // used to run inline, now triggered from inside the click-through preview instead.
 function ReadyPreviewActions({ item, onDone }: { item: ContentItem; onDone: () => void }) {
   const [busy, setBusy] = useState<'now' | 'schedule' | null>(null)
+  const toast = useToast()
 
   async function onPostNow() {
-    if (!window.confirm(`Post "${item.title}" live to ${item.platform} right now? This is public and cannot be undone.`)) return
+    // Call out an existing target date explicitly — "Post now" sits right next to Schedule and
+    // publishing immediately silently throws that target away, which testing ran into.
+    const at = item.metadata?.scheduled_at
+    const pending = at && new Date(at).getTime() > Date.now()
+      ? `\n\nThis post is scheduled for ${new Date(at).toLocaleString()} — posting now publishes it immediately instead and cancels that.`
+      : ''
+    if (!window.confirm(`Post "${item.title}" live to ${item.platform} right now? This is public and cannot be undone.${pending}`)) return
     setBusy('now')
     try {
       await triggerPublish(item.id, true)
+      toast.info('Publishing… this can take a few seconds.')
       onDone()
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not publish this post'))
     } finally {
       setBusy(null)
     }
@@ -73,7 +84,10 @@ function ReadyPreviewActions({ item, onDone }: { item: ContentItem; onDone: () =
     setBusy('schedule')
     try {
       await triggerPublish(item.id, false)
+      toast.success('Scheduling… the post will appear under Scheduled shortly.')
       onDone()
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not schedule this post'))
     } finally {
       setBusy(null)
     }
@@ -98,12 +112,14 @@ export default function Publishing() {
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
   const [readyPreviewIndex, setReadyPreviewIndex] = useState<number | null>(null)
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
+  const [syncing, setSyncing] = useState(false)
 
-  async function load(profileId: string) {
+  const load = useCallback(async (profileId: string) => {
     const [i, p] = await Promise.all([listApprovedItems(profileId), listScheduledPosts(profileId)])
     setItems(i.filter((x) => isActivePlatform(x.platform)))
     setPosts(p.filter((x) => isActivePlatform(x.platform)))
-  }
+    return { items: i, posts: p }
+  }, [])
 
   useEffect(() => {
     listProfiles().then(async (profiles) => {
@@ -111,7 +127,30 @@ export default function Publishing() {
       setProfile(p)
       if (p) await load(p.id)
     })
-  }, [])
+  }, [load])
+
+  // n8n answers the webhook immediately and does the real work asynchronously, so refetching
+  // the instant triggerPublish() resolves always read stale data — that's why a published post
+  // only showed up after a manual browser reload. Poll briefly until the row count actually
+  // changes instead. (Phase 2 replaces this with a Supabase Realtime subscription.)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
+
+  const refreshUntilChanged = useCallback((profileId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    const before = posts.length
+    let tries = 0
+    setSyncing(true)
+    pollRef.current = setInterval(async () => {
+      tries += 1
+      const next = await load(profileId)
+      if (next.posts.length !== before || tries >= 10) {
+        if (pollRef.current) clearInterval(pollRef.current)
+        pollRef.current = null
+        setSyncing(false)
+      }
+    }, 2000)
+  }, [load, posts.length])
 
   if (profile === undefined) {
     return (
@@ -160,7 +199,14 @@ export default function Publishing() {
         </div>
       )}
 
-      <div className="font-medium mb-3">Recent activity</div>
+      <div className="font-medium mb-3 flex items-center gap-2">
+        Recent activity
+        {syncing && (
+          <span className="text-muted text-xs font-normal inline-flex items-center gap-1.5">
+            <Loader2 size={12} className="animate-spin" /> syncing…
+          </span>
+        )}
+      </div>
       {posts.length === 0 ? (
         <EmptyState icon={<Clock size={24} />} title="No publish activity yet" />
       ) : (
@@ -210,7 +256,7 @@ export default function Publishing() {
           platform={readyItem.platform}
           caption={readyItem.body}
           headerExtra={<ContentTypeChip type={readyItem.content_type} />}
-          footer={<ReadyPreviewActions item={readyItem} onDone={() => { setReadyPreviewIndex(null); load(profile.id) }} />}
+          footer={<ReadyPreviewActions item={readyItem} onDone={() => { setReadyPreviewIndex(null); refreshUntilChanged(profile.id) }} />}
           onClose={() => setReadyPreviewIndex(null)}
           hasPrev={(readyPreviewIndex ?? 0) > 0}
           hasNext={(readyPreviewIndex ?? 0) < items.length - 1}

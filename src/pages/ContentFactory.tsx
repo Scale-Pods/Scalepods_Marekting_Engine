@@ -10,6 +10,7 @@ import {
 } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
 import { PLATFORM_OPTIONS } from '../components/mediaUi'
+import { useToast, toastMessage } from '../components/Toast'
 import { PostTile, PostPreviewModal, ContentTypeChip, typeColor } from '../components/postPreview'
 import CreatePostModal from '../components/CreatePostModal'
 
@@ -104,6 +105,7 @@ export default function ContentFactory() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [composerOpen, setComposerOpen] = useState(false)
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
+  const toast = useToast()
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async (profileId: string) => {
@@ -153,14 +155,25 @@ export default function ContentFactory() {
   async function onGenerate() {
     if (!profile) return
     setGenerating(true)
-    await triggerContentGeneration(profile.id)
-    setTimeout(() => load(profile.id), 2000)
-    setGenerating(false)
+    try {
+      await triggerContentGeneration(profile.id)
+      toast.info('Generating content — posts will fill in as they are written.')
+      setTimeout(() => load(profile.id), 2000)
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not start content generation'))
+    } finally {
+      setGenerating(false)
+    }
   }
 
   async function onCarousel(itemId: string) {
-    await triggerCarousel(itemId)
-    if (profile) setTimeout(() => load(profile.id), 2000)
+    try {
+      await triggerCarousel(itemId)
+      toast.info('Generating carousel slides…')
+      if (profile) setTimeout(() => load(profile.id), 2000)
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not generate carousel slides'))
+    }
   }
 
   if (profile === undefined) {

@@ -9,6 +9,7 @@ import {
   type ContentItem,
 } from '../lib/content'
 import { connectCanva, listCanvaDesigns, importCanvaDesign, importFigmaFrame, type CanvaDesign } from '../lib/designer'
+import { useToast, toastMessage } from '../components/Toast'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
 import { PLATFORM_OPTIONS } from '../components/mediaUi'
 import { PostTile, PostPreviewModal, ContentTypeChip } from '../components/postPreview'
@@ -203,15 +204,20 @@ function ReviewPreviewActions({
   const [busy, setBusy] = useState<string | null>(null)
   const [showNotes, setShowNotes] = useState(false)
   const [notes, setNotes] = useState('')
+  const toast = useToast()
   const isImage = IMAGE_CONTENT_TYPES.includes(item.content_type)
   const isVideo = VIDEO_CONTENT_TYPES.includes(item.content_type)
 
+  // Single choke point for approve / send back / revise. Without the catch these failed
+  // silently: the spinner stuck on and the user got no indication anything went wrong.
   async function run(action: string, fn: () => Promise<void>, dismiss = false) {
     setBusy(action)
     try {
       await fn()
       if (dismiss) onDismiss()
       else onUpdated()
+    } catch (err) {
+      toast.error(toastMessage(err, `Could not ${action} this item`))
     } finally {
       setBusy(null)
     }
@@ -273,6 +279,7 @@ export default function CreativeReview() {
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [replaceOpen, setReplaceOpen] = useState(false)
+  const toast = useToast()
 
   async function load(profileId: string) {
     setItems((await listReviewItems(profileId)).filter((i) => isActivePlatform(i.platform)))
@@ -297,11 +304,20 @@ export default function CreativeReview() {
 
   async function onApproveAll() {
     if (!profile || selected.size === 0) return
+    const count = selected.size
     setApprovingAll(true)
-    await approveAllItems(Array.from(selected))
-    setSelected(new Set())
-    await load(profile.id)
-    setApprovingAll(false)
+    // Previously had no try/finally at all — a throw here left `approvingAll` stuck true and
+    // the button spinning forever with nothing shown to the user.
+    try {
+      await approveAllItems(Array.from(selected))
+      setSelected(new Set())
+      await load(profile.id)
+      toast.success(`Approved ${count} item${count === 1 ? '' : 's'}.`)
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not approve the selected items'))
+    } finally {
+      setApprovingAll(false)
+    }
   }
 
   function navPreview(i: number | null) {
