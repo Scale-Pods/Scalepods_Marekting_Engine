@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
+import { useRealtimeSync, useNavCounts } from '../lib/queries'
+import NotificationBell from './NotificationBell'
 import { toggleTheme, getTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
 
 type NavItem = { to: string; label: string; icon: ReactNode; roles: Role[] }
@@ -49,28 +51,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const { user, role, setRole, signOut } = useAuth()
   const [theme, setTheme] = useState<Theme>(getTheme())
   const [roleOpen, setRoleOpen] = useState(false)
-  const [counts, setCounts] = useState({ profiles: 0, pendingReview: 0 })
   const navigate = useNavigate()
 
   const logo = theme === 'dark' ? '/brand/logo-white.png' : '/brand/logo-black.png'
   const initials = (user?.email || 'U').slice(0, 2).toUpperCase()
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      const [profilesRes, reviewRes] = await Promise.all([
-        supabase.from('business_profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('content_items').select('id', { count: 'exact', head: true }).in('status', ['ready', 'revision']),
-      ])
-      if (!cancelled) setCounts({ profiles: profilesRes.count ?? 0, pendingReview: reviewRes.count ?? 0 })
-    }
-    load()
-    const interval = setInterval(load, 60000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [])
+  // One Realtime subscription for the whole authenticated session — every page's queries
+  // invalidate off it, which is what replaces the per-page polling.
+  useRealtimeSync()
+  const { data: counts = { profiles: 0, pendingReview: 0 } } = useNavCounts()
 
   return (
     <div className="min-h-screen flex">
@@ -163,6 +152,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           style={{ borderBottom: '1px solid var(--border-subtle)' }}
         >
           <div className="flex-1" />
+          <NotificationBell />
           <button onClick={() => setTheme(toggleTheme())} className="btn-ghost !p-2.5" aria-label="Toggle theme">
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>

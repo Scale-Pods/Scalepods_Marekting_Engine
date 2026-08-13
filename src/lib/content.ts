@@ -1,4 +1,5 @@
 import { supabase, fireWebhook } from './supabase'
+import { pushNotification } from './notifications'
 
 // Credit-safety master flags (CLAUDE.md / TRD §11). GENERATION_ENABLED gates the
 // text/image FE triggers below. PUBLISHING_ENABLED gates publish webhooks (Step 7).
@@ -162,26 +163,59 @@ export async function listReviewItems(profileId: string): Promise<ContentItem[]>
 }
 
 export async function approveItem(id: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('content_items')
     .update({ status: 'approved', approved_at: new Date().toISOString() })
     .eq('id', id)
+    .select('profile_id,title')
+    .single()
   if (error) throw error
   await fireWebhook('sp-notify', { type: 'approved', itemId: id }).catch(() => {})
+  // In-app bell for the rest of the team. Fire-and-forget for the same reason the webhook is:
+  // failing to record a notification must never fail the approval itself.
+  await pushNotification({
+    profileId: data?.profile_id,
+    type: 'approved',
+    title: 'Post approved',
+    body: data?.title ?? null,
+    itemId: id,
+    link: '/publishing',
+  }).catch(() => {})
 }
 
 export async function approveAllItems(ids: string[]): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('content_items')
     .update({ status: 'approved', approved_at: new Date().toISOString() })
     .in('id', ids)
+    .select('profile_id')
   if (error) throw error
+  await pushNotification({
+    profileId: data?.[0]?.profile_id,
+    type: 'approved',
+    title: `${ids.length} post${ids.length === 1 ? '' : 's'} approved`,
+    body: 'Ready to publish.',
+    link: '/publishing',
+  }).catch(() => {})
 }
 
 export async function sendBackItem(id: string, notes: string): Promise<void> {
-  const { error } = await supabase.from('content_items').update({ status: 'revision', review_notes: notes }).eq('id', id)
+  const { data, error } = await supabase
+    .from('content_items')
+    .update({ status: 'revision', review_notes: notes })
+    .eq('id', id)
+    .select('profile_id,title')
+    .single()
   if (error) throw error
   await fireWebhook('sp-notify', { type: 'revision', itemId: id }).catch(() => {})
+  await pushNotification({
+    profileId: data?.profile_id,
+    type: 'revision',
+    title: 'Post sent back for revision',
+    body: notes || data?.title || null,
+    itemId: id,
+    link: '/review',
+  }).catch(() => {})
 }
 
 /** Replaces an item's creative (upload / Canva / Figma / MediaEditor export). */

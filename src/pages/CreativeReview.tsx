@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon, Filter, Clock, Plus, Check,
 } from 'lucide-react'
-import { listProfiles, type BusinessProfile } from '../lib/clients'
+import { useProfile, useReviewItems } from '../lib/queries'
 import {
-  listReviewItems, approveItem, approveAllItems, sendBackItem, reviseWithAi,
-  replaceItemMedia, IMAGE_CONTENT_TYPES, VIDEO_CONTENT_TYPES, GENERATION_ENABLED, isActivePlatform,
+  approveItem, approveAllItems, sendBackItem, reviseWithAi,
+  replaceItemMedia, IMAGE_CONTENT_TYPES, VIDEO_CONTENT_TYPES, GENERATION_ENABLED,
   type ContentItem,
 } from '../lib/content'
 import { connectCanva, listCanvaDesigns, importCanvaDesign, importFigmaFrame, type CanvaDesign } from '../lib/designer'
@@ -268,8 +268,6 @@ function ReviewPreviewActions({
 }
 
 export default function CreativeReview() {
-  const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
-  const [items, setItems] = useState<ContentItem[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [approvingAll, setApprovingAll] = useState(false)
   const [platformFilter, setPlatformFilter] = useState('all')
@@ -281,17 +279,12 @@ export default function CreativeReview() {
   const [replaceOpen, setReplaceOpen] = useState(false)
   const toast = useToast()
 
-  async function load(profileId: string) {
-    setItems((await listReviewItems(profileId)).filter((i) => isActivePlatform(i.platform)))
-  }
+  const { data: profile, isLoading: profileLoading } = useProfile()
+  const { data: items = [], refetch } = useReviewItems(profile?.id)
 
-  useEffect(() => {
-    listProfiles().then(async (profiles) => {
-      const p = profiles[0] ?? null
-      setProfile(p)
-      if (p) await load(p.id)
-    })
-  }, [])
+  // Realtime keeps this list current on its own; load() stays as an explicit nudge for the
+  // actions that mutate an item so the UI doesn't wait on the round trip.
+  const load = useCallback(async (_profileId?: string) => { await refetch() }, [refetch])
 
   function toggle(id: string) {
     setSelected((s) => {
@@ -326,7 +319,7 @@ export default function CreativeReview() {
     setReplaceOpen(false)
   }
 
-  if (profile === undefined) {
+  if (profileLoading) {
     return (
       <div className="flex justify-center py-16">
         <Spinner size={24} />

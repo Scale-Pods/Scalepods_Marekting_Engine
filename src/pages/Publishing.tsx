@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Send, Clock, ExternalLink, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { useToast, toastMessage } from '../components/Toast'
-import { listProfiles, type BusinessProfile } from '../lib/clients'
-import { listApprovedItems, listScheduledPosts, triggerPublish, type ScheduledPost } from '../lib/publishing'
-import { PUBLISHING_ENABLED, isActivePlatform, type ContentItem } from '../lib/content'
+import { useProfile, useApprovedItems, useScheduledPosts } from '../lib/queries'
+import { triggerPublish } from '../lib/publishing'
+import { PUBLISHING_ENABLED, type ContentItem } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner } from '../components/ui'
 import { PostTile, PostPreviewModal, ContentTypeChip } from '../components/postPreview'
 
@@ -106,53 +106,28 @@ function ReadyPreviewActions({ item, onDone }: { item: ContentItem; onDone: () =
 }
 
 export default function Publishing() {
-  const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
-  const [items, setItems] = useState<ContentItem[]>([])
-  const [posts, setPosts] = useState<ScheduledPost[]>([])
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
   const [readyPreviewIndex, setReadyPreviewIndex] = useState<number | null>(null)
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
-  const [syncing, setSyncing] = useState(false)
+  // n8n answers the webhook immediately and does the real work asynchronously, so there is a
+  // gap between "fired" and "row exists". Realtime closes it on its own now; this flag only
+  // tells the user something is in flight during that gap.
+  const [awaitingSync, setAwaitingSync] = useState(false)
 
-  const load = useCallback(async (profileId: string) => {
-    const [i, p] = await Promise.all([listApprovedItems(profileId), listScheduledPosts(profileId)])
-    setItems(i.filter((x) => isActivePlatform(x.platform)))
-    setPosts(p.filter((x) => isActivePlatform(x.platform)))
-    return { items: i, posts: p }
-  }, [])
+  const { data: profile, isLoading: profileLoading } = useProfile()
+  const { data: items = [] } = useApprovedItems(profile?.id)
+  const { data: posts = [] } = useScheduledPosts(profile?.id)
 
+  // Clear the in-flight flag as soon as Realtime delivers a change (the lists are re-rendered
+  // from freshly invalidated cache at that point).
   useEffect(() => {
-    listProfiles().then(async (profiles) => {
-      const p = profiles[0] ?? null
-      setProfile(p)
-      if (p) await load(p.id)
-    })
-  }, [load])
+    if (!awaitingSync) return
+    const t = setTimeout(() => setAwaitingSync(false), 15_000) // safety net if nothing arrives
+    return () => clearTimeout(t)
+  }, [awaitingSync])
+  useEffect(() => { setAwaitingSync(false) }, [posts, items])
 
-  // n8n answers the webhook immediately and does the real work asynchronously, so refetching
-  // the instant triggerPublish() resolves always read stale data — that's why a published post
-  // only showed up after a manual browser reload. Poll briefly until the row count actually
-  // changes instead. (Phase 2 replaces this with a Supabase Realtime subscription.)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
-
-  const refreshUntilChanged = useCallback((profileId: string) => {
-    if (pollRef.current) clearInterval(pollRef.current)
-    const before = posts.length
-    let tries = 0
-    setSyncing(true)
-    pollRef.current = setInterval(async () => {
-      tries += 1
-      const next = await load(profileId)
-      if (next.posts.length !== before || tries >= 10) {
-        if (pollRef.current) clearInterval(pollRef.current)
-        pollRef.current = null
-        setSyncing(false)
-      }
-    }, 2000)
-  }, [load, posts.length])
-
-  if (profile === undefined) {
+  if (profileLoading) {
     return (
       <div className="flex justify-center py-16">
         <Spinner size={24} />
@@ -201,7 +176,7 @@ export default function Publishing() {
 
       <div className="font-medium mb-3 flex items-center gap-2">
         Recent activity
-        {syncing && (
+        {awaitingSync && (
           <span className="text-muted text-xs font-normal inline-flex items-center gap-1.5">
             <Loader2 size={12} className="animate-spin" /> syncing…
           </span>
@@ -256,7 +231,7 @@ export default function Publishing() {
           platform={readyItem.platform}
           caption={readyItem.body}
           headerExtra={<ContentTypeChip type={readyItem.content_type} />}
-          footer={<ReadyPreviewActions item={readyItem} onDone={() => { setReadyPreviewIndex(null); refreshUntilChanged(profile.id) }} />}
+          footer={<ReadyPreviewActions item={readyItem} onDone={() => { setReadyPreviewIndex(null); setAwaitingSync(true) }} />}
           onClose={() => setReadyPreviewIndex(null)}
           hasPrev={(readyPreviewIndex ?? 0) > 0}
           hasNext={(readyPreviewIndex ?? 0) < items.length - 1}

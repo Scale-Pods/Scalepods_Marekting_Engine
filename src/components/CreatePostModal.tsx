@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Send, CheckCircle2, X } from 'lucide-react'
+import { Send, CheckCircle2, X, RotateCcw } from 'lucide-react'
+import { getComposerDraft, saveComposerDraft, clearComposerDraft } from '../lib/theme'
 import { createManualItem, LINKEDIN_ACCOUNTS } from '../lib/content'
 import { triggerPublish } from '../lib/publishing'
 import { toastMessage } from './Toast'
@@ -17,15 +18,20 @@ export default function CreatePostModal({
   onClose: () => void
   onCreated: () => void
 }) {
-  const [platform, setPlatform] = useState('instagram')
-  const [linkedinAccount, setLinkedinAccount] = useState(LINKEDIN_ACCOUNTS[0].value)
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null)
-  const [caption, setCaption] = useState('')
-  const [hashtagsInput, setHashtagsInput] = useState('')
-  const [cta, setCta] = useState('')
-  const [when, setWhen] = useState<'now' | 'date'>('now')
-  const [scheduledDate, setScheduledDate] = useState('')
-  const [scheduledTime, setScheduledTime] = useState('')
+  // Restore any in-progress draft up front so an accidental dismiss (backdrop click, X, or
+  // navigating away) isn't destructive.
+  const [restored] = useState(() => getComposerDraft())
+  const [draftRestored, setDraftRestored] = useState(Boolean(restored))
+
+  const [platform, setPlatform] = useState(restored?.platform ?? 'instagram')
+  const [linkedinAccount, setLinkedinAccount] = useState(restored?.linkedinAccount ?? LINKEDIN_ACCOUNTS[0].value)
+  const [mediaUrl, setMediaUrl] = useState<string | null>(restored?.mediaUrl ?? null)
+  const [caption, setCaption] = useState(restored?.caption ?? '')
+  const [hashtagsInput, setHashtagsInput] = useState(restored?.hashtagsInput ?? '')
+  const [cta, setCta] = useState(restored?.cta ?? '')
+  const [when, setWhen] = useState<'now' | 'date'>(restored?.when ?? 'now')
+  const [scheduledDate, setScheduledDate] = useState(restored?.scheduledDate ?? '')
+  const [scheduledTime, setScheduledTime] = useState(restored?.scheduledTime ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -43,6 +49,26 @@ export default function CreatePostModal({
     : null
   const targetValid = Boolean(targetInstant && !Number.isNaN(targetInstant.getTime()))
   const targetInPast = targetValid && targetInstant!.getTime() <= Date.now()
+
+  // Autosave on every change (cheap — it's a handful of strings in localStorage).
+  useEffect(() => {
+    if (done) return
+    saveComposerDraft({ platform, linkedinAccount, mediaUrl, caption, hashtagsInput, cta, when, scheduledDate, scheduledTime })
+  }, [done, platform, linkedinAccount, mediaUrl, caption, hashtagsInput, cta, when, scheduledDate, scheduledTime])
+
+  function discardDraft() {
+    clearComposerDraft()
+    setDraftRestored(false)
+    setPlatform('instagram')
+    setLinkedinAccount(LINKEDIN_ACCOUNTS[0].value)
+    setMediaUrl(null)
+    setCaption('')
+    setHashtagsInput('')
+    setCta('')
+    setWhen('now')
+    setScheduledDate('')
+    setScheduledTime('')
+  }
 
   const hasContent = Boolean(mediaUrl || caption.trim())
   // Previously this ignored `when` entirely, so you could pick "Set a target date", leave the
@@ -73,6 +99,7 @@ export default function CreatePostModal({
       // the adjacent, primary-styled "Post now" silently discarded the date and published
       // immediately, which is exactly what testing hit.
       if (targetInstant) await triggerPublish(item.id, false)
+      clearComposerDraft()
       setDone(true)
     } catch (err) {
       setError(toastMessage(err, 'Could not save this post'))
@@ -110,6 +137,19 @@ export default function CreatePostModal({
           single column on narrow screens. */}
       <div className="flex flex-col md:flex-row gap-6">
         <div className="flex-1 min-w-0 space-y-5">
+          {draftRestored && (
+            <div
+              className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
+              style={{ background: 'var(--fill-tertiary)', border: '1px solid var(--border-subtle)' }}
+            >
+              <RotateCcw size={13} className="text-sage shrink-0" />
+              <span className="text-secondary flex-1">Unsaved draft restored.</span>
+              <button onClick={discardDraft} className="text-muted hover:text-sage underline">
+                Discard
+              </button>
+            </div>
+          )}
+
           <div>
             <div className="label mb-2">Platform</div>
             <div className="flex gap-2 flex-wrap">

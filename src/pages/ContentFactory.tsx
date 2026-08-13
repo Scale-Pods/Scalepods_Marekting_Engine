@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check, Filter, Megaphone, Plus } from 'lucide-react'
-import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { getLatestStrategy, type MarketingStrategy } from '../lib/strategy'
+import { useProfile, useLatestRun, useRunItems } from '../lib/queries'
 import {
-  getLatestRun, listItemsForRun, triggerContentGeneration, triggerCarousel,
+  triggerContentGeneration, triggerCarousel,
   IMAGE_CONTENT_TYPES, VIDEO_CONTENT_TYPES, GENERATION_ENABLED, isActivePlatform,
-  type ContentRun, type ContentItem,
+  type ContentItem,
 } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
 import { PLATFORM_OPTIONS } from '../components/mediaUi'
@@ -96,61 +96,32 @@ function ItemPreviewFooter({ item, onCarousel }: { item: ContentItem; onCarousel
 }
 
 export default function ContentFactory() {
-  const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
   const [strategy, setStrategy] = useState<MarketingStrategy | null>(null)
-  const [run, setRun] = useState<ContentRun | null>(null)
-  const [items, setItems] = useState<ContentItem[]>([])
   const [generating, setGenerating] = useState(false)
   const [platformFilter, setPlatformFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [composerOpen, setComposerOpen] = useState(false)
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
   const toast = useToast()
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const load = useCallback(async (profileId: string) => {
-    const r = await getLatestRun(profileId)
-    setRun(r)
-    // Kept unfiltered — items.length is compared against run.total_items to know when text
-    // generation is done, and total_items counts every calendar slot including any historical
-    // youtube/facebook ones from before Content Text Engine stopped generating them. Filtering
-    // here would make that comparison never resolve for older runs. Youtube/facebook items are
-    // filtered out only where they're actually displayed, in filteredItems below.
-    setItems(r ? await listItemsForRun(r.id) : [])
-    return r
-  }, [])
+  const { data: profile, isLoading: profileLoading } = useProfile()
+  const { data: run = null, refetch: refetchRun } = useLatestRun(profile?.id)
+  // Kept unfiltered — items.length is compared against run.total_items to know when text
+  // generation is done, and total_items counts every calendar slot including any historical
+  // youtube/facebook ones from before Content Text Engine stopped generating them. Filtering
+  // here would make that comparison never resolve for older runs. Youtube/facebook items are
+  // filtered out only where they're actually displayed, in filteredItems below.
+  const { data: items = [], refetch: refetchItems } = useRunItems(run?.id)
+
+  // Replaces the old 4s setInterval: Realtime pushes each content_items insert/update as the
+  // Text and Image engines write them, so the grid fills in live with no polling at all.
+  const load = useCallback(async (_profileId?: string) => {
+    await Promise.all([refetchRun(), refetchItems()])
+  }, [refetchRun, refetchItems])
 
   useEffect(() => {
-    listProfiles().then(async (profiles) => {
-      const p = profiles[0] ?? null
-      setProfile(p)
-      if (p) {
-        setStrategy(await getLatestStrategy(p.id))
-        await load(p.id)
-      }
-    })
-  }, [load])
-
-  // Poll while text generation is still filling in items, or any image-eligible item
-  // is still waiting on its gpt-image-1 render.
-  useEffect(() => {
-    if (!profile || !run) return
-    const stillWaitingOnText = items.length < run.total_items
-    const stillWaitingOnImages = items.some(
-      (it) => IMAGE_CONTENT_TYPES.includes(it.content_type) && !it.media_url && it.status !== 'failed',
-    )
-    const active = stillWaitingOnText || stillWaitingOnImages
-    if (active && !pollRef.current) {
-      pollRef.current = setInterval(() => load(profile.id), 4000)
-    } else if (!active && pollRef.current) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
-    }
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
-      pollRef.current = null
-    }
-  }, [profile, run, items, load])
+    if (profile) getLatestStrategy(profile.id).then(setStrategy)
+  }, [profile])
 
   async function onGenerate() {
     if (!profile) return
@@ -176,7 +147,7 @@ export default function ContentFactory() {
     }
   }
 
-  if (profile === undefined) {
+  if (profileLoading) {
     return (
       <div className="flex justify-center py-16">
         <Spinner size={24} />
