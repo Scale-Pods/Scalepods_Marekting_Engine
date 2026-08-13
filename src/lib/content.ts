@@ -31,16 +31,20 @@ export function isActivePlatform(platform?: string | null): boolean {
 }
 
 /**
- * Which LinkedIn identity a post goes out as — three real accounts share one LinkedIn
- * Developer app (LinkedIn issues per-member/per-org tokens, not per-app), so this is what
- * distinguishes them once a post reaches the Publishing Engine. "company_page" needs the
- * Community Management API's w_organization_social approval to actually post (pending as of
- * 2026-08-12) — it's offered here regardless so the composer doesn't need a follow-up change
- * once that approval lands.
+ * Which LinkedIn identity a post goes out as. Values here MUST match the string literals the
+ * "LinkedIn Account Router" switch in the ScalePods · Publishing Engine n8n workflow checks
+ * for ('hrishikesh' | 'adnan' | 'raunak') — the switch has no fallback branch, so any other
+ * value (a stale 'founder2', a typo, etc.) makes the post silently vanish with no error and no
+ * publish. Update both together.
+ *
+ * "company_page" has no matching branch yet — it's offered here so the composer doesn't need a
+ * follow-up change, but selecting it today is a no-op until Community Management API's
+ * w_organization_social approval lands and that branch gets added (pending as of 2026-08-13).
  */
 export const LINKEDIN_ACCOUNTS: { value: string; label: string }[] = [
-  { value: 'hrishikesh', label: 'Hrishikesh (Founder)' },
-  { value: 'founder2', label: 'Founder 2' },
+  { value: 'hrishikesh', label: 'Hrishikesh' },
+  { value: 'adnan', label: 'Adnan (Founder)' },
+  { value: 'raunak', label: 'Raunak (Founder)' },
   { value: 'company_page', label: 'ScalePods Page' },
 ]
 
