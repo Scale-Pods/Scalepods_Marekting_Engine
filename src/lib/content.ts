@@ -42,9 +42,9 @@ export function isActivePlatform(platform?: string | null): boolean {
  * w_organization_social approval lands and that branch gets added (pending as of 2026-08-13).
  */
 export const LINKEDIN_ACCOUNTS: { value: string; label: string }[] = [
-  { value: 'hrishikesh', label: 'Hrishikesh' },
-  { value: 'adnan', label: 'Adnan (Founder)' },
-  { value: 'raunak', label: 'Raunak (Founder)' },
+  { value: 'hrishikesh', label: "Hrishikesh's LinkedIn Account" },
+  { value: 'adnan', label: "Adnan's LinkedIn Account" },
+  { value: 'raunak', label: "Raunak's LinkedIn Account" },
   { value: 'company_page', label: 'ScalePods Page' },
 ]
 
