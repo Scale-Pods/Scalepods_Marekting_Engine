@@ -28,7 +28,15 @@ export interface BlogPost {
   slug: string
   category: string
   excerpt: string
+  /** Fallback/single banner — what the live site currently renders (its dynamic-post render
+   *  path only reads website_content.hero_image, no dark/light split — see docs/blog-module.md).
+   *  Kept in sync from banner_url_dark on save so the currently-working single-banner path never
+   *  regresses. */
   banner_url: string | null
+  /** Dark/light banner variants. Stored today; not yet read by the live site (needs a matching
+   *  site-side schema + [slug]/page.tsx change — same category of gap as the CTA fields). */
+  banner_url_dark: string | null
+  banner_url_light: string | null
   sections: BlogSection[]
   cta_label: string | null
   cta_url: string | null
@@ -63,12 +71,20 @@ export async function getBlogPost(id: string): Promise<BlogPost | null> {
   return data as BlogPost | null
 }
 
+// A post needs at least one usable banner for the live site's single hero_image column, so the
+// dark variant (this app's default theme) wins as the fallback when both are set, and either one
+// alone works when only one is uploaded.
+function resolveFallbackBanner(dark: string | null, light: string | null): string | null {
+  return dark ?? light ?? null
+}
+
 export async function createBlogPost(input: {
   title: string
   slug: string
   category: string
   excerpt: string
-  bannerUrl: string | null
+  bannerUrlDark: string | null
+  bannerUrlLight: string | null
   sections: BlogSection[]
   ctaLabel: string | null
   ctaUrl: string | null
@@ -80,7 +96,9 @@ export async function createBlogPost(input: {
       slug: input.slug,
       category: input.category,
       excerpt: input.excerpt,
-      banner_url: input.bannerUrl,
+      banner_url: resolveFallbackBanner(input.bannerUrlDark, input.bannerUrlLight),
+      banner_url_dark: input.bannerUrlDark,
+      banner_url_light: input.bannerUrlLight,
       sections: input.sections,
       cta_label: input.ctaLabel,
       cta_url: input.ctaUrl,
@@ -99,12 +117,21 @@ export async function updateBlogPost(
     slug: string
     category: string
     excerpt: string
-    bannerUrl: string | null
+    bannerUrlDark: string | null
+    bannerUrlLight: string | null
     sections: BlogSection[]
     ctaLabel: string | null
     ctaUrl: string | null
   }>,
 ): Promise<BlogPost> {
+  const bannerFields =
+    patch.bannerUrlDark !== undefined || patch.bannerUrlLight !== undefined
+      ? {
+          banner_url_dark: patch.bannerUrlDark ?? null,
+          banner_url_light: patch.bannerUrlLight ?? null,
+          banner_url: resolveFallbackBanner(patch.bannerUrlDark ?? null, patch.bannerUrlLight ?? null),
+        }
+      : {}
   const { data, error } = await supabase
     .from('blog_posts')
     .update({
@@ -112,7 +139,7 @@ export async function updateBlogPost(
       ...(patch.slug !== undefined ? { slug: patch.slug } : {}),
       ...(patch.category !== undefined ? { category: patch.category } : {}),
       ...(patch.excerpt !== undefined ? { excerpt: patch.excerpt } : {}),
-      ...(patch.bannerUrl !== undefined ? { banner_url: patch.bannerUrl } : {}),
+      ...bannerFields,
       ...(patch.sections !== undefined ? { sections: patch.sections } : {}),
       ...(patch.ctaLabel !== undefined ? { cta_label: patch.ctaLabel } : {}),
       ...(patch.ctaUrl !== undefined ? { cta_url: patch.ctaUrl } : {}),

@@ -14,6 +14,41 @@ import AssetUploader from '../components/AssetUploader'
 import RichTextEditor from '../components/blog/RichTextEditor'
 import { BlogPreviewModal } from '../components/blog/BlogPreview'
 
+function BannerSlot({
+  label, url, onUploaded, onRemove, storagePrefix,
+}: {
+  label: string
+  url: string | null
+  onUploaded: (url: string) => void
+  onRemove: () => void
+  storagePrefix: string
+}) {
+  return (
+    <div>
+      <div className="label mb-2">{label}</div>
+      {url ? (
+        <div className="relative">
+          <img src={url} alt={label} className="w-full h-auto rounded-lg" />
+          <button
+            type="button"
+            onClick={onRemove}
+            className="absolute -top-2 -right-2 h-6 w-6 rounded-full flex items-center justify-center text-white"
+            style={{ background: 'var(--accent-orange)' }}
+            aria-label={`Remove ${label.toLowerCase()}`}
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ) : (
+        <div className="w-full h-24 rounded-lg flex flex-col items-center justify-center gap-2" style={{ background: 'var(--fill-tertiary)' }}>
+          <FileText size={18} className="text-muted" />
+          <AssetUploader pathPrefix={storagePrefix} label="Upload" onUploaded={onUploaded} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function BlogPostEditor() {
   const params = useParams<{ id: string }>()
   const isNew = !params.id || params.id === 'new'
@@ -29,7 +64,8 @@ export default function BlogPostEditor() {
   const [slugEdited, setSlugEdited] = useState(false)
   const [category, setCategory] = useState('Article')
   const [excerpt, setExcerpt] = useState('')
-  const [bannerUrl, setBannerUrl] = useState<string | null>(null)
+  const [bannerUrlDark, setBannerUrlDark] = useState<string | null>(null)
+  const [bannerUrlLight, setBannerUrlLight] = useState<string | null>(null)
   const [ctaLabel, setCtaLabel] = useState('')
   const [ctaUrl, setCtaUrl] = useState('')
   const [doc, setDoc] = useState<JSONContent>(() => sectionsToTiptapDoc([]))
@@ -53,7 +89,8 @@ export default function BlogPostEditor() {
       setSlugEdited(true)
       setCategory(existing.category)
       setExcerpt(existing.excerpt)
-      setBannerUrl(existing.banner_url)
+      setBannerUrlDark(existing.banner_url_dark ?? existing.banner_url)
+      setBannerUrlLight(existing.banner_url_light)
       setCtaLabel(existing.cta_label ?? '')
       setCtaUrl(existing.cta_url ?? '')
       setDoc(sectionsToTiptapDoc(existing.sections))
@@ -89,7 +126,8 @@ export default function BlogPostEditor() {
         slug: slug.trim(),
         category: category.trim() || 'Article',
         excerpt: excerpt.trim(),
-        bannerUrl,
+        bannerUrlDark,
+        bannerUrlLight,
         sections,
         ctaLabel: ctaLabel.trim() || null,
         ctaUrl: ctaUrl.trim() || null,
@@ -235,28 +273,24 @@ export default function BlogPostEditor() {
         </div>
 
         <div className="space-y-5">
-          <div>
-            <div className="label mb-2">Banner image</div>
-            {bannerUrl ? (
-              <div className="relative">
-                <img src={bannerUrl} alt="Banner preview" className="w-full h-auto rounded-lg" />
-                <button
-                  type="button"
-                  onClick={() => setBannerUrl(null)}
-                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full flex items-center justify-center text-white"
-                  style={{ background: 'var(--accent-orange)' }}
-                  aria-label="Remove banner"
-                >
-                  <X size={13} />
-                </button>
-              </div>
-            ) : (
-              <div className="w-full h-36 rounded-lg flex flex-col items-center justify-center gap-2" style={{ background: 'var(--fill-tertiary)' }}>
-                <FileText size={20} className="text-muted" />
-                <AssetUploader pathPrefix={storagePrefix} label="Upload banner" onUploaded={(url) => setBannerUrl(url)} />
-              </div>
-            )}
-          </div>
+          <BannerSlot
+            label="Banner — dark mode"
+            url={bannerUrlDark}
+            onUploaded={setBannerUrlDark}
+            onRemove={() => setBannerUrlDark(null)}
+            storagePrefix={storagePrefix}
+          />
+          <BannerSlot
+            label="Banner — light mode (optional)"
+            url={bannerUrlLight}
+            onUploaded={setBannerUrlLight}
+            onRemove={() => setBannerUrlLight(null)}
+            storagePrefix={storagePrefix}
+          />
+          <p className="text-muted text-xs -mt-3">
+            Both are saved, but the live site currently only renders one banner — see docs/blog-module.md.
+            The dark version is used until that's fixed on the site's side.
+          </p>
 
           <div>
             <label className="label">Category</label>
@@ -278,7 +312,8 @@ export default function BlogPostEditor() {
           title={title}
           category={category}
           excerpt={excerpt}
-          bannerUrl={bannerUrl}
+          bannerUrlDark={bannerUrlDark}
+          bannerUrlLight={bannerUrlLight}
           sections={tiptapDocToSections(doc).sections}
           onClose={() => setPreviewOpen(false)}
         />

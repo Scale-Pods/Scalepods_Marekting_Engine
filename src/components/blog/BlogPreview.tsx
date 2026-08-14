@@ -91,18 +91,22 @@ function renderBody(body: string, c: SiteColors) {
 }
 
 export function BlogPreviewModal({
-  title, category, excerpt, bannerUrl, sections, onClose,
+  title, category, excerpt, bannerUrlDark, bannerUrlLight, sections, onClose,
 }: {
   title: string
   category: string
   excerpt: string
-  bannerUrl: string | null
+  bannerUrlDark: string | null
+  bannerUrlLight: string | null
   sections: BlogSection[]
   onClose: () => void
 }) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const c = SITE_THEME[theme]
   const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  // Same fallback rule as blog.ts's resolveFallbackBanner — show whichever variant exists for
+  // the toggled theme, or the other one if only one was uploaded.
+  const bannerUrl = theme === 'dark' ? (bannerUrlDark ?? bannerUrlLight) : (bannerUrlLight ?? bannerUrlDark)
 
   return createPortal(
     <div

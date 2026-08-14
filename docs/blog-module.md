@@ -18,6 +18,25 @@ site-repo change (out of scope here), not something to paper over from the Growt
 composer's preview does not show a fake CTA button either, for the same reason (see its header
 note).
 
+## ⚠️ Known gap: dark/light banner variants don't render anywhere yet
+
+Same shape of gap as the CTA fields. The composer (2026-08-14) now has two banner upload slots
+("Banner — dark mode" / "Banner — light mode") and `blog_posts` has `banner_url_dark` /
+`banner_url_light` columns. Both are sent to `/api/blog/publish` as `bannerUrlDark`/
+`bannerUrlLight` — but `website_content` only has a single `hero_image` column, and
+`[slug]/page.tsx`'s dynamic-post `displayData` never sets `imageDark`/`imageLight` (only static
+posts in `blogData.ts` get that treatment via `BlogHeroImage`'s theme-aware `<img>` swap). So
+today only the fallback `banner_url` (= dark variant, or light if dark wasn't set — see
+`resolveFallbackBanner` in `src/lib/blog.ts`) actually shows live, in whichever theme the visitor
+has. The composer's own Preview *does* show both correctly when its theme toggle is used, since
+that's Growth OS's own rendering, not the live site's.
+
+To make this real on the site: add `hero_image_dark`/`hero_image_light` columns to
+`website_content`, have `/api/blog/publish` write them from `bannerUrlDark`/`bannerUrlLight`
+(already being sent), and pass them into `displayData.imageDark`/`imageLight` for the dynamic-post
+branch in `[slug]/page.tsx` so `BlogHeroImage` picks up the same theme-swap it already does for
+static posts.
+
 Added 2026-08-14 as a 5th content pillar (see [CLAUDE.md](../CLAUDE.md) Non-negotiables).
 Publishes to the **separate** `scalepods.co` Next.js repo (`F:\Scalepods.co\scalepods-website-nextjs`,
 built/maintained via its own Antigravity agent) — not to a social API, so this module has its own
