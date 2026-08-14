@@ -239,7 +239,7 @@ export default function BlogPostEditor() {
             <div className="label mb-2">Banner image</div>
             {bannerUrl ? (
               <div className="relative">
-                <img src={bannerUrl} alt="Banner preview" className="w-full h-36 object-cover rounded-lg" />
+                <img src={bannerUrl} alt="Banner preview" className="w-full h-auto rounded-lg" />
                 <button
                   type="button"
                   onClick={() => setBannerUrl(null)}
