@@ -29,17 +29,33 @@ integration contract instead of an n8n social-publish node.
 - **Images**: any absolute URL or a `/public`-relative path both work — the rendering logic
   branches on whether the string starts with `http`.
 
-## ⚠️ Bug to fix on the site side before this ships
+## ⚠️ Bug to fix on the site side before this ships — TWO filters, not one
 
-`src/app/blog/page.tsx:33`:
-```ts
-.lt("published_at", "2026-01-01") // Only show posts before 2026
-```
-The **listing page** hides every DB-backed post published in 2026+ unless its slug is on a
-hardcoded allow-list a few lines below. Today is 2026-08-14 — any post this module publishes
-would be live at its direct URL and in the sitemap, but invisible on `/blog` itself. Must be
-removed/fixed by the Antigravity agent before real use, or every new post silently vanishes from
-the page people actually browse.
+`src/app/blog/page.tsx` hides 2026+ posts from the listing **twice**, independently. Fixing only
+one still hides new CMS posts:
+
+1. **Line 33**, the Supabase query itself:
+   ```ts
+   .lt("published_at", "2026-01-01") // Only show posts before 2026
+   ```
+2. **Lines 56–67**, a second filter applied to the *combined* list after the query:
+   ```ts
+   .filter(post =>
+     post.category !== "Case Study" && (
+       !post.date.includes("2026") ||
+       post.slug === "ai-employees-digital-workforce-guide" ||
+       // ...7 more hardcoded slugs
+     )
+   )
+   ```
+   This one clearly exists to allow-list today's real 2026-dated *static* posts through a
+   date heuristic that was never meant to apply to dynamic ones — but as written it applies to
+   the combined `dynamicPosts + staticPosts` list, so it would keep hiding any *new* dynamic
+   post from `/blog` even after fix #1.
+
+Both need fixing together — see the exact instruction in the Antigravity prompt below. Today
+is 2026-08-14: any post this module publishes right now is live at its direct URL and in the
+sitemap, but invisible on `/blog` itself until both filters are corrected.
 
 ## Gaps vs. Antigravity's original proposal
 
@@ -51,7 +67,7 @@ wanted (2 small migration + code changes on the site side).
 
 ## Integration contract (once the API route exists)
 
-`POST https://www.scalepods.co/api/blog/publish`, header `x-publish-secret: <shared secret>`.
+`POST https://www.scalepods.co/api/blog/publish`, header `x-publish-secret: <BLOG_PUBLISH_SECRET>`.
 
 ```json
 {
@@ -59,15 +75,25 @@ wanted (2 small migration + code changes on the site side).
   "slug": "string",
   "category": "string",
   "excerpt": "string",
-  "bannerUrl": "string (public URL)",
-  "status": "draft | published",
+  "bannerUrl": "string | null",
+  "ctaLabel": "string | null",
+  "ctaUrl": "string | null",
   "sections": [
-    { "heading": "string", "body": "markdown: **bold**, [text](url)", "image": "string?", "imageCaption": "string?" }
+    { "heading": "string", "body": "markdown: **bold**, [text](url), bullet lines start with \"• \"", "image": "string?", "imageCaption": "string?" }
   ]
 }
 ```
-The route upserts by `slug` into `website_content` (with `sections` → `JSON.stringify()` into
-`body`), then `revalidatePath('/blog')` + `revalidatePath('/blog/' + slug)`.
+Route logic:
+1. 401 if `x-publish-secret` doesn't match `process.env.BLOG_PUBLISH_SECRET`.
+2. Upsert by `slug` into `website_content`: `title`, `excerpt`, `category`,
+   `hero_image = bannerUrl`, `body = JSON.stringify(sections)`, `cta_label = ctaLabel`,
+   `cta_url = ctaUrl`, `status = 'published'`, `published_at = now()`.
+3. `revalidatePath('/blog')` + `revalidatePath('/blog/' + slug)`.
+4. Respond `{ success: true, slug, url: "https://www.scalepods.co/blog/" + slug }` (200) or
+   `{ success: false, error }` (500) on a Supabase error.
+
+No `metaTitle`/`metaDescription`/`bannerUrlLight` in the payload — those aren't in the schema
+today (see gaps above), so this is the real, buildable contract, not the earlier draft.
 
 ## Growth OS side (this repo) — build plan
 
