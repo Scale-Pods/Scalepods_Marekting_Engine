@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { JSONContent } from '@tiptap/react'
-import { Send, FileText, X, ExternalLink } from 'lucide-react'
+import { Send, FileText, X, ExternalLink, AlertTriangle } from 'lucide-react'
 import { useBlogPost, queryClient, qk } from '../lib/queries'
 import {
-  createBlogPost, updateBlogPost, publishBlogPost, slugify,
+  createBlogPost, updateBlogPost, triggerBlogPublish, slugify,
   BLOG_PUBLISH_ENABLED, BLOG_CATEGORY_SUGGESTIONS, type BlogPost,
 } from '../lib/blog'
 import { sectionsToTiptapDoc, tiptapDocToSections } from '../lib/blogSerializer'
@@ -34,12 +34,17 @@ export default function BlogPostEditor() {
   const [doc, setDoc] = useState<JSONContent>(() => sectionsToTiptapDoc([]))
   const [ready, setReady] = useState(isNew)
   const [saving, setSaving] = useState<'draft' | 'publish' | null>(null)
-  const [publishedSlug, setPublishedSlug] = useState<string | null>(null)
+  const [publishing, setPublishing] = useState(false)
 
-  // Hydrate once the existing post loads (edit mode). RichTextEditor only mounts once `ready`
-  // is true, so it always starts with the real content instead of racing this fetch.
+  // Full-field hydration runs ONCE per post, guarded by this ref rather than re-running on
+  // every `existing` change — Realtime (queries.ts) refetches this row whenever n8n updates it
+  // post-publish, and re-running the full sync on that refetch would stomp any edit the user
+  // made to title/slug/etc. in the meantime. Status/slug are tracked separately below because
+  // those two ARE meant to react live to that refetch.
+  const hydratedRef = useRef(false)
   useEffect(() => {
-    if (existing) {
+    if (existing && !hydratedRef.current) {
+      hydratedRef.current = true
       setPostId(existing.id)
       setTitle(existing.title)
       setSlug(existing.slug)
@@ -50,10 +55,17 @@ export default function BlogPostEditor() {
       setCtaLabel(existing.cta_label ?? '')
       setCtaUrl(existing.cta_url ?? '')
       setDoc(sectionsToTiptapDoc(existing.sections))
-      if (existing.status === 'published') setPublishedSlug(existing.slug)
       setReady(true)
     }
   }, [existing])
+
+  // Reacts live to n8n flipping status after a publish attempt completes (success or failure),
+  // via the same Realtime subscription that refetches `existing`. Doesn't touch any other field.
+  const publishedSlug = existing?.status === 'published' ? existing.slug : null
+  const publishFailed = existing?.status === 'failed'
+  useEffect(() => {
+    if (existing?.status === 'published' || existing?.status === 'failed') setPublishing(false)
+  }, [existing?.status])
 
   useEffect(() => {
     if (!slugEdited) setSlug(slugify(title))
@@ -93,10 +105,11 @@ export default function BlogPostEditor() {
       queryClient.invalidateQueries({ queryKey: qk.blogPost(saved.id) })
 
       if (publish) {
-        const published = await publishBlogPost(saved.id)
-        setPublishedSlug(published.slug)
-        queryClient.invalidateQueries({ queryKey: qk.blogPosts })
-        toast.success('Published to scalepods.co')
+        setPublishing(true)
+        await triggerBlogPublish(saved.id)
+        // n8n owns the status flip from here — Realtime picks up 'published' or 'failed' on
+        // this row automatically (see the effect above), no polling needed.
+        toast.info('Publishing to scalepods.co…')
       } else {
         toast.success('Draft saved')
       }
@@ -127,8 +140,8 @@ export default function BlogPostEditor() {
               Save draft
             </Button>
             <Button
-              loading={saving === 'publish'}
-              disabled={saving !== null || !BLOG_PUBLISH_ENABLED}
+              loading={saving === 'publish' || publishing}
+              disabled={saving !== null || publishing || !BLOG_PUBLISH_ENABLED}
               title={BLOG_PUBLISH_ENABLED ? undefined : 'Publishing to scalepods.co is not wired up yet — see docs/blog-module.md'}
               onClick={() => onSave(true)}
             >
@@ -141,6 +154,18 @@ export default function BlogPostEditor() {
       {!BLOG_PUBLISH_ENABLED && (
         <div className="text-xs px-3 py-2 rounded-lg mb-5" style={{ background: 'var(--fill-tertiary)', color: 'var(--text-secondary)' }}>
           Publishing to scalepods.co isn't wired up yet (see docs/blog-module.md) — drafts save fine, Publish is disabled until then.
+        </div>
+      )}
+
+      {publishing && (
+        <div className="text-xs px-3 py-2 rounded-lg mb-4 w-fit" style={{ background: 'var(--fill-tertiary)', color: 'var(--text-secondary)' }}>
+          Publishing to scalepods.co — this updates live once the site confirms, no need to reload.
+        </div>
+      )}
+
+      {publishFailed && (
+        <div className="text-xs px-3 py-2 rounded-lg mb-4 w-fit flex items-center gap-1.5" style={{ background: 'var(--fill-tertiary)', color: 'var(--accent-orange)' }}>
+          <AlertTriangle size={13} /> The last publish attempt failed on the site's side — check the n8n execution, then try Publish again.
         </div>
       )}
 

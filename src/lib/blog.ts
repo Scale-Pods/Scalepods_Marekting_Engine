@@ -2,11 +2,11 @@ import { supabase, fireWebhook } from './supabase'
 
 // Blog module (docs/blog-module.md) — publishes to the separate scalepods.co Next.js site via
 // its own /api/blog/publish route, not a social API. BLOG_PUBLISH_ENABLED follows the same
-// credit/scope-safety pattern as GENERATION_ENABLED/PUBLISHING_ENABLED in content.ts: stays
-// false until the site side (API route + the 2026-01-01 listing-page filter bug — see
-// docs/blog-module.md) is confirmed ready. Drafting and editing work regardless of this flag;
-// only the "push live to the site" step is gated.
-export const BLOG_PUBLISH_ENABLED = false
+// credit/scope-safety pattern as GENERATION_ENABLED/PUBLISHING_ENABLED in content.ts.
+// Flipped true 2026-08-14: the site's /api/blog/publish route is deployed and verified live
+// (401 on missing/wrong secret), the 2026-01-01 listing-page filter bug is fixed, and the
+// ScalePods · Blog Publish n8n workflow is published.
+export const BLOG_PUBLISH_ENABLED = true
 
 /**
  * One section of a post body. Deliberately mirrors exactly what scalepods.co's
@@ -32,7 +32,7 @@ export interface BlogPost {
   sections: BlogSection[]
   cta_label: string | null
   cta_url: string | null
-  status: 'draft' | 'published'
+  status: 'draft' | 'published' | 'failed'
   published_at: string | null
   created_at: string
   updated_at: string
@@ -131,21 +131,19 @@ export async function deleteBlogPost(id: string): Promise<void> {
 }
 
 /**
- * Pushes a post live to scalepods.co via the sp-blog-publish n8n workflow, which calls the
- * site's POST /api/blog/publish (docs/blog-module.md). Gated by BLOG_PUBLISH_ENABLED — see that
- * flag's comment for why. Flips status/published_at locally only after the webhook accepts.
+ * Fires the sp-blog-publish n8n workflow, which calls the site's POST /api/blog/publish
+ * (docs/blog-module.md) and only THEN writes status='published'/published_at back to this row —
+ * n8n owns that transition, not the FE. Flipping it here optimistically as soon as the webhook
+ * was merely *accepted* would repeat the exact class of bug the scheduling fix addressed
+ * earlier: "accepted" and "actually done" are different moments, and the site call can fail
+ * (wrong secret, RLS, revalidate error) after n8n's webhook has already returned 200. On
+ * failure n8n writes status='failed' instead, so a stuck post is visible rather than silently
+ * stuck in limbo. The FE picks up whichever status wins via the existing Realtime subscription
+ * on blog_posts (queries.ts) — no polling needed here.
  */
-export async function publishBlogPost(id: string): Promise<BlogPost> {
+export async function triggerBlogPublish(id: string): Promise<void> {
   if (!BLOG_PUBLISH_ENABLED) {
     throw new Error('Publishing to scalepods.co is not wired up yet — see docs/blog-module.md')
   }
   await fireWebhook('sp-blog-publish', { blogPostId: id })
-  const { data, error } = await supabase
-    .from('blog_posts')
-    .update({ status: 'published', published_at: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single()
-  if (error) throw error
-  return data as BlogPost
 }

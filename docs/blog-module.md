@@ -1,5 +1,10 @@
 # Blog module — ScalePods Growth OS → scalepods.co
 
+**Status (2026-08-14): fully wired.** Site route deployed and verified (401 on missing/wrong
+secret), both listing-page filters fixed, `ScalePods · Blog Publish` n8n workflow published,
+`BLOG_PUBLISH_ENABLED = true`. Pending: one real live-publish verification (needs explicit
+go-ahead since it publishes real content to the live site).
+
 Added 2026-08-14 as a 5th content pillar (see [CLAUDE.md](../CLAUDE.md) Non-negotiables).
 Publishes to the **separate** `scalepods.co` Next.js repo (`F:\Scalepods.co\scalepods-website-nextjs`,
 built/maintained via its own Antigravity agent) — not to a social API, so this module has its own
