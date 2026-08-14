@@ -34,7 +34,14 @@ function parseInline(text: string, c: SiteColors): ReactNode[] {
   const parts = text.split(/(\[.*?\]\(.*?\)|\*\*.*?\*\*)/g).filter(Boolean)
   return parts.map((part, i) => {
     const link = part.match(/^\[(.*)\]\((.*)\)$/)
-    if (link) return <a key={i} href={link[2]} style={{ color: c.blueMid, textDecoration: 'underline', fontWeight: 600 }}>{link[1]}</a>
+    if (link) {
+      // Site-relative links (e.g. cross-links to other posts) resolve against scalepods.co on
+      // the live page, not wherever this preview happens to be hosted — qualify them so the
+      // preview's links actually go where they'll really go, and open in a new tab so clicking
+      // one doesn't navigate away from the editor.
+      const href = link[2].startsWith('/') ? `https://www.scalepods.co${link[2]}` : link[2]
+      return <a key={i} href={href} target="_blank" rel="noreferrer" style={{ color: c.blueMid, textDecoration: 'underline', fontWeight: 600 }}>{link[1]}</a>
+    }
     if (part.startsWith('**') && part.endsWith('**')) return <strong key={i} style={{ fontWeight: 700, color: c.textBright }}>{part.slice(2, -2)}</strong>
     return part
   })
