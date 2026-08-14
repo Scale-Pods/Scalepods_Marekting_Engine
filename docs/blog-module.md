@@ -2,8 +2,21 @@
 
 **Status (2026-08-14): fully wired.** Site route deployed and verified (401 on missing/wrong
 secret), both listing-page filters fixed, `ScalePods · Blog Publish` n8n workflow published,
-`BLOG_PUBLISH_ENABLED = true`. Pending: one real live-publish verification (needs explicit
-go-ahead since it publishes real content to the live site).
+`BLOG_PUBLISH_ENABLED = true`. Composer has a live "Preview" that renders the draft in the
+site's actual visual style (`src/components/blog/BlogPreview.tsx`). Pending: one real
+live-publish verification (needs explicit go-ahead since it publishes real content to the live
+site).
+
+## ⚠️ Known gap: the CTA fields don't render anywhere yet
+
+The composer's "CTA button text/link" fields write to `blog_posts.cta_label`/`cta_url`, and the
+site's `/api/blog/publish` route correctly writes them into `website_content.cta_label`/`cta_url`
+— but `src/app/blog/[slug]/page.tsx`'s dynamic-post `displayData` object never reads those two
+columns into what it passes to `BlogBodyClient`, so today a CTA set in the composer is silently
+inert: it's stored, but nothing on the live page renders it. Left as-is for now — a real fix is a
+site-repo change (out of scope here), not something to paper over from the Growth OS side. The
+composer's preview does not show a fake CTA button either, for the same reason (see its header
+note).
 
 Added 2026-08-14 as a 5th content pillar (see [CLAUDE.md](../CLAUDE.md) Non-negotiables).
 Publishes to the **separate** `scalepods.co` Next.js repo (`F:\Scalepods.co\scalepods-website-nextjs`,
