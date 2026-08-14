@@ -24,6 +24,8 @@ const Calendar = lazy(() => import('./pages/Calendar'))
 const Publishing = lazy(() => import('./pages/Publishing'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const Settings = lazy(() => import('./pages/Settings'))
+const Blog = lazy(() => import('./pages/Blog'))
+const BlogPostEditor = lazy(() => import('./pages/BlogPostEditor'))
 
 function FullScreenLoader() {
   return (
@@ -74,6 +76,9 @@ export default function App() {
               <Route path="/review" element={<Protected><CreativeReview /></Protected>} />
               <Route path="/calendar" element={<Protected><Calendar /></Protected>} />
               <Route path="/publishing" element={<Protected><Publishing /></Protected>} />
+              <Route path="/blog" element={<Protected><Blog /></Protected>} />
+              <Route path="/blog/new" element={<Protected><BlogPostEditor /></Protected>} />
+              <Route path="/blog/:id" element={<Protected><BlogPostEditor /></Protected>} />
               <Route path="/analytics" element={<Protected><Analytics /></Protected>} />
               <Route path="/settings" element={<Protected><Settings /></Protected>} />
 

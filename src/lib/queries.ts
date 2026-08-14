@@ -5,6 +5,7 @@ import { listProfiles, type BusinessProfile } from './clients'
 import { listApprovedItems, listScheduledPosts } from './publishing'
 import { getLatestRun, listItemsForRun, listReviewItems, isActivePlatform } from './content'
 import { NOTIFICATIONS_KEY } from './notifications'
+import { listBlogPosts, getBlogPost } from './blog'
 
 // Shared query cache. Before this every page cold-fetched on mount — including re-running
 // listProfiles() on nearly every screen — so navigating back and forth refetched everything
@@ -32,6 +33,8 @@ export const qk = {
   reviewItems: (profileId: string) => ['reviewItems', profileId] as const,
   notifications: NOTIFICATIONS_KEY,
   navCounts: ['navCounts'] as const,
+  blogPosts: ['blogPosts'] as const,
+  blogPost: (id: string) => ['blogPost', id] as const,
 }
 
 /** Sidebar badge counts. Was a blind 60s setInterval; now realtime-invalidated like everything else. */
@@ -98,6 +101,18 @@ export function useRunItems(runId: string | undefined) {
   })
 }
 
+export function useBlogPosts() {
+  return useQuery({ queryKey: qk.blogPosts, queryFn: listBlogPosts })
+}
+
+export function useBlogPost(id: string | undefined) {
+  return useQuery({
+    queryKey: qk.blogPost(id ?? 'none'),
+    queryFn: () => getBlogPost(id!),
+    enabled: Boolean(id),
+  })
+}
+
 /**
  * One Postgres-changes subscription for the whole app. Any insert/update/delete on the content
  * or publishing tables invalidates the matching queries, so every open screen (and every
@@ -127,6 +142,10 @@ export function useRealtimeSync() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
         qc.invalidateQueries({ queryKey: NOTIFICATIONS_KEY })
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blog_posts' }, () => {
+        qc.invalidateQueries({ queryKey: qk.blogPosts })
+        qc.invalidateQueries({ queryKey: ['blogPost'] })
       })
       .subscribe()
 

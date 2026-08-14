@@ -305,6 +305,20 @@
   }
   .label { font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); letter-spacing: -0.006em; }
 
+  /* Blog post body editor (RichTextEditor.tsx / Tiptap) — kept deliberately plain: only the
+     marks scalepods.co's renderer actually understands (H2, bold, bullet list, link) get
+     styling here, matching blogSerializer.ts's supported subset. */
+  .blog-editor-prose { outline: none; font-size: 0.9375rem; line-height: 1.7; color: var(--text-primary); }
+  .blog-editor-prose h2 { font-size: 1.25rem; font-weight: 700; margin: 1.25rem 0 0.5rem; letter-spacing: -0.015em; }
+  .blog-editor-prose p { margin: 0.5rem 0; }
+  .blog-editor-prose ul { margin: 0.5rem 0; padding-left: 1.25rem; list-style: disc; }
+  .blog-editor-prose a { color: var(--accent-blue); text-decoration: underline; }
+  .blog-editor-prose strong { font-weight: 700; }
+  .blog-editor-prose p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder); float: left; height: 0; pointer-events: none;
+    color: var(--text-quaternary);
+  }
+
   /* Faint circuit/grid overlay for hero panels (0.02–0.04 opacity) */
   .grid-overlay {
     background-image:

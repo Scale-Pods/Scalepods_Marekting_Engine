@@ -5,8 +5,11 @@ re-scoped, re-branded replication of the shipped **Victory Growth OS**. Read
 `docs/PRD.md` and `docs/TRD.md` first — they are the source of truth.
 
 ## Non-negotiables
-- **Platforms: Instagram, YouTube, Facebook, LinkedIn ONLY.** No TikTok, no website/WordPress
-  blog, no Google Business Profile, no GA4/CRM lead analytics.
+- **Platforms: Instagram, YouTube, Facebook, LinkedIn, and the scalepods.co Blog.** No TikTok,
+  no Google Business Profile, no GA4/CRM lead analytics. Blog was added 2026-08-14 as a 5th
+  content pillar — it publishes to the separate `scalepods.co` Next.js site (its own repo,
+  not this one), not to a social API, so it has its own integration contract; see
+  `docs/blog-module.md` (once written) for the details Antigravity's discovery answers settle.
 - **LinkedIn is the primary channel** (B2B agency audience). Register the Company Page +
   Marketing Developer Platform app for real analytics.
 - **Video generation is MANUAL-ONLY.** HeyGen (founder avatar) and fal.ai Veo/Seedance

@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target, Sparkles,
-  CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown,
+  CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
@@ -27,6 +27,7 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
       { to: '/review', label: 'Creative Review', icon: <CheckSquare size={18} />, roles: ['admin', 'client', 'designer'] },
       { to: '/calendar', label: 'Calendar', icon: <CalendarDays size={18} />, roles: ['admin', 'client'] },
       { to: '/publishing', label: 'Publishing', icon: <Send size={18} />, roles: ['admin'] },
+      { to: '/blog', label: 'Blog', icon: <Newspaper size={18} />, roles: ['admin', 'client'] },
     ],
   },
   {
