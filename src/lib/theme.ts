@@ -43,7 +43,10 @@ const DRAFT_KEY = 'sp-composer-draft'
 export interface ComposerDraft {
   platform: string
   linkedinAccount: string
-  mediaUrl: string | null
+  /** One or more uploaded image URLs, in order. >1 on linkedin means a carousel (LinkedIn-only
+   *  today — see CreatePostModal). Superseded the old single `mediaUrl` field; drafts saved
+   *  before that change are migrated on restore (see CreatePostModal). */
+  images: string[]
   caption: string
   hashtagsInput: string
   cta: string
@@ -53,13 +56,20 @@ export interface ComposerDraft {
   savedAt: string
 }
 
+/** Pre-carousel draft shape, kept only to migrate anything already sitting in localStorage. */
+interface LegacyComposerDraft extends Omit<ComposerDraft, 'images'> {
+  mediaUrl: string | null
+}
+
 export function getComposerDraft(): ComposerDraft | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY)
     if (!raw) return null
-    const d = JSON.parse(raw) as ComposerDraft
+    const d = JSON.parse(raw) as ComposerDraft | LegacyComposerDraft
+    const images = 'images' in d ? d.images : d.mediaUrl ? [d.mediaUrl] : []
     // Only offer to restore something with actual content in it.
-    return d.caption || d.mediaUrl || d.hashtagsInput || d.cta ? d : null
+    if (!(d.caption || images.length || d.hashtagsInput || d.cta)) return null
+    return { ...d, images }
   } catch {
     return null
   }

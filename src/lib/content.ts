@@ -242,10 +242,14 @@ export async function reviseWithAi(itemId: string, notes: string): Promise<void>
 export async function createManualItem(input: {
   profileId: string
   platform: string
-  contentType: 'static_image' | 'social_caption'
+  contentType: 'static_image' | 'social_caption' | 'carousel'
   title: string | null
   body: string
   mediaUrl: string | null
+  /** Full slide set for a carousel post (LinkedIn multi-image gallery — see the Publishing
+   *  Engine's carousel branch). Only written to metadata when there's more than one — a single
+   *  slide is just `mediaUrl`, same as any other image post. */
+  slides: ContentSlide[]
   hashtags: string[]
   cta: string
   scheduledDate: string | null
@@ -274,6 +278,7 @@ export async function createManualItem(input: {
         ...(input.scheduledTime ? { scheduled_time: input.scheduledTime } : {}),
         ...(input.scheduledAt ? { scheduled_at: input.scheduledAt } : {}),
         ...(input.linkedinAccount ? { linkedin_account: input.linkedinAccount } : {}),
+        ...(input.slides.length > 1 ? { slides: input.slides } : {}),
       },
     })
     .select()
