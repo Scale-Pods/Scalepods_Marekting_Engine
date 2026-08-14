@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { JSONContent } from '@tiptap/react'
-import { Send, FileText, X, ExternalLink, AlertTriangle } from 'lucide-react'
+import { Send, FileText, X, ExternalLink, AlertTriangle, Eye } from 'lucide-react'
 import { useBlogPost, queryClient, qk } from '../lib/queries'
 import {
   createBlogPost, updateBlogPost, triggerBlogPublish, slugify,
@@ -12,6 +12,7 @@ import { PageHeader, Button, Spinner } from '../components/ui'
 import { useToast, toastMessage } from '../components/Toast'
 import AssetUploader from '../components/AssetUploader'
 import RichTextEditor from '../components/blog/RichTextEditor'
+import { BlogPreviewModal } from '../components/blog/BlogPreview'
 
 export default function BlogPostEditor() {
   const params = useParams<{ id: string }>()
@@ -35,6 +36,7 @@ export default function BlogPostEditor() {
   const [ready, setReady] = useState(isNew)
   const [saving, setSaving] = useState<'draft' | 'publish' | null>(null)
   const [publishing, setPublishing] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   // Full-field hydration runs ONCE per post, guarded by this ref rather than re-running on
   // every `existing` change — Realtime (queries.ts) refetches this row whenever n8n updates it
@@ -135,6 +137,9 @@ export default function BlogPostEditor() {
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={() => navigate('/blog')}>
               <X size={15} /> Close
+            </Button>
+            <Button variant="ghost" onClick={() => setPreviewOpen(true)}>
+              <Eye size={15} /> Preview
             </Button>
             <Button variant="ghost" loading={saving === 'draft'} disabled={saving !== null} onClick={() => onSave(false)}>
               Save draft
@@ -267,6 +272,17 @@ export default function BlogPostEditor() {
           </div>
         </div>
       </div>
+
+      {previewOpen && (
+        <BlogPreviewModal
+          title={title}
+          category={category}
+          excerpt={excerpt}
+          bannerUrl={bannerUrl}
+          sections={tiptapDocToSections(doc).sections}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
     </div>
   )
 }
