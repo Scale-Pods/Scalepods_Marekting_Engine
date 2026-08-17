@@ -1,50 +1,142 @@
-import { useEffect, useState } from 'react'
-import { CalendarDays } from 'lucide-react'
-import { supabase } from '../lib/supabase'
-import { listProfiles, type BusinessProfile } from '../lib/clients'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import { useProfile, useCalendarItems, useScheduledPosts } from '../lib/queries'
 import type { ContentItem, ContentStatus } from '../lib/content'
-import { PageHeader, Badge, EmptyState, Spinner } from '../components/ui'
+import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
 import { PlatformBadge } from '../components/mediaUi'
+import {
+  PostPreviewModal, ActivityPreviewModal, ReadyPreviewActions, ContentTypeChip, STATUS_META,
+} from '../components/postPreview'
+import type { ScheduledPost } from '../lib/publishing'
+import CreatePostModal from '../components/CreatePostModal'
 
-const STATUS_TONE: Record<ContentStatus, 'green' | 'blue' | 'orange'> = {
-  pending: 'blue', generating: 'blue', ready: 'blue', in_review: 'blue',
+// Tone for content_items that haven't reached scheduled_posts yet — the pipeline stages, not
+// the publish outcome (that's STATUS_META, imported above, once a scheduled_posts row exists).
+const ITEM_STATUS_TONE: Record<ContentStatus, 'green' | 'blue' | 'orange' | 'grey'> = {
+  pending: 'grey', generating: 'grey', ready: 'blue', in_review: 'blue',
   approved: 'blue', revision: 'orange', failed: 'orange',
   published: 'green', scheduled: 'green', publishing: 'blue',
 }
 
-function formatDateHeader(dateStr: string) {
-  const date = new Date(dateStr + 'T00:00:00')
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const diffDays = Math.round((date.getTime() - today.getTime()) / 86400000)
-  const label = date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-  if (diffDays === 0) return `Today · ${label}`
-  if (diffDays === 1) return `Tomorrow · ${label}`
-  if (diffDays < 0) return `${label} (past)`
-  return label
+const TONE_DOT: Record<'green' | 'blue' | 'orange' | 'grey', string> = {
+  green: 'var(--accent-green)',
+  blue: 'var(--accent-blue)',
+  orange: 'var(--accent-orange)',
+  grey: 'var(--text-muted)',
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+function toDateKey(d: Date) {
+  // Local calendar date, not UTC — a post scheduled for 11pm local shouldn't jump to the next
+  // day's cell just because toISOString() converts to UTC first.
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function dateKeyOf(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  return toDateKey(new Date(iso))
+}
+
+/** One entry on a day cell — either a real scheduled_posts row (accurate status/time) or a
+ *  content_item that hasn't been scheduled yet (still just carrying a target date). */
+type DayEntry =
+  | { kind: 'post'; key: string; dateKey: string; post: ScheduledPost }
+  | { kind: 'item'; key: string; dateKey: string; item: ContentItem }
+
+function buildEntries(items: ContentItem[], posts: ScheduledPost[]): Map<string, DayEntry[]> {
+  const byDate = new Map<string, DayEntry[]>()
+  const scheduledItemIds = new Set<string>()
+
+  for (const post of posts) {
+    const dateKey = dateKeyOf(post.scheduled_time) ?? dateKeyOf(post.published_at) ?? dateKeyOf(post.created_at)
+    if (!dateKey) continue
+    scheduledItemIds.add(post.content_item_id)
+    const entry: DayEntry = { kind: 'post', key: `p-${post.id}`, dateKey, post }
+    byDate.set(dateKey, [...(byDate.get(dateKey) ?? []), entry])
+  }
+
+  for (const item of items) {
+    // Already represented above via its scheduled_posts row (with the more accurate date) —
+    // showing it again here from content_items' possibly-stale scheduled_date would duplicate it.
+    if (scheduledItemIds.has(item.id)) continue
+    if (!item.scheduled_date) continue
+    const dateKey = item.scheduled_date.slice(0, 10)
+    const entry: DayEntry = { kind: 'item', key: `i-${item.id}`, dateKey, item }
+    byDate.set(dateKey, [...(byDate.get(dateKey) ?? []), entry])
+  }
+
+  return byDate
+}
+
+function DayChip({ entry, onClick }: { entry: DayEntry; onClick: () => void }) {
+  const platform = entry.kind === 'post' ? entry.post.platform : entry.item.platform
+  const tone = entry.kind === 'post' ? (STATUS_META[entry.post.status] ?? STATUS_META.pending).tone : ITEM_STATUS_TONE[entry.item.status]
+  const label = entry.kind === 'post'
+    ? entry.post.title || entry.post.caption || `${entry.post.platform} post`
+    : entry.item.title || entry.item.body || `${entry.item.platform} post`
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-1.5 rounded px-1.5 py-1 text-left transition-colors hover:brightness-110"
+      style={{ background: 'var(--fill-secondary)', borderLeft: `2.5px solid ${TONE_DOT[tone]}` }}
+    >
+      <span className="shrink-0 leading-none" style={{ fontSize: 11 }}>
+        <PlatformBadge platform={platform} size="sm" />
+      </span>
+      <span className="truncate text-[11px] text-secondary leading-none">{label}</span>
+    </button>
+  )
 }
 
 export default function Calendar() {
-  const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
-  const [items, setItems] = useState<ContentItem[]>([])
+  const { data: profile, isLoading: profileLoading } = useProfile()
+  const { data: items = [] } = useCalendarItems(profile?.id)
+  const { data: posts = [] } = useScheduledPosts(profile?.id)
 
-  useEffect(() => {
-    listProfiles().then(async (profiles) => {
-      const p = profiles[0] ?? null
-      setProfile(p)
-      if (p) {
-        const { data, error } = await supabase
-          .from('content_items')
-          .select('*')
-          .eq('profile_id', p.id)
-          .not('scheduled_date', 'is', null)
-          .order('scheduled_date', { ascending: true })
-        if (!error) setItems((data ?? []) as ContentItem[])
-      }
+  const [cursor, setCursor] = useState(() => {
+    const d = new Date()
+    d.setDate(1)
+    return d
+  })
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createDate, setCreateDate] = useState<string | undefined>(undefined)
+  const [dayListKey, setDayListKey] = useState<string | null>(null)
+  const [activePost, setActivePost] = useState<ScheduledPost | null>(null)
+  const [activeItem, setActiveItem] = useState<ContentItem | null>(null)
+
+  const entriesByDate = useMemo(() => buildEntries(items, posts), [items, posts])
+
+  const todayKey = toDateKey(new Date())
+
+  // Sunday-start 6-week grid, padded with the trailing days of the previous month and the
+  // leading days of the next — the standard month-calendar layout, and it means real posts
+  // scheduled in the first/last week of a month are never cut off from view.
+  const gridDays = useMemo(() => {
+    const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
+    const startOffset = first.getDay()
+    const gridStart = new Date(first)
+    gridStart.setDate(first.getDate() - startOffset)
+    return Array.from({ length: 42 }, (_, i) => {
+      const d = new Date(gridStart)
+      d.setDate(gridStart.getDate() + i)
+      return d
     })
-  }, [])
+  }, [cursor])
 
-  if (profile === undefined) {
+  function openCreate(dateKey?: string) {
+    setCreateDate(dateKey)
+    setCreateOpen(true)
+  }
+
+  function onEntryClick(entry: DayEntry) {
+    if (entry.kind === 'post') setActivePost(entry.post)
+    else setActiveItem(entry.item)
+  }
+
+  if (profileLoading) {
     return (
       <div className="flex justify-center py-16">
         <Spinner size={24} />
@@ -61,46 +153,161 @@ export default function Calendar() {
     )
   }
 
-  const grouped = items.reduce<Record<string, ContentItem[]>>((acc, item) => {
-    const key = item.scheduled_date!
-    ;(acc[key] ??= []).push(item)
-    return acc
-  }, {})
-  const dates = Object.keys(grouped).sort()
+  const monthLabel = cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  const dayListEntries = dayListKey ? (entriesByDate.get(dayListKey) ?? []) : []
 
   return (
     <div>
       <PageHeader
         accent={<Badge><CalendarDays size={12} /> Calendar</Badge>}
-        title={`Content Calendar — ${profile.business_name}`}
-        subtitle="Every generated post, grouped by its scheduled date."
+        title={`Calendar — ${profile.business_name}`}
+        subtitle="Every post with a target date — draft, ready, scheduled, or published. Click a day to add one, click a post to view or schedule it."
+        actions={
+          <Button onClick={() => openCreate()}>
+            <Plus size={15} /> Create post
+          </Button>
+        }
       />
 
-      {dates.length === 0 ? (
-        <EmptyState icon={<CalendarDays size={28} />} title="Nothing scheduled yet" hint="Generate content from the Content Factory — dated items land here." />
-      ) : (
-        <div className="space-y-6">
-          {dates.map((date) => (
-            <div key={date}>
-              <div className="text-sm font-medium text-secondary mb-2">{formatDateHeader(date)}</div>
-              <div className="space-y-2">
-                {grouped[date].map((item) => (
-                  <div key={item.id} className="card p-3 flex items-center gap-3">
-                    {item.media_url && <img src={item.media_url} alt={item.title ?? ''} className="h-12 w-12 object-cover rounded-md shrink-0" />}
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium truncate">{item.title}</div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <PlatformBadge platform={item.platform} />
-                        <span className="text-muted text-xs">{item.content_type.replace(/_/g, ' ')}</span>
-                      </div>
-                    </div>
-                    <Badge tone={STATUS_TONE[item.status] ?? 'blue'}>{item.status.replace(/_/g, ' ')}</Badge>
-                  </div>
-                ))}
-              </div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setCursor((c) => new Date(c.getFullYear(), c.getMonth() - 1, 1))}
+            className="h-8 w-8 rounded-md flex items-center justify-center transition-colors hover:brightness-110"
+            style={{ background: 'var(--fill-secondary)' }}
+            aria-label="Previous month"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            onClick={() => setCursor((c) => new Date(c.getFullYear(), c.getMonth() + 1, 1))}
+            className="h-8 w-8 rounded-md flex items-center justify-center transition-colors hover:brightness-110"
+            style={{ background: 'var(--fill-secondary)' }}
+            aria-label="Next month"
+          >
+            <ChevronRight size={16} />
+          </button>
+          <button
+            onClick={() => { const d = new Date(); d.setDate(1); setCursor(d) }}
+            className="ml-1 px-3 h-8 rounded-md text-xs font-semibold transition-colors hover:brightness-110"
+            style={{ background: 'var(--fill-secondary)' }}
+          >
+            Today
+          </button>
+        </div>
+        <div className="font-medium">{monthLabel}</div>
+      </div>
+
+      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-subtle)' }}>
+        <div className="grid grid-cols-7" style={{ background: 'var(--border-subtle)', gap: 1 }}>
+          {WEEKDAYS.map((w) => (
+            <div key={w} className="text-center text-[11px] font-semibold text-muted py-2" style={{ background: 'var(--bg-card)' }}>
+              {w}
             </div>
           ))}
+          {gridDays.map((d) => {
+            const dateKey = toDateKey(d)
+            const inMonth = d.getMonth() === cursor.getMonth()
+            const isToday = dateKey === todayKey
+            const dayEntries = entriesByDate.get(dateKey) ?? []
+            const visible = dayEntries.slice(0, 3)
+            const overflow = dayEntries.length - visible.length
+
+            return (
+              <div
+                key={dateKey}
+                className="group relative flex flex-col gap-1 p-1.5 min-h-[104px]"
+                style={{ background: 'var(--bg-card)', opacity: inMonth ? 1 : 0.45 }}
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className="text-xs font-semibold h-5 w-5 flex items-center justify-center rounded-full"
+                    style={isToday ? { background: 'var(--accent-green)', color: 'var(--cta-text)' } : { color: 'var(--text-secondary)' }}
+                  >
+                    {d.getDate()}
+                  </span>
+                  <button
+                    onClick={() => openCreate(dateKey)}
+                    className="h-5 w-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ background: 'var(--fill-secondary)' }}
+                    aria-label={`Create post for ${dateKey}`}
+                    title="Create post for this day"
+                  >
+                    <Plus size={12} />
+                  </button>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {visible.map((entry) => (
+                    <DayChip key={entry.key} entry={entry} onClick={() => onEntryClick(entry)} />
+                  ))}
+                  {overflow > 0 && (
+                    <button
+                      onClick={() => setDayListKey(dateKey)}
+                      className="text-[11px] text-muted text-left px-1.5 hover:text-sage transition-colors"
+                    >
+                      +{overflow} more
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
+      </div>
+
+      {createOpen && (
+        <CreatePostModal
+          profileId={profile.id}
+          initialDate={createDate}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => setCreateOpen(false)}
+        />
+      )}
+
+      {dayListKey && (
+        <Modal title={new Date(`${dayListKey}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} onClose={() => setDayListKey(null)}>
+          <div className="flex flex-col gap-1.5">
+            {dayListEntries.map((entry) => (
+              <DayChip key={entry.key} entry={entry} onClick={() => { setDayListKey(null); onEntryClick(entry) }} />
+            ))}
+          </div>
+        </Modal>
+      )}
+
+      {activePost && (
+        <ActivityPreviewModal
+          post={activePost}
+          onClose={() => setActivePost(null)}
+          onChanged={() => setActivePost(null)}
+        />
+      )}
+
+      {activeItem && (
+        <PostPreviewModal
+          img={activeItem.media_url}
+          platform={activeItem.platform}
+          caption={activeItem.body}
+          headerExtra={
+            <>
+              <Badge tone={ITEM_STATUS_TONE[activeItem.status]} className="capitalize">{activeItem.status.replace(/_/g, ' ')}</Badge>
+              <ContentTypeChip type={activeItem.content_type} />
+            </>
+          }
+          footer={
+            activeItem.status === 'approved' ? (
+              <ReadyPreviewActions item={activeItem} onDone={() => setActiveItem(null)} />
+            ) : (
+              <Link
+                to={['ready', 'in_review', 'revision'].includes(activeItem.status) ? '/review' : '/publishing'}
+                onClick={() => setActiveItem(null)}
+                className="btn-ghost w-full !py-2 text-xs justify-center"
+              >
+                {['ready', 'in_review', 'revision'].includes(activeItem.status) ? 'Open in Creative Review' : 'Open in Publishing'}
+              </Link>
+            )
+          }
+          onClose={() => setActiveItem(null)}
+        />
       )}
     </div>
   )

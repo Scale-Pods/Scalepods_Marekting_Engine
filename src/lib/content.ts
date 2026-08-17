@@ -150,6 +150,20 @@ export async function triggerCarousel(itemId: string): Promise<void> {
   await fireWebhook('sp-carousel', { itemId })
 }
 
+/** Every item with a target date, any status — powers Calendar's month grid (planned, ready,
+ *  approved, scheduled, published, everything). Publishing's own lists filter by status because
+ *  they're each one stage of the pipeline; Calendar is a date view across the whole pipeline. */
+export async function listCalendarItems(profileId: string): Promise<ContentItem[]> {
+  const { data, error } = await supabase
+    .from('content_items')
+    .select('*')
+    .eq('profile_id', profileId)
+    .not('scheduled_date', 'is', null)
+    .order('scheduled_date', { ascending: true })
+  if (error) throw error
+  return data as ContentItem[]
+}
+
 /** Items awaiting creative review (M8): ready for the first time, or sent back for revision. */
 export async function listReviewItems(profileId: string): Promise<ContentItem[]> {
   const { data, error } = await supabase

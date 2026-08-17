@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { supabase } from './supabase'
 import { listProfiles, type BusinessProfile } from './clients'
 import { listApprovedItems, listScheduledPosts } from './publishing'
-import { getLatestRun, listItemsForRun, listReviewItems, isActivePlatform } from './content'
+import { getLatestRun, listItemsForRun, listReviewItems, listCalendarItems, isActivePlatform } from './content'
 import { NOTIFICATIONS_KEY } from './notifications'
 import { listBlogPosts, getBlogPost } from './blog'
 
@@ -31,6 +31,7 @@ export const qk = {
   latestRun: (profileId: string) => ['latestRun', profileId] as const,
   runItems: (runId: string) => ['runItems', runId] as const,
   reviewItems: (profileId: string) => ['reviewItems', profileId] as const,
+  calendarItems: (profileId: string) => ['calendarItems', profileId] as const,
   notifications: NOTIFICATIONS_KEY,
   navCounts: ['navCounts'] as const,
   blogPosts: ['blogPosts'] as const,
@@ -85,6 +86,14 @@ export function useReviewItems(profileId: string | undefined) {
   })
 }
 
+export function useCalendarItems(profileId: string | undefined) {
+  return useQuery({
+    queryKey: qk.calendarItems(profileId ?? 'none'),
+    queryFn: async () => (await listCalendarItems(profileId!)).filter((i) => isActivePlatform(i.platform)),
+    enabled: Boolean(profileId),
+  })
+}
+
 export function useLatestRun(profileId: string | undefined) {
   return useQuery({
     queryKey: qk.latestRun(profileId ?? 'none'),
@@ -131,6 +140,7 @@ export function useRealtimeSync() {
         qc.invalidateQueries({ queryKey: ['approvedItems'] })
         qc.invalidateQueries({ queryKey: ['reviewItems'] })
         qc.invalidateQueries({ queryKey: ['runItems'] })
+        qc.invalidateQueries({ queryKey: ['calendarItems'] })
         qc.invalidateQueries({ queryKey: qk.navCounts })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_posts' }, () => {

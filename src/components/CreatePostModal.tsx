@@ -13,10 +13,16 @@ export default function CreatePostModal({
   profileId,
   onClose,
   onCreated,
+  initialDate,
 }: {
   profileId: string
   onClose: () => void
   onCreated: () => void
+  /** Pre-fills "Set a target date" with this day (YYYY-MM-DD) — used by Calendar when the
+   *  composer is opened from a specific day cell, so scheduling from there is a single field
+   *  (just pick a time) instead of re-entering the date already clicked. Ignored if a draft was
+   *  restored, so resuming an in-progress post never silently overwrites what was already there. */
+  initialDate?: string
 }) {
   // Restore any in-progress draft up front so an accidental dismiss (backdrop click, X, or
   // navigating away) isn't destructive.
@@ -33,8 +39,8 @@ export default function CreatePostModal({
   const [caption, setCaption] = useState(restored?.caption ?? '')
   const [hashtagsInput, setHashtagsInput] = useState(restored?.hashtagsInput ?? '')
   const [cta, setCta] = useState(restored?.cta ?? '')
-  const [when, setWhen] = useState<'now' | 'date'>(restored?.when ?? 'now')
-  const [scheduledDate, setScheduledDate] = useState(restored?.scheduledDate ?? '')
+  const [when, setWhen] = useState<'now' | 'date'>(restored?.when ?? (initialDate ? 'date' : 'now'))
+  const [scheduledDate, setScheduledDate] = useState(restored?.scheduledDate ?? initialDate ?? '')
   const [scheduledTime, setScheduledTime] = useState(restored?.scheduledTime ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
