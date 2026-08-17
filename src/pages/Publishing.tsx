@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Send, Clock, ExternalLink, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { Send, Clock, ExternalLink, CheckCircle2, XCircle, Loader2, Pencil, Ban, Check, X } from 'lucide-react'
 import { useToast, toastMessage } from '../components/Toast'
 import { useProfile, useApprovedItems, useScheduledPosts } from '../lib/queries'
-import { triggerPublish } from '../lib/publishing'
+import { triggerPublish, cancelScheduledPost, editScheduledPost, type ScheduledPost } from '../lib/publishing'
 import { PUBLISHING_ENABLED, type ContentItem } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner } from '../components/ui'
 import { PostTile, PostPreviewModal, ContentTypeChip } from '../components/postPreview'
@@ -102,6 +102,141 @@ function ReadyPreviewActions({ item, onDone }: { item: ContentItem; onDone: () =
         <Clock size={13} /> Schedule
       </Button>
     </div>
+  )
+}
+
+// Full modal for a "Recent activity" item — owns its own `editing` state, so it has to be a
+// real component instantiated only while a post is selected (not a plain helper function called
+// conditionally inside Publishing's render, which would call useState conditionally and break
+// React's Rules of Hooks the moment the modal opens/closes).
+function ActivityPreviewModal({
+  post, onClose, onChanged, hasPrev, hasNext, onPrev, onNext,
+}: {
+  post: ScheduledPost
+  onClose: () => void
+  onChanged: () => void
+  hasPrev: boolean
+  hasNext: boolean
+  onPrev: () => void
+  onNext: () => void
+}) {
+  const toast = useToast()
+  const [editing, setEditing] = useState(false)
+  const [title, setTitle] = useState(post.title ?? '')
+  const [body, setBody] = useState(post.caption ?? '')
+  const [saving, setSaving] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+
+  function startEdit() {
+    setTitle(post.title ?? '')
+    setBody(post.caption ?? '')
+    setEditing(true)
+  }
+
+  async function onSave() {
+    if (!body.trim()) return toast.error("Caption can't be empty.")
+    setSaving(true)
+    try {
+      await editScheduledPost(post, { title: title.trim() || null, body: body.trim() })
+      toast.success('Post updated')
+      setEditing(false)
+      onChanged()
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not save changes'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function onCancelSchedule() {
+    if (!window.confirm('Cancel this scheduled post? It will move back to "Ready to publish" instead of firing automatically — nothing is deleted.')) return
+    setCancelling(true)
+    try {
+      await cancelScheduledPost(post)
+      toast.success('Schedule cancelled — back in Ready to publish')
+      onChanged()
+      onClose()
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not cancel this schedule'))
+      setCancelling(false)
+    }
+  }
+
+  const meta = STATUS_META[post.status] ?? STATUS_META.pending
+
+  return (
+    <PostPreviewModal
+      img={post.media_url}
+      platform={post.platform}
+      caption={editing ? undefined : post.caption || post.title}
+      headerExtra={<Badge tone={meta.tone}>{meta.label}</Badge>}
+      body={
+        editing ? (
+          <div className="space-y-2.5 w-full">
+            <input
+              className="input !py-1.5 text-sm"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Title (optional)"
+            />
+            <textarea
+              className="input text-sm"
+              rows={5}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Caption — hashtags can go right in the text"
+            />
+          </div>
+        ) : (
+          <>
+            <div className="text-muted text-xs">
+              {post.published_at
+                ? new Date(post.published_at).toLocaleString()
+                : post.scheduled_time
+                  ? new Date(post.scheduled_time).toLocaleString()
+                  : ''}
+            </div>
+            {post.error && <div className="text-terracotta text-xs">{post.error}</div>}
+          </>
+        )
+      }
+      footer={
+        editing ? (
+          <div className="flex gap-2 w-full">
+            <Button className="flex-1 justify-center !py-2 text-xs" loading={saving} onClick={onSave}>
+              <Check size={13} /> Save
+            </Button>
+            <Button variant="ghost" className="flex-1 justify-center !py-2 text-xs" disabled={saving} onClick={() => setEditing(false)}>
+              <X size={13} /> Discard
+            </Button>
+          </div>
+        ) : post.status === 'scheduled' ? (
+          <div className="flex gap-2 w-full">
+            <Button variant="ghost" className="flex-1 justify-center !py-2 text-xs" onClick={startEdit}>
+              <Pencil size={13} /> Edit
+            </Button>
+            <Button
+              variant="ghost"
+              className="flex-1 justify-center !py-2 text-xs"
+              style={{ color: 'var(--accent-orange)' }}
+              loading={cancelling}
+              onClick={onCancelSchedule}
+            >
+              <Ban size={13} /> Cancel schedule
+            </Button>
+          </div>
+        ) : post.post_url ? (
+          <a href={post.post_url} target="_blank" rel="noreferrer" className="btn-primary w-full !py-2 text-xs justify-center">
+            View live <ExternalLink size={13} />
+          </a>
+        ) : undefined
+      }
+      onClose={onClose}
+      hasPrev={hasPrev}
+      hasNext={hasNext}
+      onPrev={onPrev}
+      onNext={onNext}
+    />
   )
 }
 
@@ -241,31 +376,10 @@ export default function Publishing() {
       )}
 
       {activePost && (
-        <PostPreviewModal
-          img={activePost.media_url}
-          platform={activePost.platform}
-          caption={activePost.caption || activePost.title}
-          headerExtra={<Badge tone={(STATUS_META[activePost.status] ?? STATUS_META.pending).tone}>{(STATUS_META[activePost.status] ?? STATUS_META.pending).label}</Badge>}
-          body={
-            <>
-              <div className="text-muted text-xs">
-                {activePost.published_at
-                  ? new Date(activePost.published_at).toLocaleString()
-                  : activePost.scheduled_time
-                    ? new Date(activePost.scheduled_time).toLocaleString()
-                    : ''}
-              </div>
-              {activePost.error && <div className="text-terracotta text-xs">{activePost.error}</div>}
-            </>
-          }
-          footer={
-            activePost.post_url ? (
-              <a href={activePost.post_url} target="_blank" rel="noreferrer" className="btn-primary w-full !py-2 text-xs justify-center">
-                View live <ExternalLink size={13} />
-              </a>
-            ) : undefined
-          }
+        <ActivityPreviewModal
+          post={activePost}
           onClose={() => setPreviewIndex(null)}
+          onChanged={() => setAwaitingSync(true)}
           hasPrev={(previewIndex ?? 0) > 0}
           hasNext={(previewIndex ?? 0) < filteredPosts.length - 1}
           onPrev={() => setPreviewIndex((i) => (i !== null ? i - 1 : i))}

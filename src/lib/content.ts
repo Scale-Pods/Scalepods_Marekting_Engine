@@ -227,6 +227,39 @@ export async function replaceItemMedia(id: string, mediaUrl: string): Promise<vo
   if (error) throw error
 }
 
+/**
+ * Direct manual edit of a content item's text (title/body/hashtags/CTA) — no AI involved, unlike
+ * reviseWithAi below. Used by Publishing's "Edit" action on an already-scheduled post: the
+ * Publishing Engine re-fetches this row fresh at actual publish time (Build Context), so an
+ * edit made here reaches the real post even after scheduling. The caller (lib/publishing.ts's
+ * editScheduledPost) is responsible for also updating scheduled_posts' own cached caption/title
+ * so the Publishing UI doesn't show stale text in the meantime.
+ */
+export async function updateContentItemText(id: string, patch: {
+  title?: string | null
+  body?: string
+  hashtags?: string[]
+  cta?: string
+}): Promise<ContentItem> {
+  const { data: existing, error: fetchErr } = await supabase.from('content_items').select('metadata').eq('id', id).single()
+  if (fetchErr) throw fetchErr
+  const metadata = { ...(existing?.metadata ?? {}) }
+  if (patch.hashtags !== undefined) metadata.hashtags = patch.hashtags
+  if (patch.cta !== undefined) metadata.cta = patch.cta
+  const { data, error } = await supabase
+    .from('content_items')
+    .update({
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
+      ...(patch.body !== undefined ? { body: patch.body } : {}),
+      metadata,
+    })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as ContentItem
+}
+
 /** Fires the Content Revision workflow (M8 "Revise with AI") — regenerates copy for one item. */
 export async function reviseWithAi(itemId: string, notes: string): Promise<void> {
   if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
