@@ -5,8 +5,8 @@ import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Bold, Heading2, List, ImageIcon, Link2, Check, X } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
-import { SectionImage } from './SectionImageNode'
+import { uploadBlogImage } from '../../lib/blogUpload'
+import { SectionImage, BlogImagePathContext } from './SectionImageNode'
 
 // The whole extension set is deliberately capped at exactly what scalepods.co's renderer
 // understands (docs/blog-module.md) — H2-only headings mark section boundaries, bold + link are
@@ -116,17 +116,16 @@ export default function RichTextEditor({
     setLinkPromptOpen(null)
   }
 
+  // First upload fills the dark slot — matches the banner's dark-first convention. The node
+  // itself (SectionImageNode.tsx) offers a second slot to add the light variant afterward.
   async function onImageChosen(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file || !editor) return
     setUploading(true)
     try {
-      const path = `${imagePathPrefix}/${Date.now()}-${file.name}`
-      const { error } = await supabase.storage.from('content-media').upload(path, file, { upsert: true })
-      if (error) throw error
-      const { data } = supabase.storage.from('content-media').getPublicUrl(path)
-      editor.chain().focus().insertContent({ type: 'sectionImage', attrs: { src: data.publicUrl, caption: '' } }).run()
+      const url = await uploadBlogImage(file, imagePathPrefix)
+      editor.chain().focus().insertContent({ type: 'sectionImage', attrs: { srcDark: url, srcLight: null, caption: '' } }).run()
     } catch {
       // Non-fatal — the editor just won't gain an image node. Caller's save flow surfaces
       // real errors; a failed inline upload here is low-stakes enough not to need its own toast.
@@ -184,7 +183,9 @@ export default function RichTextEditor({
         </BubbleMenu>
       )}
 
-      <EditorContent editor={editor} className="px-4 py-3 min-h-[280px]" />
+      <BlogImagePathContext.Provider value={imagePathPrefix}>
+        <EditorContent editor={editor} className="px-4 py-3 min-h-[280px]" />
+      </BlogImagePathContext.Provider>
     </div>
   )
 }

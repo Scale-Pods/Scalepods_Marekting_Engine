@@ -12,13 +12,20 @@ export const BLOG_PUBLISH_ENABLED = true
  * One section of a post body. Deliberately mirrors exactly what scalepods.co's
  * `website_content.body` (JSON.stringify'd) expects — see docs/blog-module.md. `body` supports
  * only `**bold**` and `[text](url)` inline, plus bullet lines starting with "• " — that's the
- * full markdown subset the site's renderer (BlogBodyClient.tsx) understands. One image per
- * section (the site schema has no field for more).
+ * full markdown subset the site's renderer (BlogBodyClient.tsx) understands. One image SLOT per
+ * section (the site schema has no field for more) — but unlike the top-level banner, the site's
+ * shared renderer already theme-swaps a section's image for BOTH static and CMS-published posts,
+ * so `imageDark`/`imageLight` genuinely work today, no site-side change needed. `image` is the
+ * single/fallback form (always shown regardless of theme) — set when only one variant exists;
+ * `imageDark`/`imageLight` are set together when both do, and `image` is omitted in that case
+ * (matches the site's own `section.image || (dark ? section.imageDark : section.imageLight)`).
  */
 export interface BlogSection {
   heading: string
   body: string
   image?: string
+  imageDark?: string
+  imageLight?: string
   imageCaption?: string
 }
 

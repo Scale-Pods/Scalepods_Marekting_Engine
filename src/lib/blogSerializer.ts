@@ -35,7 +35,7 @@ export function tiptapDocToSections(doc: JSONContent): { sections: BlogSection[]
     current.body = current.body ? `${current.body}\n${line}` : line
   }
   function flush() {
-    if (current.heading || current.body.trim() || current.image) sections.push(current)
+    if (current.heading || current.body.trim() || current.image || current.imageDark) sections.push(current)
   }
 
   for (const node of doc.content ?? []) {
@@ -57,10 +57,20 @@ export function tiptapDocToSections(doc: JSONContent): { sections: BlogSection[]
       continue
     }
     if (node.type === 'sectionImage') {
-      if (current.image) {
+      if (current.image || current.imageDark) {
         droppedImages += 1
       } else {
-        current.image = node.attrs?.src
+        const dark: string | undefined = node.attrs?.srcDark || undefined
+        const light: string | undefined = node.attrs?.srcLight || undefined
+        // Matches the site's own section.image || (dark ? imageDark : imageLight) check — only
+        // emit the dark/light pair when BOTH exist, otherwise fall back to the single `image`
+        // field so a one-variant section still renders (theme-swap needs both to pick from).
+        if (dark && light) {
+          current.imageDark = dark
+          current.imageLight = light
+        } else {
+          current.image = dark ?? light
+        }
         current.imageCaption = node.attrs?.caption || undefined
       }
       continue
@@ -107,7 +117,13 @@ export function sectionsToTiptapDoc(sections: BlogSection[]): JSONContent {
       }
     }
     flushBullets()
-    if (s.image) content.push({ type: 'sectionImage', attrs: { src: s.image, caption: s.imageCaption ?? '' } })
+    if (s.imageDark && s.imageLight) {
+      content.push({ type: 'sectionImage', attrs: { srcDark: s.imageDark, srcLight: s.imageLight, caption: s.imageCaption ?? '' } })
+    } else if (s.image) {
+      // Legacy/single-variant form (existing already-imported posts, e.g. AI Employees) — shows
+      // up in the dark slot; add a light variant and it becomes a real theme-swap on next save.
+      content.push({ type: 'sectionImage', attrs: { srcDark: s.image, srcLight: null, caption: s.imageCaption ?? '' } })
+    }
   }
   if (content.length === 0) content.push({ type: 'paragraph' })
   return { type: 'doc', content }

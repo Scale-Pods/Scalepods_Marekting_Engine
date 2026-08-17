@@ -172,16 +172,22 @@ export function BlogPreviewModal({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   {renderBody(s.body, c)}
                 </div>
-                {s.image && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', marginTop: 12, marginBottom: 24 }}>
-                    <div style={{ width: '100%', borderRadius: 12, overflow: 'hidden', border: `1px solid ${c.border}` }}>
-                      <img src={s.image} alt={s.imageCaption || s.heading} style={{ width: '100%', height: 'auto', objectFit: 'cover', display: 'block' }} />
+                {(() => {
+                  // Same rule as the site's own section image render: an explicit `image`
+                  // always wins; otherwise pick by theme when both variants exist.
+                  const sectionImg = s.image ?? (theme === 'dark' ? s.imageDark : s.imageLight)
+                  if (!sectionImg) return null
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', marginTop: 12, marginBottom: 24 }}>
+                      <div style={{ width: '100%', borderRadius: 12, overflow: 'hidden', border: `1px solid ${c.border}` }}>
+                        <img src={sectionImg} alt={s.imageCaption || s.heading} style={{ width: '100%', height: 'auto', objectFit: 'cover', display: 'block' }} />
+                      </div>
+                      {s.imageCaption && (
+                        <span style={{ fontFamily: FONT, fontSize: 13, color: c.textMuted, textAlign: 'center', fontStyle: 'italic' }}>{s.imageCaption}</span>
+                      )}
                     </div>
-                    {s.imageCaption && (
-                      <span style={{ fontFamily: FONT, fontSize: 13, color: c.textMuted, textAlign: 'center', fontStyle: 'italic' }}>{s.imageCaption}</span>
-                    )}
-                  </div>
-                )}
+                  )
+                })()}
               </div>
             ))}
           </div>
