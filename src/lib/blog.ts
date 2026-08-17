@@ -7,10 +7,9 @@ import { supabase, fireWebhook } from './supabase'
 // (401 on missing/wrong secret), the 2026-01-01 listing-page filter bug is fixed, and the
 // ScalePods · Blog Publish n8n workflow is published.
 export const BLOG_PUBLISH_ENABLED = true
-// Separate flag from BLOG_PUBLISH_ENABLED — the site's unpublish route doesn't exist yet
-// (docs/blog-module.md), so this stays false until it's built and verified, same way
-// BLOG_PUBLISH_ENABLED did before its own site route existed.
-export const BLOG_UNPUBLISH_ENABLED = false
+// Flipped true 2026-08-17: DELETE /api/blog/publish is deployed and verified live (401 on
+// missing/wrong secret via direct request, not just code review) — see docs/blog-module.md.
+export const BLOG_UNPUBLISH_ENABLED = true
 
 /**
  * One section of a post body. Deliberately mirrors exactly what scalepods.co's

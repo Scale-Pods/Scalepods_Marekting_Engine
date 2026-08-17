@@ -1,72 +1,52 @@
 # Blog module — ScalePods Growth OS → scalepods.co
 
-**Status (2026-08-14): fully wired.** Site route deployed and verified (401 on missing/wrong
-secret), both listing-page filters fixed, `ScalePods · Blog Publish` n8n workflow published,
-`BLOG_PUBLISH_ENABLED = true`. Composer has a live "Preview" that renders the draft in the
-site's actual visual style (`src/components/blog/BlogPreview.tsx`). Pending: one real
-live-publish verification (needs explicit go-ahead since it publishes real content to the live
-site).
+**Status (2026-08-17): fully wired, all known gaps closed.** Site route deployed and verified
+(401 on missing/wrong secret), both listing-page filters fixed, `ScalePods · Blog Publish` n8n
+workflow published, `BLOG_PUBLISH_ENABLED = true` and `BLOG_UNPUBLISH_ENABLED = true`. Composer
+has a live "Preview" that renders the draft in the site's actual visual style
+(`src/components/blog/BlogPreview.tsx`). Pending: one real live-publish verification (needs
+explicit go-ahead since it publishes real content to the live site).
 
-## ⚠️ No working "remove from the live site" yet — `BLOG_UNPUBLISH_ENABLED = false`
+## Resolved: Unpublish (DELETE /api/blog/publish)
 
-Before the first real live-publish test, the user asked what happens if they publish something
-and want it gone. Checked the code rather than assume: `deleteBlogPost` only deletes the Growth
-OS row — it never touches `website_content`, so a post stays live on scalepods.co even after
-being "deleted" here. There was no undo.
+Was a real gap — `deleteBlogPost` only ever deleted the Growth OS row, never touched
+`website_content`, so a published post had no undo. Fixed on both sides:
 
-Built the Growth OS + n8n side of a real fix (same architecture as publish, n8n owns the status
-transition): an **Unpublish** button (shown once a post is live) fires `sp-blog-unpublish` →
-n8n fetches the row → calls the site → on success sets `status='draft'` here, on failure
-`status='failed'`. The n8n branch is built and published; the button is wired but disabled
-behind `BLOG_UNPUBLISH_ENABLED = false` in `src/lib/blog.ts` until the site side exists.
+- **Growth OS + n8n**: `triggerBlogUnpublish()` fires `sp-blog-unpublish`; n8n fetches the row,
+  calls the site, sets `status='draft'` on success or `'failed'` on failure. Same
+  n8n-owns-the-transition pattern as publish. "Unpublish" button next to "View live".
+- **Site** (Antigravity, commit `0a8ea69`, `Scale-Pods/scalepods-replication` main): added
+  `DELETE` handler to the existing `route.ts` — same secret check, deletes the `website_content`
+  row by `slug`, same `revalidatePath` calls. **Verified independently, not just taken on
+  claim**: read the actual deployed `route.ts`, confirmed the handler matches the contract
+  exactly, and sent live `DELETE` requests with no/wrong secret — both correctly returned 401.
 
-**Contract for the site** (send to Antigravity):
-```
-DELETE https://www.scalepods.co/api/blog/publish
-Header: x-publish-secret: <same secret as before>
-Body: { "slug": "..." }
-```
-Reuses the existing route file — add an `export async function DELETE(req)` handler that checks
-the same secret, then deletes the `website_content` row matching `slug` (or sets a non-published
-status, if keeping history is preferred — but a full delete is simpler and matches "remove it"),
-then `revalidatePath('/blog')` + `revalidatePath('/blog/' + slug)`. Response: `{ success: true }`
-or `{ success: false, error }`.
+`BLOG_UNPUBLISH_ENABLED = true` as of this commit.
 
-Once that's live: flip `BLOG_UNPUBLISH_ENABLED` to `true`, verify with a real publish → unpublish
-round trip, same standard as every other piece of this module.
+## Resolved: CTA card text + dark/light banner variants
 
-## ⚠️ Known gap: the bottom CTA card's custom text doesn't render anywhere yet
+Also verified against the actual deployed code (not the summary alone) — Antigravity took a
+different implementation path than originally asked (no new `website_content` columns; instead
+embeds `bannerUrlDark`/`bannerUrlLight`/`ctaTitle`/`ctaSubtitle` inside the existing `body`
+column as `JSON.stringify({ sections, bannerUrlDark, ctaTitle, ... })`, a wrapper object instead
+of the old bare `sections` array). Checked that this doesn't break anything: `[slug]/page.tsx`'s
+parser handles both shapes (`Array.isArray(parsed) ? parsed : parsed.sections`), and there were
+no live `website_content` rows yet for the old bare-array shape to break.
 
-Every post ends with a hardcoded card (logo, headline, subtext, button — `WorkflowAuditCTA` in
-`BlogBodyClient.tsx`) whose wording today comes from keyword-matching the post title/slug, not
-from any database field. The composer (2026-08-17) now has 4 fields for this — card headline,
-subtext, button text, button link — writing to `blog_posts.cta_title`/`cta_subtitle`/`cta_label`/
-`cta_url`. `cta_label`/`cta_url` already reach `website_content` via the publish route; `cta_title`/
-`cta_subtitle` need that route extended to accept and write them too. Either way, none of the four
-are read by `WorkflowAuditCTA` yet — it needs to accept optional per-post overrides and fall back
-to its current heuristic when they're blank (old/static posts, or a post where the fields were
-left empty on purpose). Composer's own Preview *does* render the real card design with the actual
-text typed so far, since that's Growth OS's own rendering — see its header note for the live-site
-caveat.
+Confirmed by reading the code end to end:
+- `route.ts` (`POST`) writes the wrapper object into `body`.
+- `[slug]/page.tsx` parses it, builds `imageDark`/`imageLight`/`ctaTitle`/`ctaSubtitle`/
+  `ctaLabel`/`ctaUrl` (columns first if present, falling back to the body-JSON values — the
+  columns don't actually exist, confirmed via grep on the migration files, so this always
+  resolves through the body-JSON path in practice, which is fine), and passes all of them into
+  `<BlogHeroImage imageDark={} imageLight={} />` and `<BlogBodyClient ctaTitle={} ctaSubtitle={}
+  ctaLabel={} ctaUrl={} />`.
+- `BlogBodyClient.tsx`'s `WorkflowAuditCTA` accepts these as optional props and overrides its
+  keyword-heuristic text only when each is actually set (`if (ctaTitle) dynamicTitle = ctaTitle`
+  etc.) — old/static posts and any field left blank keep working exactly as before.
 
-## ⚠️ Known gap: dark/light banner variants don't render anywhere yet
-
-Same shape of gap as the CTA fields. The composer (2026-08-14) now has two banner upload slots
-("Banner — dark mode" / "Banner — light mode") and `blog_posts` has `banner_url_dark` /
-`banner_url_light` columns. Both are sent to `/api/blog/publish` as `bannerUrlDark`/
-`bannerUrlLight` — but `website_content` only has a single `hero_image` column, and
-`[slug]/page.tsx`'s dynamic-post `displayData` never sets `imageDark`/`imageLight` (only static
-posts in `blogData.ts` get that treatment via `BlogHeroImage`'s theme-aware `<img>` swap). So
-today only the fallback `banner_url` (= dark variant, or light if dark wasn't set — see
-`resolveFallbackBanner` in `src/lib/blog.ts`) actually shows live, in whichever theme the visitor
-has. The composer's own Preview *does* show both correctly when its theme toggle is used, since
-that's Growth OS's own rendering, not the live site's.
-
-To make this real on the site: add `hero_image_dark`/`hero_image_light` columns to
-`website_content`, have `/api/blog/publish` write them from `bannerUrlDark`/`bannerUrlLight`
-(already being sent), and pass them into `displayData.imageDark`/`imageLight` for the dynamic-post
-branch in `[slug]/page.tsx` so `BlogHeroImage` picks up the same theme-swap it already does for
-static posts.
+Both gaps are genuinely closed. The Growth OS composer's banner/CTA fields now do exactly what
+their labels say on a real publish.
 
 Added 2026-08-14 as a 5th content pillar (see [CLAUDE.md](../CLAUDE.md) Non-negotiables).
 Publishes to the **separate** `scalepods.co` Next.js repo (`F:\Scalepods.co\scalepods-website-nextjs`,
