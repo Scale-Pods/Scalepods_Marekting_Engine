@@ -45,6 +45,11 @@ export interface BlogPost {
   banner_url_dark: string | null
   banner_url_light: string | null
   sections: BlogSection[]
+  /** Bottom CTA card ("Ready to build your AI workforce? / Deploy Alex, Maya... / Build Your AI
+   *  Workforce →"). Not yet read by the live site's WorkflowAuditCTA — it still picks canned
+   *  text via keyword-matching the title — see docs/blog-module.md. */
+  cta_title: string | null
+  cta_subtitle: string | null
   cta_label: string | null
   cta_url: string | null
   status: 'draft' | 'published' | 'failed'
@@ -93,6 +98,8 @@ export async function createBlogPost(input: {
   bannerUrlDark: string | null
   bannerUrlLight: string | null
   sections: BlogSection[]
+  ctaTitle: string | null
+  ctaSubtitle: string | null
   ctaLabel: string | null
   ctaUrl: string | null
 }): Promise<BlogPost> {
@@ -107,6 +114,8 @@ export async function createBlogPost(input: {
       banner_url_dark: input.bannerUrlDark,
       banner_url_light: input.bannerUrlLight,
       sections: input.sections,
+      cta_title: input.ctaTitle,
+      cta_subtitle: input.ctaSubtitle,
       cta_label: input.ctaLabel,
       cta_url: input.ctaUrl,
       status: 'draft',
@@ -127,6 +136,8 @@ export async function updateBlogPost(
     bannerUrlDark: string | null
     bannerUrlLight: string | null
     sections: BlogSection[]
+    ctaTitle: string | null
+    ctaSubtitle: string | null
     ctaLabel: string | null
     ctaUrl: string | null
   }>,
@@ -148,6 +159,8 @@ export async function updateBlogPost(
       ...(patch.excerpt !== undefined ? { excerpt: patch.excerpt } : {}),
       ...bannerFields,
       ...(patch.sections !== undefined ? { sections: patch.sections } : {}),
+      ...(patch.ctaTitle !== undefined ? { cta_title: patch.ctaTitle } : {}),
+      ...(patch.ctaSubtitle !== undefined ? { cta_subtitle: patch.ctaSubtitle } : {}),
       ...(patch.ctaLabel !== undefined ? { cta_label: patch.ctaLabel } : {}),
       ...(patch.ctaUrl !== undefined ? { cta_url: patch.ctaUrl } : {}),
       updated_at: new Date().toISOString(),

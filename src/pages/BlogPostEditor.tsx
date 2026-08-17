@@ -66,6 +66,8 @@ export default function BlogPostEditor() {
   const [excerpt, setExcerpt] = useState('')
   const [bannerUrlDark, setBannerUrlDark] = useState<string | null>(null)
   const [bannerUrlLight, setBannerUrlLight] = useState<string | null>(null)
+  const [ctaTitle, setCtaTitle] = useState('')
+  const [ctaSubtitle, setCtaSubtitle] = useState('')
   const [ctaLabel, setCtaLabel] = useState('')
   const [ctaUrl, setCtaUrl] = useState('')
   const [doc, setDoc] = useState<JSONContent>(() => sectionsToTiptapDoc([]))
@@ -91,6 +93,8 @@ export default function BlogPostEditor() {
       setExcerpt(existing.excerpt)
       setBannerUrlDark(existing.banner_url_dark ?? existing.banner_url)
       setBannerUrlLight(existing.banner_url_light)
+      setCtaTitle(existing.cta_title ?? '')
+      setCtaSubtitle(existing.cta_subtitle ?? '')
       setCtaLabel(existing.cta_label ?? '')
       setCtaUrl(existing.cta_url ?? '')
       setDoc(sectionsToTiptapDoc(existing.sections))
@@ -129,6 +133,8 @@ export default function BlogPostEditor() {
         bannerUrlDark,
         bannerUrlLight,
         sections,
+        ctaTitle: ctaTitle.trim() || null,
+        ctaSubtitle: ctaSubtitle.trim() || null,
         ctaLabel: ctaLabel.trim() || null,
         ctaUrl: ctaUrl.trim() || null,
       }
@@ -260,14 +266,31 @@ export default function BlogPostEditor() {
             )}
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">CTA button text (optional)</label>
-              <input className="input mt-1.5" value={ctaLabel} onChange={(e) => setCtaLabel(e.target.value)} placeholder="Book a demo" />
-            </div>
-            <div>
-              <label className="label">CTA button link</label>
-              <input className="input mt-1.5" value={ctaUrl} onChange={(e) => setCtaUrl(e.target.value)} placeholder="https://scalepods.co/contact" />
+          <div>
+            <div className="label mb-2">Bottom CTA card (optional)</div>
+            <p className="text-muted text-xs mb-2">
+              Leave blank to keep the site's current default text. Same card design either way — logo,
+              background, button — only the wording changes.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="label">Card headline</label>
+                <input className="input mt-1.5" value={ctaTitle} onChange={(e) => setCtaTitle(e.target.value)} placeholder="Build an AI workforce that works even when your team is offline" />
+              </div>
+              <div>
+                <label className="label">Card subtext</label>
+                <input className="input mt-1.5" value={ctaSubtitle} onChange={(e) => setCtaSubtitle(e.target.value)} placeholder="Deploy Alex, Maya, Harper, and Orion across Sales, Marketing, HR, and Operations 24/7." />
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Button text</label>
+                  <input className="input mt-1.5" value={ctaLabel} onChange={(e) => setCtaLabel(e.target.value)} placeholder="Build Your AI Workforce →" />
+                </div>
+                <div>
+                  <label className="label">Button link</label>
+                  <input className="input mt-1.5" value={ctaUrl} onChange={(e) => setCtaUrl(e.target.value)} placeholder="https://scalepods.co/contact" />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -315,6 +338,10 @@ export default function BlogPostEditor() {
           bannerUrlDark={bannerUrlDark}
           bannerUrlLight={bannerUrlLight}
           sections={tiptapDocToSections(doc).sections}
+          ctaTitle={ctaTitle}
+          ctaSubtitle={ctaSubtitle}
+          ctaLabel={ctaLabel}
+          ctaUrl={ctaUrl}
           onClose={() => setPreviewOpen(false)}
         />
       )}

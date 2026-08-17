@@ -7,16 +7,19 @@ site's actual visual style (`src/components/blog/BlogPreview.tsx`). Pending: one
 live-publish verification (needs explicit go-ahead since it publishes real content to the live
 site).
 
-## ⚠️ Known gap: the CTA fields don't render anywhere yet
+## ⚠️ Known gap: the bottom CTA card's custom text doesn't render anywhere yet
 
-The composer's "CTA button text/link" fields write to `blog_posts.cta_label`/`cta_url`, and the
-site's `/api/blog/publish` route correctly writes them into `website_content.cta_label`/`cta_url`
-— but `src/app/blog/[slug]/page.tsx`'s dynamic-post `displayData` object never reads those two
-columns into what it passes to `BlogBodyClient`, so today a CTA set in the composer is silently
-inert: it's stored, but nothing on the live page renders it. Left as-is for now — a real fix is a
-site-repo change (out of scope here), not something to paper over from the Growth OS side. The
-composer's preview does not show a fake CTA button either, for the same reason (see its header
-note).
+Every post ends with a hardcoded card (logo, headline, subtext, button — `WorkflowAuditCTA` in
+`BlogBodyClient.tsx`) whose wording today comes from keyword-matching the post title/slug, not
+from any database field. The composer (2026-08-17) now has 4 fields for this — card headline,
+subtext, button text, button link — writing to `blog_posts.cta_title`/`cta_subtitle`/`cta_label`/
+`cta_url`. `cta_label`/`cta_url` already reach `website_content` via the publish route; `cta_title`/
+`cta_subtitle` need that route extended to accept and write them too. Either way, none of the four
+are read by `WorkflowAuditCTA` yet — it needs to accept optional per-post overrides and fall back
+to its current heuristic when they're blank (old/static posts, or a post where the fields were
+left empty on purpose). Composer's own Preview *does* render the real card design with the actual
+text typed so far, since that's Growth OS's own rendering — see its header note for the live-site
+caveat.
 
 ## ⚠️ Known gap: dark/light banner variants don't render anywhere yet
 
@@ -113,13 +116,19 @@ wanted (2 small migration + code changes on the site side).
   "category": "string",
   "excerpt": "string",
   "bannerUrl": "string | null",
+  "bannerUrlDark": "string | null",
+  "bannerUrlLight": "string | null",
+  "ctaTitle": "string | null",
+  "ctaSubtitle": "string | null",
   "ctaLabel": "string | null",
   "ctaUrl": "string | null",
   "sections": [
-    { "heading": "string", "body": "markdown: **bold**, [text](url), bullet lines start with \"• \"", "image": "string?", "imageCaption": "string?" }
+    { "heading": "string", "body": "markdown: **bold**, [text](url), bullet lines start with \"• \"", "image": "string?", "imageDark": "string?", "imageLight": "string?", "imageCaption": "string?" }
   ]
 }
 ```
+(`bannerUrlDark`/`bannerUrlLight`/`ctaTitle`/`ctaSubtitle` are already being sent by n8n as of
+2026-08-17 — see the two "known gap" sections above for what the route/render path still need.)
 Route logic:
 1. 401 if `x-publish-secret` doesn't match `process.env.BLOG_PUBLISH_SECRET`.
 2. Upsert by `slug` into `website_content`: `title`, `excerpt`, `category`,

@@ -90,8 +90,16 @@ function renderBody(body: string, c: SiteColors) {
   })
 }
 
+// Fallback wording the live site currently shows when a post has no custom CTA card text (its
+// WorkflowAuditCTA guesses text from the title via keyword matching — this is the generic
+// default branch of that heuristic, not any specific post's real fallback).
+const CTA_DEFAULT_TITLE = 'Build a system that works even when your team is offline'
+const CTA_DEFAULT_SUBTITLE = 'Smarter workflows. Better conversations.'
+const CTA_DEFAULT_LABEL = 'Get Workflow Audit →'
+
 export function BlogPreviewModal({
-  title, category, excerpt, bannerUrlDark, bannerUrlLight, sections, onClose,
+  title, category, excerpt, bannerUrlDark, bannerUrlLight, sections,
+  ctaTitle, ctaSubtitle, ctaLabel, ctaUrl, onClose,
 }: {
   title: string
   category: string
@@ -99,6 +107,10 @@ export function BlogPreviewModal({
   bannerUrlDark: string | null
   bannerUrlLight: string | null
   sections: BlogSection[]
+  ctaTitle: string
+  ctaSubtitle: string
+  ctaLabel: string
+  ctaUrl: string
   onClose: () => void
 }) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
@@ -117,7 +129,7 @@ export function BlogPreviewModal({
       <div className="flex items-center justify-between px-5 py-3 shrink-0" style={{ background: '#000' }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 text-white text-sm">
           <span className="font-medium">Preview</span>
-          <span className="opacity-60 text-xs">— how this looks on scalepods.co (post-level CTA fields aren't rendered by the live site today)</span>
+          <span className="opacity-60 text-xs">— how this looks on scalepods.co (the bottom CTA card's custom text isn't wired into the live site yet — see docs/blog-module.md)</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -190,6 +202,48 @@ export function BlogPreviewModal({
                 })()}
               </div>
             ))}
+          </div>
+
+          <div style={{
+            width: '100%', marginTop: 64, borderRadius: 16, overflow: 'hidden',
+            border: `1px solid ${c.border}`, padding: '48px 32px', textAlign: 'center',
+            background: theme === 'dark' ? '#090d16' : 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+            position: 'relative',
+          }}>
+            <div style={{
+              position: 'absolute', inset: 0, opacity: theme === 'dark' ? 0.15 : 0.45, pointerEvents: 'none',
+              backgroundImage: `radial-gradient(${theme === 'dark' ? c.blueMid : 'rgba(0,128,255,0.15)'} 1px, transparent 1px)`,
+              backgroundSize: '20px 20px',
+            }} />
+            <img
+              src={theme === 'dark' ? '/brand/logo-white.png' : '/brand/logo-black.png'}
+              alt="ScalePods"
+              style={{ height: 24, margin: '0 auto 20px', position: 'relative' }}
+            />
+            <h3 style={{
+              fontFamily: FONT, fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 800, position: 'relative',
+              color: theme === 'dark' ? '#ffffff' : '#0f172a', lineHeight: 1.25, maxWidth: 640, margin: '0 auto 14px',
+              letterSpacing: '-0.02em',
+            }}>
+              {ctaTitle || CTA_DEFAULT_TITLE}
+            </h3>
+            <p style={{
+              fontFamily: FONT, fontSize: 'clamp(14px, 2vw, 16px)', position: 'relative',
+              color: theme === 'dark' ? 'rgba(255,255,255,0.75)' : '#475569', margin: '0 auto 28px', maxWidth: 620, lineHeight: 1.5,
+            }}>
+              {ctaSubtitle || CTA_DEFAULT_SUBTITLE}
+            </p>
+            <span style={{
+              position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, padding: '14px 28px',
+              borderRadius: 8, background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : '#0f172a',
+              border: theme === 'dark' ? '1px solid rgba(99,165,231,0.4)' : '1px solid #0f172a',
+              color: '#ffffff', fontFamily: FONT, fontSize: 15, fontWeight: 700,
+            }}>
+              {ctaLabel || CTA_DEFAULT_LABEL}
+            </span>
+            {ctaUrl && (
+              <div style={{ marginTop: 10, position: 'relative', fontSize: 11, color: c.textMuted, fontFamily: FONT }}>→ {ctaUrl}</div>
+            )}
           </div>
         </div>
       </div>
