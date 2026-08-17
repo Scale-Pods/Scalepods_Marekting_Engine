@@ -99,8 +99,8 @@
 
   --cta-text:       #0B1A08;   /* dark green text on sage buttons */
   --grid-line:      rgba(177,217,151,0.03);
-  --ambient-1:      rgba(177,217,151,0.10);
-  --ambient-2:      rgba(99,165,231,0.08);
+  --ambient-1:      rgba(177,217,151,0.26);
+  --ambient-2:      rgba(99,165,231,0.20);
 }
 
 /* --- Tokens: LIGHT — "mint alabaster" frosted daylight ---------------------- */
@@ -153,8 +153,8 @@
 
   --cta-text:       #04070D;
   --grid-line:      rgba(143,188,106,0.06);
-  --ambient-1:      rgba(143,188,106,0.07);
-  --ambient-2:      rgba(64,140,214,0.05);
+  --ambient-1:      rgba(143,188,106,0.16);
+  --ambient-2:      rgba(64,140,214,0.13);
 }
 
 @layer base {
@@ -166,11 +166,15 @@
        background (sparse sage/blue dots behind a heavy blur), reproduced here with layered
        radial-gradients instead of a canvas: same visual read, zero JS/perf cost, and every
        color already comes from the theme tokens so it's automatically correct in light mode. */
+    /* Positions are viewport-relative, not content-area-relative — the left-side pair sits
+       partly under AppShell's sidebar on app pages. That's fine (good, even): the sidebar is
+       itself translucent with its own backdrop-filter, so ambient color behind it bleeds through
+       as a soft tint rather than getting hidden — same layered-glass read as the marketing site. */
     background-image:
       radial-gradient(ellipse 140% 80% at 15% -5%, var(--ambient-1) 0%, transparent 55%),
       radial-gradient(ellipse 80% 60% at 85% 95%, var(--ambient-2) 0%, transparent 50%),
-      radial-gradient(ellipse 60% 50% at 92% 8%, var(--ambient-2) 0%, transparent 55%),
-      radial-gradient(ellipse 65% 55% at 8% 92%, var(--ambient-1) 0%, transparent 55%);
+      radial-gradient(ellipse 65% 55% at 90% 12%, var(--ambient-2) 0%, transparent 58%),
+      radial-gradient(ellipse 70% 60% at 25% 90%, var(--ambient-1) 0%, transparent 58%);
     background-attachment: fixed;
     color: var(--text-primary);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
