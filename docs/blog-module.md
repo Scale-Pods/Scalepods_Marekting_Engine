@@ -7,6 +7,34 @@ site's actual visual style (`src/components/blog/BlogPreview.tsx`). Pending: one
 live-publish verification (needs explicit go-ahead since it publishes real content to the live
 site).
 
+## ⚠️ No working "remove from the live site" yet — `BLOG_UNPUBLISH_ENABLED = false`
+
+Before the first real live-publish test, the user asked what happens if they publish something
+and want it gone. Checked the code rather than assume: `deleteBlogPost` only deletes the Growth
+OS row — it never touches `website_content`, so a post stays live on scalepods.co even after
+being "deleted" here. There was no undo.
+
+Built the Growth OS + n8n side of a real fix (same architecture as publish, n8n owns the status
+transition): an **Unpublish** button (shown once a post is live) fires `sp-blog-unpublish` →
+n8n fetches the row → calls the site → on success sets `status='draft'` here, on failure
+`status='failed'`. The n8n branch is built and published; the button is wired but disabled
+behind `BLOG_UNPUBLISH_ENABLED = false` in `src/lib/blog.ts` until the site side exists.
+
+**Contract for the site** (send to Antigravity):
+```
+DELETE https://www.scalepods.co/api/blog/publish
+Header: x-publish-secret: <same secret as before>
+Body: { "slug": "..." }
+```
+Reuses the existing route file — add an `export async function DELETE(req)` handler that checks
+the same secret, then deletes the `website_content` row matching `slug` (or sets a non-published
+status, if keeping history is preferred — but a full delete is simpler and matches "remove it"),
+then `revalidatePath('/blog')` + `revalidatePath('/blog/' + slug)`. Response: `{ success: true }`
+or `{ success: false, error }`.
+
+Once that's live: flip `BLOG_UNPUBLISH_ENABLED` to `true`, verify with a real publish → unpublish
+round trip, same standard as every other piece of this module.
+
 ## ⚠️ Known gap: the bottom CTA card's custom text doesn't render anywhere yet
 
 Every post ends with a hardcoded card (logo, headline, subtext, button — `WorkflowAuditCTA` in

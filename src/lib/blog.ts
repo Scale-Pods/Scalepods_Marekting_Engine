@@ -7,6 +7,10 @@ import { supabase, fireWebhook } from './supabase'
 // (401 on missing/wrong secret), the 2026-01-01 listing-page filter bug is fixed, and the
 // ScalePods · Blog Publish n8n workflow is published.
 export const BLOG_PUBLISH_ENABLED = true
+// Separate flag from BLOG_PUBLISH_ENABLED — the site's unpublish route doesn't exist yet
+// (docs/blog-module.md), so this stays false until it's built and verified, same way
+// BLOG_PUBLISH_ENABLED did before its own site route existed.
+export const BLOG_UNPUBLISH_ENABLED = false
 
 /**
  * One section of a post body. Deliberately mirrors exactly what scalepods.co's
@@ -193,4 +197,17 @@ export async function triggerBlogPublish(id: string): Promise<void> {
     throw new Error('Publishing to scalepods.co is not wired up yet — see docs/blog-module.md')
   }
   await fireWebhook('sp-blog-publish', { blogPostId: id })
+}
+
+/**
+ * Fires sp-blog-unpublish, mirroring triggerBlogPublish exactly — n8n calls the site's unpublish
+ * route (removes the website_content row by slug, per docs/blog-module.md) and only then writes
+ * status='draft' back here. Same reasoning as the publish path: don't mark it gone locally until
+ * the site actually confirms it's gone.
+ */
+export async function triggerBlogUnpublish(id: string): Promise<void> {
+  if (!BLOG_UNPUBLISH_ENABLED) {
+    throw new Error('Unpublishing from scalepods.co is not wired up yet — see docs/blog-module.md')
+  }
+  await fireWebhook('sp-blog-unpublish', { blogPostId: id })
 }

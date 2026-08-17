@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { JSONContent } from '@tiptap/react'
-import { Send, FileText, X, ExternalLink, AlertTriangle, Eye } from 'lucide-react'
+import { Send, FileText, X, ExternalLink, AlertTriangle, Eye, Undo2 } from 'lucide-react'
 import { useBlogPost, queryClient, qk } from '../lib/queries'
 import {
-  createBlogPost, updateBlogPost, triggerBlogPublish, slugify,
-  BLOG_PUBLISH_ENABLED, BLOG_CATEGORY_SUGGESTIONS, type BlogPost,
+  createBlogPost, updateBlogPost, triggerBlogPublish, triggerBlogUnpublish, slugify,
+  BLOG_PUBLISH_ENABLED, BLOG_UNPUBLISH_ENABLED, BLOG_CATEGORY_SUGGESTIONS, type BlogPost,
 } from '../lib/blog'
 import { sectionsToTiptapDoc, tiptapDocToSections } from '../lib/blogSerializer'
 import { PageHeader, Button, Spinner } from '../components/ui'
@@ -74,6 +74,7 @@ export default function BlogPostEditor() {
   const [ready, setReady] = useState(isNew)
   const [saving, setSaving] = useState<'draft' | 'publish' | null>(null)
   const [publishing, setPublishing] = useState(false)
+  const [unpublishing, setUnpublishing] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
 
   // Full-field hydration runs ONCE per post, guarded by this ref rather than re-running on
@@ -108,7 +109,21 @@ export default function BlogPostEditor() {
   const publishFailed = existing?.status === 'failed'
   useEffect(() => {
     if (existing?.status === 'published' || existing?.status === 'failed') setPublishing(false)
+    if (existing?.status === 'draft' || existing?.status === 'failed') setUnpublishing(false)
   }, [existing?.status])
+
+  async function onUnpublish() {
+    if (!postId) return
+    if (!window.confirm('Remove this post from scalepods.co? It stays here as a draft and can be republished later.')) return
+    setUnpublishing(true)
+    try {
+      await triggerBlogUnpublish(postId)
+      toast.info('Removing from scalepods.co…')
+    } catch (err) {
+      setUnpublishing(false)
+      toast.error(toastMessage(err, 'Could not unpublish this post'))
+    }
+  }
 
   useEffect(() => {
     if (!slugEdited) setSlug(slugify(title))
@@ -219,14 +234,26 @@ export default function BlogPostEditor() {
       )}
 
       {publishedSlug && (
-        <a
-          href={`https://www.scalepods.co/blog/${publishedSlug}`}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs text-sage flex items-center gap-1 hover:underline mb-4 w-fit"
-        >
-          View live <ExternalLink size={11} />
-        </a>
+        <div className="flex items-center gap-3 mb-4">
+          <a
+            href={`https://www.scalepods.co/blog/${publishedSlug}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-sage flex items-center gap-1 hover:underline w-fit"
+          >
+            View live <ExternalLink size={11} />
+          </a>
+          <button
+            type="button"
+            onClick={onUnpublish}
+            disabled={unpublishing || !BLOG_UNPUBLISH_ENABLED}
+            title={BLOG_UNPUBLISH_ENABLED ? undefined : 'Removing from scalepods.co is not wired up yet — see docs/blog-module.md'}
+            className="text-xs flex items-center gap-1 hover:underline w-fit disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ color: 'var(--accent-orange)' }}
+          >
+            <Undo2 size={11} /> {unpublishing ? 'Removing…' : 'Unpublish'}
+          </button>
+        </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
