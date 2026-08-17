@@ -1,12 +1,56 @@
 import { useEffect, useRef, useState } from 'react'
-import { useEditor, EditorContent, type JSONContent } from '@tiptap/react'
+import { useEditor, EditorContent, type Editor, type JSONContent } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
+import { TextSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Bold, Heading2, List, ImageIcon, Link2, Check, X } from 'lucide-react'
 import { uploadBlogImage } from '../../lib/blogUpload'
 import { SectionImage, BlogImagePathContext } from './SectionImageNode'
+
+// ProseMirror's own toggleHeading always converts the WHOLE paragraph(s) touched by the
+// selection — that's standard block-command behaviour (same in Notion/Google Docs), not a bug,
+// but it's the wrong feel here: a marketing writer selecting one phrase mid-paragraph and
+// hitting H2 expects only that phrase to become a heading, the same way Bold only affects the
+// selection. It also matters more than cosmetics here — every H2 starts a brand-new
+// BlogSection on the site (blogSerializer.ts), so accidentally promoting a whole paragraph
+// silently splits your content into an extra section.
+//
+// Fix: when there's a real (non-collapsed) selection inside a single paragraph, split the
+// paragraph around the selection first (so the selected text becomes its own paragraph with
+// nothing else in it), then convert just that new paragraph to a heading. A selection spanning
+// multiple blocks, or no selection at all, falls back to the plain whole-block toggle.
+function toggleHeadingOnSelection(editor: Editor) {
+  const { state } = editor
+  const { from, to, empty } = state.selection
+
+  if (empty) {
+    editor.chain().focus().toggleHeading({ level: 2 }).run()
+    return
+  }
+
+  const $from = state.doc.resolve(from)
+  const $to = state.doc.resolve(to)
+  if ($from.parent.type.name !== 'paragraph' || $from.parent !== $to.parent) {
+    editor.chain().focus().toggleHeading({ level: 2 }).run()
+    return
+  }
+
+  const paraStart = $from.start()
+  const paraEnd = $from.end()
+
+  editor.chain().focus().command(({ tr, dispatch }) => {
+    // Split the later boundary first so it doesn't shift the earlier position.
+    if (to < paraEnd) tr.split(to)
+    if (from > paraStart) tr.split(from)
+    const mappedFrom = tr.mapping.map(from, 1)
+    const mappedTo = tr.mapping.map(to, -1)
+    tr.setSelection(TextSelection.create(tr.doc, mappedFrom, mappedTo))
+    if (dispatch) dispatch(tr)
+    return true
+  }).setNode('heading', { level: 2 }).run()
+}
 
 // The whole extension set is deliberately capped at exactly what scalepods.co's renderer
 // understands (docs/blog-module.md) — H2-only headings mark section boundaries, bold + link are
@@ -140,7 +184,7 @@ export default function RichTextEditor({
         className="flex items-center gap-0.5 px-2 py-1.5 flex-wrap"
         style={{ borderBottom: '1px solid var(--border-subtle)' }}
       >
-        <ToolbarButton label="Heading" active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+        <ToolbarButton label="Heading" active={editor.isActive('heading', { level: 2 })} onClick={() => toggleHeadingOnSelection(editor)}>
           <Heading2 size={15} />
         </ToolbarButton>
         <ToolbarButton label="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}>
@@ -172,6 +216,9 @@ export default function RichTextEditor({
             <LinkPrompt initialUrl={editor.getAttributes('link').href ?? ''} onConfirm={applyLink} onCancel={() => setLinkPromptOpen(null)} />
           ) : (
             <div className="flex items-center gap-0.5 rounded-lg p-1 shadow-lg" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+              <ToolbarButton label="Heading" active={editor.isActive('heading', { level: 2 })} onClick={() => toggleHeadingOnSelection(editor)}>
+                <Heading2 size={14} />
+              </ToolbarButton>
               <ToolbarButton label="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}>
                 <Bold size={14} />
               </ToolbarButton>
