@@ -6,7 +6,7 @@ import type { ContentItem, ContentStatus } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
 import { PlatformBadge } from '../components/mediaUi'
 import {
-  PostPreviewModal, ActivityPreviewModal, ReadyPreviewActions, ContentTypeChip, STATUS_META,
+  PostTile, PostPreviewModal, ActivityPreviewModal, ReadyPreviewActions, ContentTypeChip, STATUS_META,
 } from '../components/postPreview'
 import type { ScheduledPost } from '../lib/publishing'
 import CreatePostModal from '../components/CreatePostModal'
@@ -70,6 +70,7 @@ function buildEntries(items: ContentItem[], posts: ScheduledPost[]): Map<string,
   return byDate
 }
 
+// Compact one-line row — what actually fits inside a ~104px day cell in the month grid.
 function DayChip({ entry, onClick }: { entry: DayEntry; onClick: () => void }) {
   const platform = entry.kind === 'post' ? entry.post.platform : entry.item.platform
   const tone = entry.kind === 'post' ? (STATUS_META[entry.post.status] ?? STATUS_META.pending).tone : ITEM_STATUS_TONE[entry.item.status]
@@ -88,6 +89,40 @@ function DayChip({ entry, onClick }: { entry: DayEntry; onClick: () => void }) {
       </span>
       <span className="truncate text-[11px] text-secondary leading-none">{label}</span>
     </button>
+  )
+}
+
+// Full image tile — the same square thumbnail grid Creative Review/Publishing use, for the
+// "view this whole day" modal where there's room to actually show the creative instead of just
+// a line of text.
+function DayTile({ entry, onClick }: { entry: DayEntry; onClick: () => void }) {
+  if (entry.kind === 'post') {
+    const meta = STATUS_META[entry.post.status] ?? STATUS_META.pending
+    const Icon = meta.icon
+    return (
+      <PostTile
+        img={entry.post.media_url}
+        platform={entry.post.platform}
+        placeholder={entry.post.title || entry.post.caption?.slice(0, 80)}
+        topRight={
+          <Icon
+            size={14}
+            className={`text-white ${entry.post.status === 'publishing' || entry.post.status === 'pending' ? 'animate-spin' : ''}`}
+            style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.7))' }}
+          />
+        }
+        onClick={onClick}
+      />
+    )
+  }
+  return (
+    <PostTile
+      img={entry.item.media_url}
+      platform={entry.item.platform}
+      placeholder={entry.item.title || entry.item.body?.slice(0, 80)}
+      topRight={<ContentTypeChip type={entry.item.content_type} />}
+      onClick={onClick}
+    />
   )
 }
 
@@ -219,12 +254,15 @@ export default function Calendar() {
                 }}
               >
                 <div className="flex items-center justify-between">
-                  <span
-                    className="text-xs font-semibold h-5 w-5 flex items-center justify-center rounded-full"
+                  <button
+                    onClick={() => setDayListKey(dateKey)}
+                    className="text-xs font-semibold h-5 w-5 flex items-center justify-center rounded-full transition-colors hover:brightness-110"
                     style={isToday ? { background: 'var(--accent-green)', color: 'var(--cta-text)' } : { color: 'var(--text-secondary)' }}
+                    aria-label={`View ${dateKey}`}
+                    title="View this day"
                   >
                     {d.getDate()}
-                  </span>
+                  </button>
                   <button
                     onClick={() => openCreate(dateKey)}
                     className="h-5 w-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -264,12 +302,26 @@ export default function Calendar() {
       )}
 
       {dayListKey && (
-        <Modal title={new Date(`${dayListKey}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} onClose={() => setDayListKey(null)}>
-          <div className="flex flex-col gap-1.5">
-            {dayListEntries.map((entry) => (
-              <DayChip key={entry.key} entry={entry} onClick={() => { setDayListKey(null); onEntryClick(entry) }} />
-            ))}
-          </div>
+        <Modal
+          title={new Date(`${dayListKey}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+          onClose={() => setDayListKey(null)}
+          size="lg"
+        >
+          {dayListEntries.length === 0 ? (
+            <div className="flex flex-col items-center text-center gap-3 py-6">
+              <CalendarDays size={26} className="text-muted" />
+              <div className="text-secondary text-sm">Nothing scheduled for this day yet.</div>
+              <Button onClick={() => { setDayListKey(null); openCreate(dayListKey) }}>
+                <Plus size={15} /> Create post for this day
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+              {dayListEntries.map((entry) => (
+                <DayTile key={entry.key} entry={entry} onClick={() => { setDayListKey(null); onEntryClick(entry) }} />
+              ))}
+            </div>
+          )}
         </Modal>
       )}
 
