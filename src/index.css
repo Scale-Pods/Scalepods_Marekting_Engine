@@ -162,9 +162,15 @@
   html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   body {
     background-color: var(--bg-page);
+    /* Ambient blob field — same idea as the scalepods.co marketing site's blurred beam
+       background (sparse sage/blue dots behind a heavy blur), reproduced here with layered
+       radial-gradients instead of a canvas: same visual read, zero JS/perf cost, and every
+       color already comes from the theme tokens so it's automatically correct in light mode. */
     background-image:
       radial-gradient(ellipse 140% 80% at 15% -5%, var(--ambient-1) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 85% 95%, var(--ambient-2) 0%, transparent 50%);
+      radial-gradient(ellipse 80% 60% at 85% 95%, var(--ambient-2) 0%, transparent 50%),
+      radial-gradient(ellipse 60% 50% at 92% 8%, var(--ambient-2) 0%, transparent 55%),
+      radial-gradient(ellipse 65% 55% at 8% 92%, var(--ambient-1) 0%, transparent 55%);
     background-attachment: fixed;
     color: var(--text-primary);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;

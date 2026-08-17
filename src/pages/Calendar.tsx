@@ -170,38 +170,33 @@ export default function Calendar() {
       />
 
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setCursor((c) => new Date(c.getFullYear(), c.getMonth() - 1, 1))}
-            className="h-8 w-8 rounded-md flex items-center justify-center transition-colors hover:brightness-110"
-            style={{ background: 'var(--fill-secondary)' }}
-            aria-label="Previous month"
-          >
+        <div className="flex items-center gap-1.5">
+          <Button variant="ghost" className="!px-0 w-8 h-8 !py-0" onClick={() => setCursor((c) => new Date(c.getFullYear(), c.getMonth() - 1, 1))} aria-label="Previous month">
             <ChevronLeft size={16} />
-          </button>
-          <button
-            onClick={() => setCursor((c) => new Date(c.getFullYear(), c.getMonth() + 1, 1))}
-            className="h-8 w-8 rounded-md flex items-center justify-center transition-colors hover:brightness-110"
-            style={{ background: 'var(--fill-secondary)' }}
-            aria-label="Next month"
-          >
+          </Button>
+          <Button variant="ghost" className="!px-0 w-8 h-8 !py-0" onClick={() => setCursor((c) => new Date(c.getFullYear(), c.getMonth() + 1, 1))} aria-label="Next month">
             <ChevronRight size={16} />
-          </button>
-          <button
-            onClick={() => { const d = new Date(); d.setDate(1); setCursor(d) }}
-            className="ml-1 px-3 h-8 rounded-md text-xs font-semibold transition-colors hover:brightness-110"
-            style={{ background: 'var(--fill-secondary)' }}
-          >
+          </Button>
+          <Button variant="ghost" className="ml-1 !py-1.5 text-xs" onClick={() => { const d = new Date(); d.setDate(1); setCursor(d) }}>
             Today
-          </button>
+          </Button>
         </div>
         <div className="font-medium">{monthLabel}</div>
       </div>
 
-      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-subtle)' }}>
-        <div className="grid grid-cols-7" style={{ background: 'var(--border-subtle)', gap: 1 }}>
+      {/* One frosted glass slab for the whole month — the same `.card` liquid-glass material
+          used everywhere else in the app, with the day grid drawn on top via hairline dividers
+          instead of the old opaque-per-cell trick (which needed solid backgrounds to fake grid
+          lines and so covered the blur). A single backdrop-filter here instead of 42 tiny ones
+          per cell is also what keeps this cheap to render. */}
+      <div className="card overflow-hidden !p-0">
+        <div className="grid grid-cols-7">
           {WEEKDAYS.map((w) => (
-            <div key={w} className="text-center text-[11px] font-semibold text-muted py-2" style={{ background: 'var(--bg-card)' }}>
+            <div
+              key={w}
+              className="text-center text-[11px] font-semibold text-muted py-2"
+              style={{ borderBottom: '1px solid var(--border-subtle)', borderRight: '1px solid var(--border-subtle)' }}
+            >
               {w}
             </div>
           ))}
@@ -216,8 +211,12 @@ export default function Calendar() {
             return (
               <div
                 key={dateKey}
-                className="group relative flex flex-col gap-1 p-1.5 min-h-[104px]"
-                style={{ background: 'var(--bg-card)', opacity: inMonth ? 1 : 0.45 }}
+                className="group relative flex flex-col gap-1 p-1.5 min-h-[104px] transition-colors hover:bg-white/[0.02]"
+                style={{
+                  borderBottom: '1px solid var(--border-subtle)',
+                  borderRight: '1px solid var(--border-subtle)',
+                  opacity: inMonth ? 1 : 0.4,
+                }}
               >
                 <div className="flex items-center justify-between">
                   <span
