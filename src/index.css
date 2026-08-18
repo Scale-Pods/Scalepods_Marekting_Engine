@@ -83,10 +83,6 @@
   /* Liquid glass material */
   --glass-fill:       rgba(8,10,14,0.72);
   --glass-fill-hover: rgba(16,19,28,0.80);
-  /* More transparent than any card fill — the sidebar is a permanent fixture over the ambient
-     background, not a hover state, so it can afford to let more color bleed through and read
-     as actual frosted glass rather than a solid panel with a blur filter technically applied. */
-  --sidebar-fill:     rgba(16,19,28,0.55);
   --glass-blur:       blur(40px) saturate(180%);
   --glass-blur-lg:    blur(60px) saturate(180%);
   --glass-border:     rgba(255,255,255,0.09);
@@ -141,7 +137,6 @@
 
   --glass-fill:       rgba(255,255,255,0.72);
   --glass-fill-hover: rgba(255,255,255,0.88);
-  --sidebar-fill:     rgba(255,255,255,0.60);
   --glass-blur:       blur(40px) saturate(180%);
   --glass-blur-lg:    blur(60px) saturate(180%);
   --glass-border:     rgba(255,255,255,0.90);
@@ -370,7 +365,7 @@
 
   /* Sidebar — frosted macOS rail, hairline separator instead of a hard border */
   .sidebar {
-    background: var(--sidebar-fill);
+    background: var(--glass-fill-hover);
     backdrop-filter: var(--glass-blur-lg);
     -webkit-backdrop-filter: var(--glass-blur-lg);
     border-right: 1px solid var(--border-subtle);
