@@ -244,6 +244,17 @@ export async function replaceItemMedia(id: string, mediaUrl: string): Promise<vo
 }
 
 /**
+ * Permanently removes an approved-but-not-yet-scheduled item — Publishing/Calendar's "Ready to
+ * publish" Cancel/Delete action. There's no scheduled_posts row to worry about here (it hasn't
+ * been scheduled yet); an already-scheduled post's Cancel goes through publishing.ts's
+ * cancelScheduledPost instead, which reverts to 'approved' rather than deleting outright.
+ */
+export async function deleteContentItem(id: string): Promise<void> {
+  const { error } = await supabase.from('content_items').delete().eq('id', id)
+  if (error) throw error
+}
+
+/**
  * Direct manual edit of a content item's text (title/body/hashtags/CTA) — no AI involved, unlike
  * reviseWithAi below. Used by Publishing's "Edit" action on an already-scheduled post: the
  * Publishing Engine re-fetches this row fresh at actual publish time (Build Context), so an

@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Eye, X, ChevronLeft, ChevronRight, CheckCircle2, Clock, Loader2, XCircle, Pencil, Ban, Check, ExternalLink, Send, Play } from 'lucide-react'
+import { Eye, X, ChevronLeft, ChevronRight, CheckCircle2, Clock, Loader2, XCircle, Pencil, Ban, Check, ExternalLink, Send, Play, Trash2 } from 'lucide-react'
 import { PlatformBadge } from './mediaUi'
 import { Badge, Button } from './ui'
 import { useToast, toastMessage } from './Toast'
 import { cancelScheduledPost, editScheduledPost, triggerPublish, type ScheduledPost } from '../lib/publishing'
-import { PUBLISHING_ENABLED, type ContentItem } from '../lib/content'
+import { PUBLISHING_ENABLED, deleteContentItem, type ContentItem } from '../lib/content'
 
 // Shared building blocks for every "grid of posts -> click through to a native-looking
 // preview" surface in the app (Publishing's Ready to publish / Recent activity, Content
@@ -249,7 +249,7 @@ export function PostPreviewModal({
 // used. Shared with Calendar so a not-yet-scheduled item sitting on a day cell can be scheduled
 // right there instead of only from Publishing.
 export function ReadyPreviewActions({ item, onDone }: { item: ContentItem; onDone: () => void }) {
-  const [busy, setBusy] = useState<'now' | 'schedule' | null>(null)
+  const [busy, setBusy] = useState<'now' | 'schedule' | 'delete' | null>(null)
   const toast = useToast()
 
   async function onPostNow() {
@@ -285,13 +285,42 @@ export function ReadyPreviewActions({ item, onDone }: { item: ContentItem; onDon
     }
   }
 
+  // Deletes outright rather than reverting to an earlier status — unlike an already-scheduled
+  // post (where Cancel means "stop it firing, keep the content"), there's nothing downstream
+  // depending on this one yet, so "remove it from Ready to publish" and "delete it" are the
+  // same action here.
+  async function onDelete() {
+    if (!window.confirm(`Delete "${item.title || 'this post'}"? This removes it permanently — it will no longer appear in Ready to publish.`)) return
+    setBusy('delete')
+    try {
+      await deleteContentItem(item.id)
+      toast.success('Post deleted')
+      onDone()
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not delete this post'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
-    <div className="flex gap-2">
-      <Button className="flex-1 justify-center !py-2 text-xs" loading={busy === 'now'} onClick={onPostNow} disabled={!PUBLISHING_ENABLED}>
-        <Send size={13} /> Post now
-      </Button>
-      <Button variant="ghost" className="flex-1 justify-center !py-2 text-xs" loading={busy === 'schedule'} onClick={onSchedule} disabled={!PUBLISHING_ENABLED}>
-        <Clock size={13} /> Schedule
+    <div className="space-y-2 w-full">
+      <div className="flex gap-2">
+        <Button className="flex-1 justify-center !py-2 text-xs" loading={busy === 'now'} onClick={onPostNow} disabled={!PUBLISHING_ENABLED}>
+          <Send size={13} /> Post now
+        </Button>
+        <Button variant="ghost" className="flex-1 justify-center !py-2 text-xs" loading={busy === 'schedule'} onClick={onSchedule} disabled={!PUBLISHING_ENABLED}>
+          <Clock size={13} /> Schedule
+        </Button>
+      </div>
+      <Button
+        variant="ghost"
+        className="w-full justify-center !py-2 text-xs"
+        style={{ color: 'var(--accent-orange)' }}
+        loading={busy === 'delete'}
+        onClick={onDelete}
+      >
+        <Trash2 size={13} /> Delete post
       </Button>
     </div>
   )
