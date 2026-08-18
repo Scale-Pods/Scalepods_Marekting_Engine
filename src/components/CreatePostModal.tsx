@@ -61,21 +61,28 @@ export default function CreatePostModal({
   const isLinkedin = platform === 'linkedin'
   const isInstagram = platform === 'instagram'
   const isFacebook = platform === 'facebook'
+  const isYoutube = platform === 'youtube'
   const supportsCarousel = isLinkedin || isInstagram
-  const supportsVideo = isFacebook
+  const supportsVideo = isFacebook || isYoutube
   const supportsStory = isInstagram
+  // YouTube only supports Shorts through this composer — there's no photo/text post type for
+  // it, so unlike Facebook it isn't a Photo/Video choice, it's just always video.
+  const forcedVideo = isYoutube
   const isCarousel = supportsCarousel && mediaKind === 'image' && images.length > 1
 
   // Drop whatever the current platform doesn't support the moment you switch to it, so the
   // composer never lets you build something the Publishing Engine can't actually fan out —
-  // carousel is LinkedIn/Instagram only, video is Facebook only, Story is Instagram only, and
-  // Story + carousel together aren't offered (a Story is always a single image here).
+  // carousel is LinkedIn/Instagram only, video is Facebook/YouTube only, Story is Instagram
+  // only, and Story + carousel together aren't offered (a Story is always a single image here).
   useEffect(() => {
     if (!supportsCarousel && images.length > 1) setImages((prev) => prev.slice(0, 1))
   }, [supportsCarousel, images.length])
   useEffect(() => {
     if (!supportsVideo && mediaKind === 'video') { setMediaKind('image'); setVideoUrl(null) }
   }, [supportsVideo, mediaKind])
+  useEffect(() => {
+    if (forcedVideo && mediaKind !== 'video') setMediaKind('video')
+  }, [forcedVideo, mediaKind])
   useEffect(() => {
     if (!supportsStory && postFormat === 'story') setPostFormat('feed')
   }, [supportsStory, postFormat])
@@ -244,11 +251,11 @@ export default function CreatePostModal({
             </div>
           )}
 
-          {(supportsVideo || supportsStory) && (
+          {(isFacebook || supportsStory) && (
             <div>
               <div className="label mb-2">Post type</div>
               <div className="flex items-center gap-2 flex-wrap">
-                {supportsVideo && (
+                {isFacebook && (
                   <>
                     <button type="button" onClick={() => setMediaKind('image')} className={mediaKind === 'image' ? 'badge' : 'badge opacity-40'} style={{ textTransform: 'none' }}>
                       Photo
@@ -338,7 +345,9 @@ export default function CreatePostModal({
             )}
             <p className="text-muted text-xs mt-1.5">
               {mediaKind === 'video'
-                ? 'Required — upload the video file to post.'
+                ? isYoutube
+                  ? 'Required — vertical video, up to 3 minutes, posted as a YouTube Short.'
+                  : 'Required — upload the video file to post.'
                 : postFormat === 'story'
                   ? 'A Story is a single image.'
                   : supportsCarousel
