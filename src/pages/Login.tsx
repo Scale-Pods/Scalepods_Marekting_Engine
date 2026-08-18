@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
 import { Sun, Moon, Sparkles, ArrowRight, ShieldCheck, User, Palette, Send } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { toggleTheme, getTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
@@ -67,19 +66,22 @@ export default function Login() {
           reads the same in both themes; --alt-bg-green itself stays theme-reactive for its one
           other real use (::selection). */}
       <div className="relative hidden lg:flex flex-col justify-between p-12 overflow-hidden bg-[#0B1A08]">
-        <div className="absolute inset-0 grid-overlay opacity-60" />
-        <motion.div
-          className="absolute -right-24 -top-24 h-96 w-96 rounded-full blur-3xl"
-          style={{ background: 'radial-gradient(circle, rgba(177,217,151,0.35), transparent 70%)' }}
-          animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.8, 0.5] }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+        {/* Looping ambient background (Pixabay, royalty-free, no attribution required —
+            license: https://pixabay.com/service/license-summary/). Replaces the old animated
+            blob-gradient decoration — a real loop already supplies the motion, so layering both
+            would be too busy. The dark overlay is what keeps the heading readable regardless of
+            what's happening in the footage; drop this whole block to go back to the flat color
+            if the video doesn't earn its keep. */}
+        <video
+          className="absolute inset-0 w-full h-full object-cover"
+          src="/brand/login-bg.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
         />
-        <motion.div
-          className="absolute -left-16 bottom-0 h-80 w-80 rounded-full blur-3xl"
-          style={{ background: 'radial-gradient(circle, rgba(99,165,231,0.25), transparent 70%)' }}
-          animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.7, 0.4] }}
-          transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
-        />
+        <div className="absolute inset-0" style={{ background: 'rgba(11,26,8,0.72)' }} />
+        <div className="absolute inset-0 grid-overlay opacity-40" />
         <div className="relative">
           <img src="/brand/logo-white.png" alt="ScalePods" className="h-7" />
         </div>
