@@ -43,10 +43,19 @@ const DRAFT_KEY = 'sp-composer-draft'
 export interface ComposerDraft {
   platform: string
   linkedinAccount: string
-  /** One or more uploaded image URLs, in order. >1 on linkedin means a carousel (LinkedIn-only
-   *  today — see CreatePostModal). Superseded the old single `mediaUrl` field; drafts saved
-   *  before that change are migrated on restore (see CreatePostModal). */
+  /** One or more uploaded image URLs, in order. >1 on linkedin/instagram means a carousel — see
+   *  CreatePostModal. Superseded the old single `mediaUrl` field; drafts saved before that
+   *  change are migrated on restore (see CreatePostModal). */
   images: string[]
+  /** 'video' switches the composer to a single uploaded video instead of the image(s) above —
+   *  Facebook only today (a plain video post; Reels come later). Older drafts have no value here
+   *  and default to 'image' on restore. */
+  mediaKind: 'image' | 'video'
+  videoUrl: string | null
+  /** 'story' posts as a Story instead of a feed post — Instagram only today, and only for a
+   *  single image (carousels/video aren't story-eligible in this composer yet). Older drafts
+   *  default to 'feed' on restore. */
+  postFormat: 'feed' | 'story'
   caption: string
   hashtagsInput: string
   cta: string

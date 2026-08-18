@@ -31,11 +31,18 @@ export default function CreatePostModal({
 
   const [platform, setPlatform] = useState(restored?.platform ?? 'instagram')
   const [linkedinAccount, setLinkedinAccount] = useState(restored?.linkedinAccount ?? LINKEDIN_ACCOUNTS[0].value)
-  // >1 image only turns into a real carousel on LinkedIn — that's the only platform the
-  // Publishing Engine knows how to fan a multi-image post out to (see n8n's "Is Carousel?"
-  // branch). Switching away from LinkedIn truncates back to a single cover image below so the
-  // composer never implies a carousel it can't actually publish.
+  // >1 image only turns into a real carousel on LinkedIn/Instagram — the only platforms the
+  // Publishing Engine knows how to fan a multi-image post out to. Switching to a platform that
+  // doesn't support it truncates back to a single cover image below so the composer never
+  // implies something it can't actually publish.
   const [images, setImages] = useState<string[]>(restored?.images ?? [])
+  // Video is a separate media slot from images, not a 4th image — Facebook-only today (a plain
+  // video post; Reels come later and will likely need their own constraints/preview anyway).
+  const [mediaKind, setMediaKind] = useState<'image' | 'video'>(restored?.mediaKind ?? 'image')
+  const [videoUrl, setVideoUrl] = useState<string | null>(restored?.videoUrl ?? null)
+  // Story vs feed — Instagram-only today, and only meaningful for a single image (a carousel or
+  // video can't be posted as a Story through this composer yet).
+  const [postFormat, setPostFormat] = useState<'feed' | 'story'>(restored?.postFormat ?? 'feed')
   const [caption, setCaption] = useState(restored?.caption ?? '')
   const [hashtagsInput, setHashtagsInput] = useState(restored?.hashtagsInput ?? '')
   const [cta, setCta] = useState(restored?.cta ?? '')
@@ -52,14 +59,29 @@ export default function CreatePostModal({
     .filter(Boolean)
 
   const isLinkedin = platform === 'linkedin'
-  const isCarousel = isLinkedin && images.length > 1
+  const isInstagram = platform === 'instagram'
+  const isFacebook = platform === 'facebook'
+  const supportsCarousel = isLinkedin || isInstagram
+  const supportsVideo = isFacebook
+  const supportsStory = isInstagram
+  const isCarousel = supportsCarousel && mediaKind === 'image' && images.length > 1
 
-  // Carousel posting is LinkedIn-only today — see the "in the linkedin pipeline add the
-  // carousel option" build. Drop extra slides the moment the platform isn't LinkedIn so the
-  // composer never lets you build something the pipeline can't publish.
+  // Drop whatever the current platform doesn't support the moment you switch to it, so the
+  // composer never lets you build something the Publishing Engine can't actually fan out —
+  // carousel is LinkedIn/Instagram only, video is Facebook only, Story is Instagram only, and
+  // Story + carousel together aren't offered (a Story is always a single image here).
   useEffect(() => {
-    if (!isLinkedin && images.length > 1) setImages((prev) => prev.slice(0, 1))
-  }, [isLinkedin, images.length])
+    if (!supportsCarousel && images.length > 1) setImages((prev) => prev.slice(0, 1))
+  }, [supportsCarousel, images.length])
+  useEffect(() => {
+    if (!supportsVideo && mediaKind === 'video') { setMediaKind('image'); setVideoUrl(null) }
+  }, [supportsVideo, mediaKind])
+  useEffect(() => {
+    if (!supportsStory && postFormat === 'story') setPostFormat('feed')
+  }, [supportsStory, postFormat])
+  useEffect(() => {
+    if (isCarousel && postFormat === 'story') setPostFormat('feed')
+  }, [isCarousel, postFormat])
 
   const scheduling = when === 'date'
   // Built from the date+time inputs as LOCAL time (no trailing Z), then converted to an
@@ -73,8 +95,11 @@ export default function CreatePostModal({
   // Autosave on every change (cheap — it's a handful of strings in localStorage).
   useEffect(() => {
     if (done) return
-    saveComposerDraft({ platform, linkedinAccount, images, caption, hashtagsInput, cta, when, scheduledDate, scheduledTime })
-  }, [done, platform, linkedinAccount, images, caption, hashtagsInput, cta, when, scheduledDate, scheduledTime])
+    saveComposerDraft({
+      platform, linkedinAccount, images, mediaKind, videoUrl, postFormat,
+      caption, hashtagsInput, cta, when, scheduledDate, scheduledTime,
+    })
+  }, [done, platform, linkedinAccount, images, mediaKind, videoUrl, postFormat, caption, hashtagsInput, cta, when, scheduledDate, scheduledTime])
 
   function discardDraft() {
     clearComposerDraft()
@@ -82,6 +107,9 @@ export default function CreatePostModal({
     setPlatform('instagram')
     setLinkedinAccount(LINKEDIN_ACCOUNTS[0].value)
     setImages([])
+    setMediaKind('image')
+    setVideoUrl(null)
+    setPostFormat('feed')
     setCaption('')
     setHashtagsInput('')
     setCta('')
@@ -90,7 +118,9 @@ export default function CreatePostModal({
     setScheduledTime('')
   }
 
-  const hasContent = Boolean(images.length || caption.trim())
+  // A video post without a video isn't a thing — require it explicitly rather than letting
+  // caption text alone satisfy "has content" the way it does for an image/text post.
+  const hasContent = mediaKind === 'video' ? Boolean(videoUrl) : Boolean(images.length || caption.trim())
   // Previously this ignored `when` entirely, so you could pick "Set a target date", leave the
   // date blank, and save — the empty date was silently coerced to null and the post behaved
   // like an immediate one. That's the bug that made a scheduled post publish instantly.
@@ -101,13 +131,18 @@ export default function CreatePostModal({
     setError(null)
     try {
       const slides: ContentSlide[] = images.map((url, i) => ({ idx: i, title: '', caption: '', url }))
+      const contentType =
+        mediaKind === 'video' ? 'ugc_video' :
+        postFormat === 'story' ? 'story' :
+        isCarousel ? 'carousel' :
+        images[0] ? 'static_image' : 'social_caption'
       const item = await createManualItem({
         profileId,
         platform,
-        contentType: isCarousel ? 'carousel' : images[0] ? 'static_image' : 'social_caption',
+        contentType,
         title: caption.trim() ? caption.trim().slice(0, 60) : null,
         body: caption.trim(),
-        mediaUrl: images[0] ?? null,
+        mediaUrl: mediaKind === 'video' ? videoUrl : (images[0] ?? null),
         slides,
         hashtags,
         cta: cta.trim(),
@@ -209,48 +244,106 @@ export default function CreatePostModal({
             </div>
           )}
 
+          {(supportsVideo || supportsStory) && (
+            <div>
+              <div className="label mb-2">Post type</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {supportsVideo && (
+                  <>
+                    <button type="button" onClick={() => setMediaKind('image')} className={mediaKind === 'image' ? 'badge' : 'badge opacity-40'} style={{ textTransform: 'none' }}>
+                      Photo
+                    </button>
+                    <button type="button" onClick={() => setMediaKind('video')} className={mediaKind === 'video' ? 'badge badge-blue' : 'badge badge-blue opacity-40'} style={{ textTransform: 'none' }}>
+                      Video
+                    </button>
+                  </>
+                )}
+                {supportsStory && !isCarousel && (
+                  <>
+                    <button type="button" onClick={() => setPostFormat('feed')} className={postFormat === 'feed' ? 'badge' : 'badge opacity-40'} style={{ textTransform: 'none' }}>
+                      Feed post
+                    </button>
+                    <button type="button" onClick={() => setPostFormat('story')} className={postFormat === 'story' ? 'badge badge-blue' : 'badge badge-blue opacity-40'} style={{ textTransform: 'none' }}>
+                      Story
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           <div>
             <div className="label mb-2">
-              {isLinkedin ? 'Images' : 'Image'}
+              {mediaKind === 'video' ? 'Video' : supportsCarousel ? 'Images' : 'Image'}
               {isCarousel && <span className="text-muted font-normal"> · carousel, {images.length} slides</span>}
             </div>
-            {images.length > 0 && (
-              <div className="flex gap-2 flex-wrap mb-2">
-                {images.map((url, i) => (
-                  <div key={url + i} className="relative w-20 h-20">
-                    <img src={url} alt={`Slide ${i + 1}`} className="w-20 h-20 object-cover rounded-lg" />
-                    {isCarousel && (
-                      <span
-                        className="absolute bottom-1 left-1 text-[10px] font-semibold text-white rounded px-1.5"
-                        style={{ background: 'rgba(0,0,0,0.6)' }}
-                      >
-                        {i + 1}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full flex items-center justify-center text-white"
-                      style={{ background: 'var(--accent-orange)' }}
-                      aria-label={`Remove slide ${i + 1}`}
-                    >
-                      <X size={11} />
-                    </button>
+            {mediaKind === 'video' ? (
+              videoUrl ? (
+                <div className="relative w-40 mb-2">
+                  <video src={videoUrl} controls className="w-40 rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={() => setVideoUrl(null)}
+                    className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full flex items-center justify-center text-white"
+                    style={{ background: 'var(--accent-orange)' }}
+                    aria-label="Remove video"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              ) : (
+                <AssetUploader
+                  pathPrefix={`manual/${profileId}`}
+                  accept="video/*"
+                  label="Upload video"
+                  onUploaded={(url) => setVideoUrl(url)}
+                />
+              )
+            ) : (
+              <>
+                {images.length > 0 && (
+                  <div className="flex gap-2 flex-wrap mb-2">
+                    {images.map((url, i) => (
+                      <div key={url + i} className="relative w-20 h-20">
+                        <img src={url} alt={`Slide ${i + 1}`} className="w-20 h-20 object-cover rounded-lg" />
+                        {isCarousel && (
+                          <span
+                            className="absolute bottom-1 left-1 text-[10px] font-semibold text-white rounded px-1.5"
+                            style={{ background: 'rgba(0,0,0,0.6)' }}
+                          >
+                            {i + 1}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
+                          className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full flex items-center justify-center text-white"
+                          style={{ background: 'var(--accent-orange)' }}
+                          aria-label={`Remove slide ${i + 1}`}
+                        >
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-            {(isLinkedin || images.length === 0) && (
-              <AssetUploader
-                pathPrefix={`manual/${profileId}`}
-                label={images.length ? 'Add another slide' : 'Upload image'}
-                onUploaded={(url) => setImages((prev) => [...prev, url])}
-              />
+                )}
+                {(images.length === 0 || (supportsCarousel && postFormat !== 'story')) && (
+                  <AssetUploader
+                    pathPrefix={`manual/${profileId}`}
+                    label={images.length ? 'Add another slide' : 'Upload image'}
+                    onUploaded={(url) => setImages((prev) => (postFormat === 'story' ? [url] : [...prev, url]))}
+                  />
+                )}
+              </>
             )}
             <p className="text-muted text-xs mt-1.5">
-              {isLinkedin
-                ? 'Optional — leave blank for a text-only post. Add 2 or more to post as a LinkedIn carousel (swipeable gallery).'
-                : 'Optional — leave blank for a text-only post.'}
+              {mediaKind === 'video'
+                ? 'Required — upload the video file to post.'
+                : postFormat === 'story'
+                  ? 'A Story is a single image.'
+                  : supportsCarousel
+                    ? `Optional — leave blank for a text-only post. Add 2 or more to post as a carousel${isLinkedin ? ' (swipeable gallery)' : ''}.`
+                    : 'Optional — leave blank for a text-only post.'}
             </p>
           </div>
 
@@ -346,13 +439,26 @@ export default function CreatePostModal({
 
         <div className="w-full md:w-[300px] shrink-0">
           <div className="label mb-2 text-center">How it'll look</div>
-          {isCarousel ? (
+          {mediaKind === 'video' ? (
+            videoUrl ? (
+              <video src={videoUrl} controls className="w-full rounded-panel" style={{ border: '1px solid var(--border-subtle)' }} />
+            ) : (
+              <div
+                className="rounded-panel flex items-center justify-center text-muted text-xs py-16"
+                style={{ border: '1px solid var(--border-subtle)', background: 'var(--fill-tertiary)' }}
+              >
+                Upload a video to preview
+              </div>
+            )
+          ) : isCarousel ? (
             <CarouselViewer slides={images.map((url, i) => ({ idx: i, title: '', caption: '', url }))} />
           ) : (
             <PlatformMockup
               platform={platform}
               img={images[0] ?? null}
-              aspect={PLATFORM_ASPECT[platform] ?? 1}
+              // Stories are vertical, not the square/1.91:1 feed-card ratio — a more accurate
+              // preview than pretending it's a normal feed post.
+              aspect={postFormat === 'story' ? 9 / 16 : (PLATFORM_ASPECT[platform] ?? 1)}
               caption={[caption, hashtags.map((h) => `#${h}`).join(' ')].filter(Boolean).join('\n\n')}
             />
           )}

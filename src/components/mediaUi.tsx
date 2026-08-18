@@ -47,12 +47,13 @@ function platformStyle(platform?: string | null): PlatformStyle {
   return { bg: 'var(--fill-tertiary)', label: platform || '—' }
 }
 
-// Instagram + LinkedIn only — matches ACTIVE_PLATFORMS in lib/content.ts. Facebook/YouTube
-// generate no content right now, so they're not offered as filter/composer options; their
-// PlatformBadge glyphs and Meta Graph publish nodes stay in place for when that changes.
+// Matches ACTIVE_PLATFORMS in lib/content.ts. YouTube generates no content and has no publish
+// flow, so it's not offered here. Facebook is manual-composer-only (see ACTIVE_PLATFORMS'
+// comment) — offered here, but Content Factory's AI generation still only targets IG/LinkedIn.
 export const PLATFORM_OPTIONS = [
   { value: 'instagram', label: 'Instagram' },
   { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'facebook', label: 'Facebook' },
 ]
 
 // Feed-card aspect ratio per platform — shared by CreatePostModal's live preview and

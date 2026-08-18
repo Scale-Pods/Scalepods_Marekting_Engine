@@ -20,12 +20,15 @@ export const IMAGE_CONTENT_TYPES: ContentType[] = ['static_image', 'carousel', '
 export const VIDEO_CONTENT_TYPES: ContentType[] = ['ugc_video', 'motion_graphics', 'product_video']
 
 /**
- * Platforms actually in use — YouTube/Facebook are still part of the wider platform surface
- * (Meta Graph publish nodes, PlatformBadge glyphs, etc.) but generate/show no content right
- * now. Content Text Engine (n8n) filters its calendar to this same list before generating, so
- * this FE filter and that generation-side filter always agree. Update both together.
+ * Platforms visible across Publishing/Calendar/etc. YouTube is still fully dormant (no
+ * generation, no composer option, no publish nodes wired to a real flow). Facebook is
+ * manual-composer-only as of the Story/Carousel/Video build: it's active here so a manually
+ * created Facebook post flows through Publishing/Calendar like any other, but it is
+ * DELIBERATELY NOT in Content Text Engine's (n8n) generation filter — AI content generation
+ * for Facebook is out of scope, only human-authored posts via CreatePostModal. Instagram/
+ * LinkedIn remain the only AI-generated pillars; update the n8n filter too if that ever changes.
  */
-export const ACTIVE_PLATFORMS = ['instagram', 'linkedin'] as const
+export const ACTIVE_PLATFORMS = ['instagram', 'linkedin', 'facebook'] as const
 
 export function isActivePlatform(platform?: string | null): boolean {
   return (ACTIVE_PLATFORMS as readonly string[]).includes((platform || '').toLowerCase())
@@ -289,7 +292,7 @@ export async function reviseWithAi(itemId: string, notes: string): Promise<void>
 export async function createManualItem(input: {
   profileId: string
   platform: string
-  contentType: 'static_image' | 'social_caption' | 'carousel'
+  contentType: 'static_image' | 'social_caption' | 'carousel' | 'story' | 'ugc_video'
   title: string | null
   body: string
   mediaUrl: string | null
