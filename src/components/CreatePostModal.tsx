@@ -216,18 +216,32 @@ export default function CreatePostModal({
 
           <div>
             <div className="label mb-2">Platform</div>
+            {/* Dimming the unselected options to 45% opacity (the old treatment) made every
+                platform except the active one look faded and disabled rather than just
+                "not chosen" — the opposite of inviting. Every option now stays full-strength
+                and is distinguished by its own button frame instead: a filled, ringed card
+                when active, a plain outlined one otherwise. Bigger tap targets too. */}
             <div className="flex gap-2 flex-wrap">
-              {PLATFORM_OPTIONS.map((p) => (
-                <button
-                  key={p.value}
-                  type="button"
-                  onClick={() => setPlatform(p.value)}
-                  className="rounded-full transition-all"
-                  style={{ opacity: platform === p.value ? 1 : 0.45, transform: platform === p.value ? 'scale(1.03)' : undefined }}
-                >
-                  <PlatformBadge platform={p.value} />
-                </button>
-              ))}
+              {PLATFORM_OPTIONS.map((p) => {
+                const active = platform === p.value
+                return (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setPlatform(p.value)}
+                    className="rounded-full transition-all"
+                    style={{
+                      padding: 4,
+                      background: active ? 'var(--fill-primary)' : 'var(--fill-tertiary)',
+                      outline: active ? '2px solid var(--accent-green)' : '1px solid var(--border-subtle)',
+                      outlineOffset: -1,
+                      transform: active ? 'scale(1.05)' : undefined,
+                    }}
+                  >
+                    <PlatformBadge platform={p.value} />
+                  </button>
+                )
+              })}
             </div>
           </div>
 

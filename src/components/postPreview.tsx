@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Eye, X, ChevronLeft, ChevronRight, CheckCircle2, Clock, Loader2, XCircle, Pencil, Ban, Check, ExternalLink, Send } from 'lucide-react'
+import { Eye, X, ChevronLeft, ChevronRight, CheckCircle2, Clock, Loader2, XCircle, Pencil, Ban, Check, ExternalLink, Send, Play } from 'lucide-react'
 import { PlatformBadge } from './mediaUi'
 import { Badge, Button } from './ui'
 import { useToast, toastMessage } from './Toast'
@@ -70,6 +70,14 @@ export function CaptionText({ text }: { text?: string | null }) {
   )
 }
 
+// `img` is used for feed/story/carousel media, but Facebook Video and YouTube Shorts items
+// point it at a video file — an <img> can't decode that (renders as a broken-image icon), so
+// detect the file extension and render a muted <video> thumbnail instead when it's one.
+const VIDEO_EXT_RE = /\.(mp4|mov|webm|m4v|avi|mkv)(\?|$)/i
+function isVideoUrl(url: string) {
+  return VIDEO_EXT_RE.test(url)
+}
+
 // Square Instagram-grid-style tile — thumbnail-first, minimal chrome. Platform badge sits
 // top-left; callers can add a status/type chip top-right and a selection control bottom-left.
 // `busyNote` replaces the image entirely (e.g. "Generating image…") and suppresses the
@@ -85,10 +93,20 @@ export function PostTile({
   busyNote?: ReactNode
   onClick: () => void
 }) {
+  const isVideo = Boolean(img && isVideoUrl(img))
   return (
     <div className="relative aspect-square rounded-lg overflow-hidden group" style={{ background: 'var(--fill-tertiary)' }}>
       <button onClick={onClick} className="absolute inset-0 w-full h-full text-left" disabled={Boolean(busyNote)}>
-        {img ? (
+        {img && isVideo ? (
+          <>
+            <video src={img} muted playsInline preload="metadata" className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105" />
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <span className="h-8 w-8 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
+                <Play size={14} className="text-white" fill="currentColor" />
+              </span>
+            </div>
+          </>
+        ) : img ? (
           <img src={img} alt="" className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105" />
         ) : busyNote ? (
           <div className="w-full h-full flex flex-col items-center justify-center gap-2">{busyNote}</div>
@@ -186,7 +204,9 @@ export function PostPreviewModal({
       >
         {/* Media side */}
         <div className="flex-1 min-w-0 flex items-center justify-center" style={{ background: '#000' }}>
-          {img ? (
+          {img && isVideoUrl(img) ? (
+            <video src={img} controls className="max-h-[45vh] md:max-h-[85vh] w-full object-contain" />
+          ) : img ? (
             <img src={img} alt="" className="max-h-[45vh] md:max-h-[85vh] w-full object-contain" />
           ) : (
             mediaFallback ?? <div className="text-white/60 text-sm p-10 text-center max-w-xs">No image</div>
