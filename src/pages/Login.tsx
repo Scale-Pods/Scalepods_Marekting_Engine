@@ -59,8 +59,14 @@ export default function Login() {
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
-      {/* Brand panel */}
-      <div className="relative hidden lg:flex flex-col justify-between p-12 overflow-hidden bg-[var(--alt-bg-green)]">
+      {/* Brand panel — deliberately always the dark hero treatment regardless of the app's own
+          light/dark theme (same idea as Vercel/Linear's login splash), not a themed surface. It
+          used to sit on --alt-bg-green, whose light-mode value is a pale #E7F0DF — leaving the
+          hardcoded white heading/logo on that background is how "light theme" turned into
+          barely-legible white-on-white. Pinned to the actual dark value directly so this panel
+          reads the same in both themes; --alt-bg-green itself stays theme-reactive for its one
+          other real use (::selection). */}
+      <div className="relative hidden lg:flex flex-col justify-between p-12 overflow-hidden bg-[#0B1A08]">
         <div className="absolute inset-0 grid-overlay opacity-60" />
         <motion.div
           className="absolute -right-24 -top-24 h-96 w-96 rounded-full blur-3xl"
