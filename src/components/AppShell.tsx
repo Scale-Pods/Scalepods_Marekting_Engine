@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target, Sparkles,
   CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
+  PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
@@ -40,6 +41,8 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
   },
 ]
 
+const SIDEBAR_PINNED_KEY = 'sp-sidebar-pinned'
+
 const ROLE_LABEL: Record<Role, string> = { admin: 'Admin', client: 'Client', designer: 'Designer' }
 
 // Live count badges shown next to a nav item — path → which counter to read.
@@ -54,6 +57,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [roleOpen, setRoleOpen] = useState(false)
   const navigate = useNavigate()
 
+  // Gmail-style rail: pinned = always the full w-64 sidebar (persisted — this one's worth
+  // remembering across visits, unlike theme). Unpinned = a narrow icon-only rail by default
+  // that expands on hover and collapses again the moment the cursor leaves it, so the content
+  // area gets the width back without needing a click either way.
+  const [pinned, setPinned] = useState(() => localStorage.getItem(SIDEBAR_PINNED_KEY) !== 'false')
+  const [hovering, setHovering] = useState(false)
+  const expanded = pinned || hovering
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_PINNED_KEY, String(pinned))
+  }, [pinned])
+
   const logo = theme === 'dark' ? '/brand/logo-white.png' : '/brand/logo-black.png'
   const initials = (user?.email || 'U').slice(0, 2).toUpperCase()
 
@@ -64,21 +78,46 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen flex">
-      {/* Sidebar */}
-      <aside className="sidebar w-64 shrink-0 flex flex-col sticky top-0 h-screen">
-        <div className="p-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-          <img src={logo} alt="ScalePods" className="h-7" />
+      {/* Sidebar — collapses to an icon-only rail when unpinned, expands on hover (Gmail-style)
+          and snaps back the moment the cursor leaves. Pinning is what persists; hover-expansion
+          itself is deliberately session-only state. */}
+      <aside
+        className={`sidebar shrink-0 flex flex-col sticky top-0 h-screen overflow-hidden ${expanded ? 'w-64' : 'w-[72px]'}`}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+      >
+        <div
+          className={`p-5 flex items-center shrink-0 ${expanded ? 'justify-between' : 'justify-center'}`}
+          style={{ borderBottom: '1px solid var(--border-subtle)' }}
+        >
+          {expanded ? (
+            <img src={logo} alt="ScalePods" className="h-7 shrink-0" />
+          ) : (
+            <img src="/brand/icon.png" alt="ScalePods" className="h-7 w-7 object-contain shrink-0" />
+          )}
+          {expanded && (
+            <button
+              onClick={() => setPinned((p) => !p)}
+              className="text-muted hover:text-ink transition-colors shrink-0"
+              aria-label={pinned ? 'Unpin sidebar' : 'Pin sidebar open'}
+              title={pinned ? 'Unpin sidebar' : 'Pin sidebar open'}
+            >
+              {pinned ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
+            </button>
+          )}
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-3 space-y-4">
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-4">
           {NAV_GROUPS.map((group) => {
             const items = group.items.filter((n) => n.roles.includes(role))
             if (items.length === 0) return null
             return (
               <div key={group.section}>
-                <div className="text-muted text-[10px] font-semibold uppercase tracking-wide px-3 mb-1.5">
-                  {group.section}
-                </div>
+                {expanded && (
+                  <div className="text-muted text-[10px] font-semibold uppercase tracking-wide px-3 mb-1.5 whitespace-nowrap">
+                    {group.section}
+                  </div>
+                )}
                 <div className="space-y-1">
                   {items.map((n) => {
                     const countKey = NAV_COUNT[n.to]
@@ -88,17 +127,24 @@ export default function AppShell({ children }: { children: ReactNode }) {
                         key={n.to}
                         to={n.to}
                         end={n.to === '/'}
-                        className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                        title={expanded ? undefined : n.label}
+                        className={({ isActive }) => `nav-item relative ${expanded ? '' : 'justify-center'} ${isActive ? 'active' : ''}`}
                       >
                         {n.icon}
-                        <span className="flex-1">{n.label}</span>
-                        {count > 0 && (
+                        {expanded && <span className="flex-1 whitespace-nowrap">{n.label}</span>}
+                        {count > 0 && expanded && (
                           <span
-                            className="text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1"
+                            className="text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 shrink-0"
                             style={{ background: 'var(--accent-orange)', color: '#fff' }}
                           >
                             {count}
                           </span>
+                        )}
+                        {count > 0 && !expanded && (
+                          <span
+                            className="absolute top-1 right-1.5 h-2 w-2 rounded-full"
+                            style={{ background: 'var(--accent-orange)' }}
+                          />
                         )}
                       </NavLink>
                     )
@@ -110,20 +156,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         {/* Role switcher (single-login demo — switches which workspace view is active) */}
-        <div className="p-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+        <div className="p-3 shrink-0" style={{ borderTop: '1px solid var(--border-subtle)' }}>
           <div className="relative">
             <button
               onClick={() => setRoleOpen((o) => !o)}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-lg panel text-sm"
+              className={`w-full flex items-center rounded-lg panel text-sm ${expanded ? 'justify-between px-3 py-2' : 'justify-center py-2'}`}
+              title={expanded ? undefined : `${ROLE_LABEL[role]} — click to switch`}
             >
               <span className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full" style={{ background: ROLE_ACCENT[role] }} />
-                {ROLE_LABEL[role]}
+                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: ROLE_ACCENT[role] }} />
+                {expanded && <span className="whitespace-nowrap">{ROLE_LABEL[role]}</span>}
               </span>
-              <ChevronDown size={15} className={`transition-transform ${roleOpen ? 'rotate-180' : ''}`} />
+              {expanded && <ChevronDown size={15} className={`transition-transform ${roleOpen ? 'rotate-180' : ''}`} />}
             </button>
             {roleOpen && (
-              <div className="absolute bottom-full mb-2 w-full card p-1 z-10">
+              <div className="absolute bottom-full mb-2 left-0 w-48 card p-1 z-10">
                 {(['admin', 'client', 'designer'] as Role[]).map((r) => (
                   <button
                     key={r}

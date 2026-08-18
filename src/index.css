@@ -83,6 +83,10 @@
   /* Liquid glass material */
   --glass-fill:       rgba(8,10,14,0.72);
   --glass-fill-hover: rgba(16,19,28,0.80);
+  /* More transparent than any card fill — the sidebar is a permanent fixture over the ambient
+     background, not a hover state, so it can afford to let more color bleed through and read
+     as actual frosted glass rather than a solid panel with a blur filter technically applied. */
+  --sidebar-fill:     rgba(16,19,28,0.55);
   --glass-blur:       blur(40px) saturate(180%);
   --glass-blur-lg:    blur(60px) saturate(180%);
   --glass-border:     rgba(255,255,255,0.09);
@@ -137,6 +141,7 @@
 
   --glass-fill:       rgba(255,255,255,0.72);
   --glass-fill-hover: rgba(255,255,255,0.88);
+  --sidebar-fill:     rgba(255,255,255,0.60);
   --glass-blur:       blur(40px) saturate(180%);
   --glass-blur-lg:    blur(60px) saturate(180%);
   --glass-border:     rgba(255,255,255,0.90);
@@ -169,12 +174,19 @@
     /* Positions are viewport-relative, not content-area-relative — the left-side pair sits
        partly under AppShell's sidebar on app pages. That's fine (good, even): the sidebar is
        itself translucent with its own backdrop-filter, so ambient color behind it bleeds through
-       as a soft tint rather than getting hidden — same layered-glass read as the marketing site. */
+       as a soft tint rather than getting hidden — same layered-glass read as the marketing site.
+       Shape (radial-gradient) and placement (background-size/-position) are split apart here,
+       rather than baking each ellipse's size+position into one `at X% Y%` gradient, so the
+       positions below can be animated (see ambientDrift) without touching the gradients
+       themselves. */
     background-image:
-      radial-gradient(ellipse 140% 80% at 15% -5%, var(--ambient-1) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 85% 95%, var(--ambient-2) 0%, transparent 50%),
-      radial-gradient(ellipse 65% 55% at 90% 12%, var(--ambient-2) 0%, transparent 58%),
-      radial-gradient(ellipse 70% 60% at 25% 90%, var(--ambient-1) 0%, transparent 58%);
+      radial-gradient(ellipse closest-side, var(--ambient-1) 0%, transparent 70%),
+      radial-gradient(ellipse closest-side, var(--ambient-2) 0%, transparent 70%),
+      radial-gradient(ellipse closest-side, var(--ambient-2) 0%, transparent 70%),
+      radial-gradient(ellipse closest-side, var(--ambient-1) 0%, transparent 70%);
+    background-size: 140vw 80vh, 80vw 60vh, 65vw 55vh, 70vw 60vh;
+    background-position: 15% -5%, 85% 95%, 92% 8%, 25% 90%;
+    background-repeat: no-repeat;
     background-attachment: fixed;
     color: var(--text-primary);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
@@ -358,10 +370,11 @@
 
   /* Sidebar — frosted macOS rail, hairline separator instead of a hard border */
   .sidebar {
-    background: var(--glass-fill-hover);
+    background: var(--sidebar-fill);
     backdrop-filter: var(--glass-blur-lg);
     -webkit-backdrop-filter: var(--glass-blur-lg);
     border-right: 1px solid var(--border-subtle);
+    transition: width 220ms cubic-bezier(0.4, 0, 0.2, 1);
   }
   .nav-item {
     display: flex; align-items: center; gap: 0.75rem;
@@ -397,6 +410,20 @@
 @keyframes modalEntry {
   from { opacity: 0; transform: scale(0.94) translateY(12px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Slow ambient drift for the body's blob background (see the `background-position`/`-size`
+   split above) — a barely-perceptible 90s cycle so the app reads as quietly alive rather than
+   a static wallpaper, without anything jumpy enough to distract from actual content. Alternates
+   rather than looping 0%->100%->0% so there's no jump-cut at the seam. Off entirely under
+   prefers-reduced-motion. */
+@media (prefers-reduced-motion: no-preference) {
+  body { animation: ambientDrift 90s ease-in-out infinite alternate; }
+}
+@keyframes ambientDrift {
+  0%   { background-position: 15% -5%, 85% 95%, 92% 8%, 25% 90%; }
+  50%  { background-position: 22%  3%, 78% 87%, 82% 16%, 33% 82%; }
+  100% { background-position: 15% -5%, 85% 95%, 92% 8%, 25% 90%; }
 }
 
 /* Utility text colors bound to tokens */
