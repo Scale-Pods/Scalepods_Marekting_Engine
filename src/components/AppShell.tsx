@@ -8,7 +8,7 @@ import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { useRealtimeSync, useNavCounts } from '../lib/queries'
 import NotificationBell from './NotificationBell'
-import { toggleTheme, getTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
+import { toggleTheme, getCurrentTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
 
 type NavItem = { to: string; label: string; icon: ReactNode; roles: Role[] }
 
@@ -50,7 +50,7 @@ const NAV_COUNT: Record<string, 'profiles' | 'pendingReview'> = {
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const { user, role, setRole, signOut } = useAuth()
-  const [theme, setTheme] = useState<Theme>(getTheme())
+  const [theme, setTheme] = useState<Theme>(getCurrentTheme())
   const [roleOpen, setRoleOpen] = useState(false)
   const navigate = useNavigate()
 

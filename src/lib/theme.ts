@@ -7,18 +7,30 @@ export type Role = 'admin' | 'client' | 'designer'
 const THEME_KEY = 'sp-theme'
 const ROLE_KEY = 'sp-role'
 
+// Theme used to persist across visits (saved to localStorage, read back here). Every fresh
+// load/reload/login now always starts dark regardless of what was chosen before — getTheme()
+// is the boot-time default (called once in main.tsx before React even renders, so this is what
+// decides the very first paint), so it no longer consults localStorage at all.
 export function getTheme(): Theme {
-  const t = localStorage.getItem(THEME_KEY)
-  return t === 'light' ? 'light' : 'dark'
+  return 'dark'
 }
 
 export function applyTheme(theme: Theme) {
   document.documentElement.setAttribute('data-theme', theme)
-  localStorage.setItem(THEME_KEY, theme)
+}
+
+// Reads the *live* DOM state rather than getTheme()'s fixed boot default. Login/AppShell/
+// Settings each mount their own theme state independently, and signing in navigates from
+// Login to AppShell client-side (no full reload) — if a component seeded itself from getTheme()
+// after a mid-session toggle, it'd show the wrong Sun/Moon icon even though the page itself
+// stayed on whatever the user actually picked. This is what those components should read
+// instead, so toggling stays consistent across that navigation within one visit.
+export function getCurrentTheme(): Theme {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
 }
 
 export function toggleTheme(): Theme {
-  const next: Theme = getTheme() === 'dark' ? 'light' : 'dark'
+  const next: Theme = getCurrentTheme() === 'dark' ? 'light' : 'dark'
   applyTheme(next)
   return next
 }

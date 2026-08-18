@@ -3,14 +3,14 @@ import { Link } from 'react-router-dom'
 import { Settings as SettingsIcon, User, ShieldCheck, Sun, Moon, LogOut, Building2, Sparkles, Send } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { GENERATION_ENABLED, PUBLISHING_ENABLED } from '../lib/content'
-import { toggleTheme, getTheme, type Theme, ROLE_ACCENT } from '../lib/theme'
+import { toggleTheme, getCurrentTheme, type Theme, ROLE_ACCENT } from '../lib/theme'
 import { PageHeader, Badge, Panel, Button } from '../components/ui'
 
 const ROLE_LABEL = { admin: 'Admin', client: 'Client', designer: 'Designer' } as const
 
 export default function Settings() {
   const { user, role, signOut } = useAuth()
-  const [theme, setTheme] = useState<Theme>(getTheme())
+  const [theme, setTheme] = useState<Theme>(getCurrentTheme())
 
   return (
     <div>

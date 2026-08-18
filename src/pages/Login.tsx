@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Sun, Moon, Sparkles, ArrowRight, ShieldCheck, User, Palette, Send } from 'lucide-react'
 import { useAuth } from '../lib/auth'
-import { toggleTheme, getTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
+import { toggleTheme, getCurrentTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
 
 const ROLES: { id: Role; label: string; icon: typeof User; blurb: string }[] = [
   { id: 'admin', label: 'Admin', icon: ShieldCheck, blurb: 'Run every engine' },
@@ -12,7 +12,7 @@ const ROLES: { id: Role; label: string; icon: typeof User; blurb: string }[] = [
 
 export default function Login() {
   const { signIn, role, setRole, sendReset } = useAuth()
-  const [theme, setTheme] = useState<Theme>(getTheme())
+  const [theme, setTheme] = useState<Theme>(getCurrentTheme())
   const [email, setEmail] = useState('marketing@scalepods.co')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
