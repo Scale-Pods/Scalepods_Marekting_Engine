@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Building2, Sparkles, UploadCloud, X } from 'lucide-react'
 import {
   getProfile, createProfile, updateProfile, triggerAiAnalysis, type BusinessProfileInput,
 } from '../lib/clients'
 import { supabase } from '../lib/supabase'
+import { qk } from '../lib/queries'
 import { PageHeader, Button, Panel, Badge, Spinner } from '../components/ui'
 
 const PLATFORMS = ['instagram', 'youtube', 'facebook', 'linkedin'] as const
@@ -57,6 +59,7 @@ export default function BusinessProfile() {
   const { id } = useParams()
   const isNew = !id || id === 'new'
   const navigate = useNavigate()
+  const qc = useQueryClient()
 
   const [form, setForm] = useState<BusinessProfileInput>(EMPTY)
   const [loading, setLoading] = useState(!isNew)
@@ -116,6 +119,11 @@ export default function BusinessProfile() {
     try {
       const profile = isNew ? await createProfile(form) : await updateProfile(id!, form)
       await triggerAiAnalysis(profile.id)
+      // Otherwise the sidebar switcher and /clients list would keep the previous 5-minute-old
+      // profile list until their own staleTime expired — a just-created or just-renamed profile
+      // wouldn't show up (or show its old name) until then.
+      qc.invalidateQueries({ queryKey: qk.profiles })
+      qc.invalidateQueries({ queryKey: qk.navCounts })
       setSaved(true)
       setTimeout(() => navigate('/intelligence'), 900)
     } catch (err) {

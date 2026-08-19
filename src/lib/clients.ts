@@ -84,6 +84,24 @@ export async function updateProfile(id: string, input: BusinessProfileInput): Pr
   return data as BusinessProfile
 }
 
+/** Every table with a profile_id FK cascades on delete (content_items, scheduled_posts,
+ *  business_intelligence_reports, marketing_strategies, trend_runs/signals, post_analytics,
+ *  notifications, ai_insights) — deleting a profile wipes all of it, permanently, in one go.
+ *  Callers must confirm clearly before calling this; see countProfileContent for surfacing the
+ *  real scope of that beforehand. */
+export async function deleteProfile(id: string): Promise<void> {
+  const { error } = await supabase.from('business_profiles').delete().eq('id', id)
+  if (error) throw error
+}
+
+/** Content item count for a profile — used to make the delete-profile confirmation say
+ *  something concrete ("...and its 42 posts...") instead of a generic "this can't be undone". */
+export async function countProfileContent(id: string): Promise<number> {
+  const { count, error } = await supabase.from('content_items').select('id', { count: 'exact', head: true }).eq('profile_id', id)
+  if (error) throw error
+  return count ?? 0
+}
+
 /** Fires the AI Analysis n8n workflow (M3). Writes a new business_intelligence_reports row. */
 export async function triggerAiAnalysis(profileId: string): Promise<void> {
   await fireWebhook('sp-ai-analysis', { profileId })
