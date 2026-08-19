@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Globe, Instagram, Facebook, Linkedin, TrendingUp, Search, Users, FileText,
+  ArrowLeft, Globe, Instagram, Facebook, Linkedin, TrendingUp, Search, Users, FileText, Pencil,
 } from 'lucide-react'
-import { getReport, type BIReport } from '../lib/clients'
+import { getReport, getProfile, updateProfile, type BIReport, type BusinessProfile } from '../lib/clients'
+import { supabase } from '../lib/supabase'
+import { qk } from '../lib/queries'
 import { Spinner, EmptyState } from '../components/ui'
 import Markdown from '../components/Markdown'
 
@@ -61,12 +64,61 @@ const SECTIONS: { key: keyof BIReport; label: string; icon: typeof Globe; color:
 
 export default function IntelligenceReport() {
   const { id } = useParams()
+  const qc = useQueryClient()
   const [report, setReport] = useState<BIReport | null>(null)
+  const [profile, setProfile] = useState<BusinessProfile | null>(null)
   const [active, setActive] = useState<'full' | keyof BIReport>('full')
+  const [uploading, setUploading] = useState<'logo' | 'cover' | null>(null)
 
   useEffect(() => {
     if (id) getReport(id).then(setReport)
   }, [id])
+
+  // The report's banner/logo previously hardcoded the ScalePods placeholders regardless of
+  // which profile the report belonged to — this fetches the actual profile the report was run
+  // against so its own logo_url/cover_url (set via BusinessProfile.tsx or the pencil icons
+  // below) show here too, instead of always ScalePods' branding.
+  useEffect(() => {
+    if (report?.profile_id) getProfile(report.profile_id).then(setProfile)
+  }, [report?.profile_id])
+
+  async function uploadToStorage(file: File, tag: string): Promise<string> {
+    const path = `brand-assets/${profile!.id}/${tag}-${Date.now()}-${file.name}`
+    const { error: upErr } = await supabase.storage.from('content-media').upload(path, file, { upsert: true })
+    if (upErr) throw upErr
+    const { data } = supabase.storage.from('content-media').getPublicUrl(path)
+    return data.publicUrl
+  }
+
+  async function onUploadLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !profile) return
+    setUploading('logo')
+    try {
+      const url = await uploadToStorage(file, 'logo')
+      const updated = await updateProfile(profile.id, { logo_url: url })
+      setProfile(updated)
+      qc.invalidateQueries({ queryKey: qk.profiles })
+    } finally {
+      setUploading(null)
+      e.target.value = ''
+    }
+  }
+
+  async function onUploadCover(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !profile) return
+    setUploading('cover')
+    try {
+      const url = await uploadToStorage(file, 'cover')
+      const updated = await updateProfile(profile.id, { cover_url: url })
+      setProfile(updated)
+      qc.invalidateQueries({ queryKey: qk.profiles })
+    } finally {
+      setUploading(null)
+      e.target.value = ''
+    }
+  }
 
   if (!report) {
     return (
@@ -89,26 +141,47 @@ export default function IntelligenceReport() {
 
       <div className="card overflow-hidden mb-6 p-0">
         <div
-          className="relative w-full"
+          className="relative w-full group"
           style={{
             aspectRatio: '1709 / 285',
-            backgroundImage: "url('/brand/profile-banner.png')",
+            backgroundImage: `url('${profile?.cover_url || '/brand/profile-banner.png'}')`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundColor: '#04070D',
           }}
-        />
+        >
+          {profile && (
+            <label
+              className="absolute top-3 right-3 h-9 w-9 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ background: 'rgba(0,0,0,0.6)' }}
+              title="Change cover image"
+            >
+              {uploading === 'cover' ? <Spinner size={16} /> : <Pencil size={15} className="text-white" />}
+              <input type="file" accept="image/*" className="hidden" onChange={onUploadCover} disabled={uploading !== null} />
+            </label>
+          )}
+        </div>
         <div className="px-6 pb-5">
           {/* z-10 needed: the banner above is position:relative, which paints above static
               content regardless of DOM order per CSS stacking rules (same fix as the
               BusinessProfile logo overlap bug). */}
-          <div className="-mt-10 mb-2 relative z-10">
+          <div className="-mt-10 mb-2 relative z-10 w-fit group/logo">
             <div
               className="h-16 w-16 rounded-xl overflow-hidden"
               style={{ background: 'var(--bg-layer3)', border: '4px solid var(--bg-card)', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}
             >
-              <img src="/brand/logo-square.jpg" alt="ScalePods" className="h-full w-full object-cover" />
+              <img src={profile?.logo_url || '/brand/logo-square.jpg'} alt={profile?.business_name || 'Business logo'} className="h-full w-full object-cover" />
             </div>
+            {profile && (
+              <label
+                className="absolute bottom-0.5 right-0.5 h-6 w-6 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover/logo:opacity-100 transition-opacity"
+                style={{ background: 'rgba(0,0,0,0.7)' }}
+                title="Change profile picture"
+              >
+                {uploading === 'logo' ? <Spinner size={12} /> : <Pencil size={12} className="text-white" />}
+                <input type="file" accept="image/*" className="hidden" onChange={onUploadLogo} disabled={uploading !== null} />
+              </label>
+            )}
           </div>
           <h1 className="text-xl font-semibold">Business Intelligence Report</h1>
           <p className="text-muted text-sm mt-0.5">{new Date(report.created_at).toLocaleString()}</p>
