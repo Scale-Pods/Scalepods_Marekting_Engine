@@ -23,6 +23,11 @@ export interface BusinessProfile {
   hours: string | null
   service_areas: string[]
   fb_page_id: string | null
+  /** Per-profile avatar/cover — fall back to the generic ScalePods placeholder assets when
+   *  unset. Previously these were hardcoded static files (`/brand/logo-square.jpg` /
+   *  `/brand/profile-banner.png`) shown identically for every profile, ScalePods or not. */
+  logo_url: string | null
+  cover_url: string | null
   status: string
   created_at: string
   updated_at: string

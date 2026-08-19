@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Building2, Sparkles, UploadCloud, X } from 'lucide-react'
+import { Building2, Sparkles, UploadCloud, X, Pencil } from 'lucide-react'
 import {
   getProfile, createProfile, updateProfile, triggerAiAnalysis, type BusinessProfileInput,
 } from '../lib/clients'
@@ -19,7 +19,7 @@ const EMPTY: BusinessProfileInput = {
   competitors: '', website_url: '',
   social_media_urls: {}, assets: [], additional_notes: '',
   phone: '', email: '', address: '', hours: '', service_areas: [],
-  fb_page_id: '', status: 'active',
+  fb_page_id: '', logo_url: null, cover_url: null, status: 'active',
 }
 
 function TagsEditor({ value, onChange, placeholder }: { value: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
@@ -64,7 +64,7 @@ export default function BusinessProfile() {
   const [form, setForm] = useState<BusinessProfileInput>(EMPTY)
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
-  const [uploading, setUploading] = useState(false)
+  const [uploading, setUploading] = useState<'asset' | 'logo' | 'cover' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
@@ -89,21 +89,59 @@ export default function BusinessProfile() {
     set('social_media_urls', { ...(form.social_media_urls || {}), [key]: value })
   }
 
+  async function uploadToStorage(file: File, tag: string): Promise<string> {
+    const path = `brand-assets/${id}/${tag}-${Date.now()}-${file.name}`
+    const { error: upErr } = await supabase.storage.from('content-media').upload(path, file, { upsert: true })
+    if (upErr) throw upErr
+    const { data } = supabase.storage.from('content-media').getPublicUrl(path)
+    return data.publicUrl
+  }
+
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || isNew) return
-    setUploading(true)
+    setUploading('asset')
     setError(null)
     try {
-      const path = `brand-assets/${id}/${Date.now()}-${file.name}`
-      const { error: upErr } = await supabase.storage.from('content-media').upload(path, file, { upsert: true })
-      if (upErr) throw upErr
-      const { data } = supabase.storage.from('content-media').getPublicUrl(path)
-      set('assets', [...(form.assets || []), { name: file.name, url: data.publicUrl }])
+      const url = await uploadToStorage(file, 'asset')
+      set('assets', [...(form.assets || []), { name: file.name, url }])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
-      setUploading(false)
+      setUploading(null)
+      e.target.value = ''
+    }
+  }
+
+  // Logo/cover apply to the form immediately (same as the asset gallery above) but only persist
+  // once "Save & run analysis" is actually clicked — consistent with every other field on this
+  // page rather than writing to the DB the instant a file is picked.
+  async function onUploadLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || isNew) return
+    setUploading('logo')
+    setError(null)
+    try {
+      set('logo_url', await uploadToStorage(file, 'logo'))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploading(null)
+      e.target.value = ''
+    }
+  }
+
+  async function onUploadCover(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || isNew) return
+    setUploading('cover')
+    setError(null)
+    try {
+      set('cover_url', await uploadToStorage(file, 'cover'))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploading(null)
       e.target.value = ''
     }
   }
@@ -151,29 +189,48 @@ export default function BusinessProfile() {
         />
       ) : (
         <div className="card overflow-hidden mb-6 p-0">
-          {/* Cover banner */}
+          {/* Cover banner — per-profile now (cover_url), falls back to the generic ScalePods
+              placeholder when unset rather than always showing it regardless of which profile
+              this is. */}
           <div
-            className="relative w-full"
+            className="relative w-full group"
             style={{
               aspectRatio: '1709 / 285',
-              backgroundImage: "url('/brand/profile-banner.png')",
+              backgroundImage: `url('${form.cover_url || '/brand/profile-banner.png'}')`,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               backgroundColor: '#04070D',
             }}
-          />
+          >
+            <label
+              className="absolute top-3 right-3 h-9 w-9 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ background: 'rgba(0,0,0,0.6)' }}
+              title="Change cover image"
+            >
+              {uploading === 'cover' ? <Spinner size={16} /> : <Pencil size={15} className="text-white" />}
+              <input type="file" accept="image/*" className="hidden" onChange={onUploadCover} disabled={uploading !== null} />
+            </label>
+          </div>
           <div className="px-6 pb-5">
             {/* Logo tile overlapping the banner, LinkedIn-page style. Needs an explicit
                 z-index: the banner div is `position: relative`, and per CSS stacking rules
                 any positioned element (even z-index:auto) paints above static in-flow
                 content regardless of DOM order — without this the banner covered the logo. */}
-            <div className="-mt-12 mb-3 relative z-10">
+            <div className="-mt-12 mb-3 relative z-10 w-fit group/logo">
               <div
                 className="h-24 w-24 rounded-xl overflow-hidden"
                 style={{ background: 'var(--bg-layer3)', border: '4px solid var(--bg-card)', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}
               >
-                <img src="/brand/logo-square.jpg" alt="ScalePods" className="h-full w-full object-cover" />
+                <img src={form.logo_url || '/brand/logo-square.jpg'} alt={form.business_name || 'Business logo'} className="h-full w-full object-cover" />
               </div>
+              <label
+                className="absolute bottom-1 right-1 h-7 w-7 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover/logo:opacity-100 transition-opacity"
+                style={{ background: 'rgba(0,0,0,0.7)' }}
+                title="Change profile picture"
+              >
+                {uploading === 'logo' ? <Spinner size={13} /> : <Pencil size={13} className="text-white" />}
+                <input type="file" accept="image/*" className="hidden" onChange={onUploadLogo} disabled={uploading !== null} />
+              </label>
             </div>
 
             <h1 className="text-2xl font-semibold">{form.business_name || 'Business profile'}</h1>
@@ -350,9 +407,9 @@ export default function BusinessProfile() {
           ) : (
             <>
               <label className="btn-ghost w-fit cursor-pointer">
-                {uploading ? <Spinner size={15} /> : <UploadCloud size={16} />}
+                {uploading === 'asset' ? <Spinner size={15} /> : <UploadCloud size={16} />}
                 Upload asset
-                <input type="file" className="hidden" onChange={onUpload} disabled={uploading} />
+                <input type="file" className="hidden" onChange={onUpload} disabled={uploading !== null} />
               </label>
               {form.assets && form.assets.length > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">

@@ -76,7 +76,7 @@ export default function Clients() {
                       className="h-11 w-11 rounded-xl overflow-hidden shrink-0"
                       style={{ background: 'var(--bg-layer3)' }}
                     >
-                      <img src="/brand/logo-square.jpg" alt={p.business_name || 'ScalePods'} className="h-full w-full object-cover" />
+                      <img src={p.logo_url || '/brand/logo-square.jpg'} alt={p.business_name || 'ScalePods'} className="h-full w-full object-cover" />
                     </div>
                     <div className="min-w-0">
                       <div className="font-medium truncate">{p.business_name || 'Untitled business'}</div>
