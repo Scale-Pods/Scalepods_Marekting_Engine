@@ -1,13 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, Link, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target, Sparkles,
   CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
-  PanelLeftClose, PanelLeftOpen,
+  PanelLeftClose, PanelLeftOpen, Check, Plus,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
-import { useRealtimeSync, useNavCounts } from '../lib/queries'
+import { useRealtimeSync, useNavCounts, useProfile, useProfiles, useSetActiveProfile } from '../lib/queries'
 import NotificationBell from './NotificationBell'
 import { toggleTheme, getCurrentTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
 
@@ -55,7 +55,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const { user, role, setRole, signOut } = useAuth()
   const [theme, setTheme] = useState<Theme>(getCurrentTheme())
   const [roleOpen, setRoleOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const navigate = useNavigate()
+
+  const { data: profile } = useProfile()
+  const { data: profiles = [] } = useProfiles()
+  const setActiveProfile = useSetActiveProfile()
 
   // Gmail-style rail: pinned = always the full w-64 sidebar (persisted — this one's worth
   // remembering across visits, unlike theme). Unpinned = a narrow icon-only rail by default
@@ -74,7 +79,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   // One Realtime subscription for the whole authenticated session — every page's queries
   // invalidate off it, which is what replaces the per-page polling.
   useRealtimeSync()
-  const { data: counts = { profiles: 0, pendingReview: 0 } } = useNavCounts()
+  const { data: counts = { profiles: 0, pendingReview: 0 } } = useNavCounts(profile?.id)
 
   return (
     <div className="min-h-screen flex">
@@ -105,6 +110,53 @@ export default function AppShell({ children }: { children: ReactNode }) {
               {pinned ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
             </button>
           )}
+        </div>
+
+        {/* Profile switcher — which business profile the rest of the app operates on. Sits
+            above the nav (the primary context switch, not a page destination) rather than
+            next to the demo-only Role switcher at the bottom. */}
+        <div className="p-3 shrink-0" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+          <div className="relative">
+            <button
+              onClick={() => setProfileOpen((o) => !o)}
+              className={`w-full flex items-center rounded-lg panel text-sm ${expanded ? 'justify-between px-3 py-2' : 'justify-center py-2'}`}
+              title={expanded ? undefined : (profile?.business_name ?? 'No profile')}
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                <Building2 size={14} className="shrink-0 text-sage" />
+                {expanded && <span className="truncate">{profile?.business_name ?? 'No profile'}</span>}
+              </span>
+              {expanded && <ChevronDown size={15} className={`transition-transform shrink-0 ${profileOpen ? 'rotate-180' : ''}`} />}
+            </button>
+            {profileOpen && (
+              <div className="absolute top-full mt-2 left-0 w-56 card p-1 z-10">
+                {profiles.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      setActiveProfile(p.id)
+                      setProfileOpen(false)
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-panel text-left"
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ background: p.id === profile?.id ? 'var(--accent-green)' : 'var(--fill-tertiary)' }}
+                    />
+                    <span className="truncate flex-1">{p.business_name || 'Untitled business'}</span>
+                    {p.id === profile?.id && <Check size={13} className="text-sage shrink-0" />}
+                  </button>
+                ))}
+                <Link
+                  to="/clients/new"
+                  onClick={() => setProfileOpen(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-panel text-left text-muted"
+                >
+                  <Plus size={13} /> New profile
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-4">

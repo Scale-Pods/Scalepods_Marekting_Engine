@@ -3,12 +3,12 @@ import {
   Target, RefreshCw, CheckCircle2, CalendarDays, Pencil, Check, X,
   ListChecks, LayoutGrid, Share2, Magnet, MousePointerClick,
 } from 'lucide-react'
-import { listProfiles, type BusinessProfile } from '../lib/clients'
 import {
   getLatestStrategy, triggerStrategy, approveStrategy, updateStrategySection, regenerateStrategySection,
   type MarketingStrategy, type StrategySection, type CalendarItem,
 } from '../lib/strategy'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
+import { useProfile } from '../lib/queries'
 
 const COMPONENTS: { key: StrategySection; label: string; icon: typeof Target; color: string }[] = [
   { key: 'campaign_planning', label: 'Campaign Planning', icon: Target, color: 'var(--accent-green)' },
@@ -191,7 +191,7 @@ function SectionEditor({
 }
 
 export default function Strategy() {
-  const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
+  const { data: profile } = useProfile()
   const [strategy, setStrategy] = useState<MarketingStrategy | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [approving, setApproving] = useState(false)
@@ -206,12 +206,8 @@ export default function Strategy() {
   }, [])
 
   useEffect(() => {
-    listProfiles().then(async (profiles) => {
-      const p = profiles[0] ?? null
-      setProfile(p)
-      if (p) await load(p.id)
-    })
-  }, [load])
+    if (profile) load(profile.id)
+  }, [profile, load])
 
   useEffect(() => {
     if (!profile) return

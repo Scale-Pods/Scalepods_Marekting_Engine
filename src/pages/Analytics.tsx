@@ -5,7 +5,7 @@ import {
 import {
   BarChart3, RefreshCw, Sparkles, Heart, MessageCircle, Eye, Zap, Clock, Gauge, Quote, Users, Star,
 } from 'lucide-react'
-import { listProfiles, type BusinessProfile } from '../lib/clients'
+import { useProfile } from '../lib/queries'
 import {
   listPostAnalytics, getAnalyticsState, triggerAnalyticsRefresh,
   getLatestInsights, triggerInsights, type PostAnalytics, type AnalyticsState, type AiInsight,
@@ -143,7 +143,7 @@ function Tile({ icon: Icon, label, value, accent = 'var(--accent-green)' }: { ic
 }
 
 export default function Analytics() {
-  const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
+  const { data: profile } = useProfile()
   const [posts, setPosts] = useState<PostAnalytics[]>([])
   const [state, setState] = useState<AnalyticsState | null>(null)
   const [insights, setInsights] = useState<AiInsight | null>(null)
@@ -160,12 +160,8 @@ export default function Analytics() {
   }, [])
 
   useEffect(() => {
-    listProfiles().then(async (profiles) => {
-      const p = profiles[0] ?? null
-      setProfile(p)
-      if (p) await load(p.id)
-    })
-  }, [load])
+    if (profile) load(profile.id)
+  }, [profile, load])
 
   async function onRefresh() {
     if (!profile) return

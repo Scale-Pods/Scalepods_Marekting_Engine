@@ -6,8 +6,9 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
-import { listProfiles, type BusinessProfile } from '../lib/clients'
+import { type BusinessProfile } from '../lib/clients'
 import { ACTIVE_PLATFORMS } from '../lib/content'
+import { useProfile } from '../lib/queries'
 import { PageHeader, Badge, Panel } from '../components/ui'
 import { PlatformBadge } from '../components/mediaUi'
 
@@ -103,16 +104,12 @@ function Tile({ icon: Icon, label, value, accent }: { icon: typeof Zap; label: s
 
 export default function Dashboard() {
   const { role } = useAuth()
-  const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
+  const { data: profile } = useProfile()
   const [data, setData] = useState<DashboardData | null>(null)
 
   useEffect(() => {
-    listProfiles().then(async (profiles) => {
-      const p = profiles[0] ?? null
-      setProfile(p)
-      if (p) setData(await loadDashboardData(p))
-    })
-  }, [])
+    if (profile) loadDashboardData(profile).then(setData)
+  }, [profile])
 
   return (
     <div>

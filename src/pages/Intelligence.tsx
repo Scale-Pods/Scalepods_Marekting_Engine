@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BrainCircuit, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
-import { listProfiles, listReports, getLatestReport, triggerAiAnalysis, type BusinessProfile, type BIReport } from '../lib/clients'
+import { listReports, getLatestReport, triggerAiAnalysis, type BIReport } from '../lib/clients'
 import { PageHeader, Badge, Button, EmptyState, Spinner } from '../components/ui'
+import { useProfile } from '../lib/queries'
 
 const STATUS_META: Record<BIReport['status'], { label: string; tone: 'green' | 'blue' | 'orange'; icon: typeof CheckCircle2 }> = {
   completed: { label: 'Completed', tone: 'green', icon: CheckCircle2 },
@@ -12,7 +13,7 @@ const STATUS_META: Record<BIReport['status'], { label: string; tone: 'green' | '
 }
 
 export default function Intelligence() {
-  const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
+  const { data: profile } = useProfile()
   const [latest, setLatest] = useState<BIReport | null>(null)
   const [history, setHistory] = useState<BIReport[]>([])
   const [refreshing, setRefreshing] = useState(false)
@@ -26,12 +27,8 @@ export default function Intelligence() {
   }, [])
 
   useEffect(() => {
-    listProfiles().then(async (profiles) => {
-      const p = profiles[0] ?? null
-      setProfile(p)
-      if (p) await load(p.id)
-    })
-  }, [load])
+    if (profile) load(profile.id)
+  }, [profile, load])
 
   useEffect(() => {
     if (!profile) return

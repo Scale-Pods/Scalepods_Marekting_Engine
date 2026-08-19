@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { TrendingUp, RefreshCw, ExternalLink } from 'lucide-react'
-import { listProfiles, type BusinessProfile } from '../lib/clients'
 import { getLatestRun, listSignals, triggerTrends, type TrendRun, type TrendSignal } from '../lib/trends'
 import { PageHeader, Badge, Button, EmptyState, Spinner } from '../components/ui'
+import { useProfile } from '../lib/queries'
 
 // Real-world brand colors for the platform sources; ScalePods' own accent tokens for the two
 // non-platform categories (SEO Keywords, Competitor campaigns) — no invented colors either way.
@@ -77,7 +77,7 @@ function SignalCard({ sig }: { sig: TrendSignal }) {
 }
 
 export default function Trends() {
-  const [profile, setProfile] = useState<BusinessProfile | null | undefined>(undefined)
+  const { data: profile } = useProfile()
   const [run, setRun] = useState<TrendRun | null>(null)
   const [signals, setSignals] = useState<TrendSignal[]>([])
   const [refreshing, setRefreshing] = useState(false)
@@ -92,12 +92,8 @@ export default function Trends() {
   }, [])
 
   useEffect(() => {
-    listProfiles().then(async (profiles) => {
-      const p = profiles[0] ?? null
-      setProfile(p)
-      if (p) await load(p.id)
-    })
-  }, [load])
+    if (profile) load(profile.id)
+  }, [profile, load])
 
   useEffect(() => {
     if (!profile) return

@@ -1,7 +1,7 @@
 import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { supabase } from './supabase'
-import { listProfiles, type BusinessProfile } from './clients'
+import { listProfiles, getStoredActiveProfileId, setStoredActiveProfileId } from './clients'
 import { listApprovedItems, listScheduledPosts } from './publishing'
 import { getLatestRun, listItemsForRun, listReviewItems, listCalendarItems, isActivePlatform } from './content'
 import { NOTIFICATIONS_KEY } from './notifications'
@@ -26,6 +26,7 @@ export const queryClient = new QueryClient({
 
 export const qk = {
   profiles: ['profiles'] as const,
+  activeProfileId: ['activeProfileId'] as const,
   approvedItems: (profileId: string) => ['approvedItems', profileId] as const,
   scheduledPosts: (profileId: string) => ['scheduledPosts', profileId] as const,
   latestRun: (profileId: string) => ['latestRun', profileId] as const,
@@ -38,28 +39,72 @@ export const qk = {
   blogPost: (id: string) => ['blogPost', id] as const,
 }
 
-/** Sidebar badge counts. Was a blind 60s setInterval; now realtime-invalidated like everything else. */
-export function useNavCounts() {
+/** Sidebar badge counts. Was a blind 60s setInterval; now realtime-invalidated like everything
+ *  else. `profiles` is deliberately a total across every business profile (it's what the
+ *  "Business" nav badge means); `pendingReview` is scoped to the active profile — unscoped it
+ *  used to count every profile's pending items together, which was invisible with only one real
+ *  profile but would now misreport the "Creative Review" badge the moment a second profile
+ *  (e.g. a test one) has anything sitting in review too. */
+export function useNavCounts(profileId: string | undefined) {
   return useQuery({
-    queryKey: qk.navCounts,
+    queryKey: [...qk.navCounts, profileId ?? 'none'],
     queryFn: async () => {
       const [profilesRes, reviewRes] = await Promise.all([
         supabase.from('business_profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('content_items').select('id', { count: 'exact', head: true }).in('status', ['ready', 'revision']),
+        supabase.from('content_items').select('id', { count: 'exact', head: true }).eq('profile_id', profileId!).in('status', ['ready', 'revision']),
       ])
       return { profiles: profilesRes.count ?? 0, pendingReview: reviewRes.count ?? 0 }
     },
+    enabled: Boolean(profileId),
   })
 }
 
-/** The whole app is single-profile today (profiles[0]) but every page re-queried it. */
-export function useProfile() {
-  const q = useQuery({
+/** All business profiles — the profile switcher's dropdown, and what useProfile() below
+ *  resolves the active one out of. */
+export function useProfiles() {
+  return useQuery({
     queryKey: qk.profiles,
-    queryFn: async (): Promise<BusinessProfile | null> => (await listProfiles())[0] ?? null,
+    queryFn: listProfiles,
     staleTime: 5 * 60_000,
   })
-  return q
+}
+
+/** Which profile id is "active" right now — read once from localStorage (see clients.ts) and
+ *  from then on lives in the query cache, so useSetActiveProfile's setQueryData below is what
+ *  actually notifies every open page, not a localStorage-polling effect. */
+export function useActiveProfileId() {
+  return useQuery({
+    queryKey: qk.activeProfileId,
+    queryFn: () => getStoredActiveProfileId(),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  })
+}
+
+/**
+ * The profile the rest of the app operates on. Used to just be profiles[0] (the oldest one,
+ * unconditionally) — now resolves whichever id the switcher last picked, falling back to
+ * profiles[0] if nothing's stored yet or the stored id doesn't match any real profile anymore
+ * (e.g. it was deleted). Every page that used to call listProfiles() and take [0] itself should
+ * use this instead, so the switcher actually reaches them.
+ */
+export function useProfile() {
+  const { data: profiles, isLoading: profilesLoading } = useProfiles()
+  const { data: activeId } = useActiveProfileId()
+  const profile = profiles === undefined
+    ? undefined
+    : (profiles.find((p) => p.id === activeId) ?? profiles[0] ?? null)
+  return { data: profile, isLoading: profilesLoading }
+}
+
+/** Switches the active profile — persists it (survives a reload) and updates the query cache
+ *  directly (no network refetch needed, every useProfile() caller re-renders immediately). */
+export function useSetActiveProfile() {
+  const qc = useQueryClient()
+  return (id: string) => {
+    setStoredActiveProfileId(id)
+    qc.setQueryData(qk.activeProfileId, id)
+  }
 }
 
 export function useApprovedItems(profileId: string | undefined) {

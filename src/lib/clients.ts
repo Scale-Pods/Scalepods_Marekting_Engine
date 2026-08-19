@@ -41,6 +41,31 @@ export async function listProfiles(): Promise<BusinessProfile[]> {
   return data as BusinessProfile[]
 }
 
+// --- Active profile (the profile switcher) ----------------------------------
+// The app was single-profile-only for a long time (every page just took profiles[0], the
+// oldest one) — that stopped being enough the moment a second real profile could exist
+// alongside it. Which profile is "active" now persists per-browser here; lib/queries.ts's
+// useProfile() is what actually resolves it (falling back to profiles[0] if the stored id
+// doesn't match anything, e.g. it was deleted).
+const ACTIVE_PROFILE_KEY = 'sp-active-profile-id'
+
+export function getStoredActiveProfileId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_PROFILE_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setStoredActiveProfileId(id: string) {
+  try {
+    localStorage.setItem(ACTIVE_PROFILE_KEY, id)
+  } catch {
+    // Storage full or blocked (private mode) — the switch still works for this tab via the
+    // react-query cache (see useSetActiveProfile), it just won't survive a reload.
+  }
+}
+
 export async function getProfile(id: string): Promise<BusinessProfile> {
   const { data, error } = await supabase.from('business_profiles').select('*').eq('id', id).single()
   if (error) throw error
