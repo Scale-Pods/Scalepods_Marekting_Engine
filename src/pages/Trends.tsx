@@ -174,7 +174,10 @@ export default function Trends() {
         <>
           {run.ai_summary && (
             <div className="card p-5 mb-6">
-              <div className="text-xs font-medium text-sage uppercase tracking-wide mb-1">Summary</div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-xs font-medium text-sage uppercase tracking-wide">Summary</div>
+                <div className="text-muted text-xs">Generated {new Date(run.created_at).toLocaleString()}</div>
+              </div>
               <div className="text-secondary text-sm">{run.ai_summary}</div>
             </div>
           )}
