@@ -113,16 +113,22 @@ export default function BusinessProfile() {
     }
   }
 
-  // Logo/cover apply to the form immediately (same as the asset gallery above) but only persist
-  // once "Save & run analysis" is actually clicked — consistent with every other field on this
-  // page rather than writing to the DB the instant a file is picked.
+  // Unlike every other field on this page, logo/cover persist to the DB immediately on upload
+  // rather than waiting for "Save & run analysis" — a profile picture/cover is expected to save
+  // the moment you pick it (LinkedIn, GitHub, etc. all work this way), not get silently
+  // discarded on a reload just because you didn't also fill out the rest of the form and hit
+  // one big Save button. Still updates local form state too, so the preview reflects it without
+  // a refetch.
   async function onUploadLogo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || isNew) return
     setUploading('logo')
     setError(null)
     try {
-      set('logo_url', await uploadToStorage(file, 'logo'))
+      const url = await uploadToStorage(file, 'logo')
+      await updateProfile(id!, { logo_url: url })
+      set('logo_url', url)
+      qc.invalidateQueries({ queryKey: qk.profiles })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
@@ -137,7 +143,10 @@ export default function BusinessProfile() {
     setUploading('cover')
     setError(null)
     try {
-      set('cover_url', await uploadToStorage(file, 'cover'))
+      const url = await uploadToStorage(file, 'cover')
+      await updateProfile(id!, { cover_url: url })
+      set('cover_url', url)
+      qc.invalidateQueries({ queryKey: qk.profiles })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
