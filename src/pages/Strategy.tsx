@@ -227,8 +227,19 @@ export default function Strategy() {
   async function onRegenerate() {
     if (!profile) return
     setRefreshing(true)
+    const before = strategy?.id ?? null
     await triggerStrategy(profile.id)
-    await load(profile.id)
+    // Same shape as onRegenerateSection below: triggerStrategy only fires the webhook and
+    // returns immediately, but the 7-part strategy synthesis happens async in n8n and only
+    // writes the row once, at the end (no interim "processing" row to poll). Checking once
+    // right after triggering almost always ran before that row existed, so the button worked
+    // but the page kept showing "No strategy yet" until a manual reload. Poll for a genuinely
+    // NEW strategy instead of just any strategy (an old completed one would pass instantly).
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 3000))
+      const fresh = await load(profile.id)
+      if (fresh && fresh.id !== before) break
+    }
     setRefreshing(false)
   }
 

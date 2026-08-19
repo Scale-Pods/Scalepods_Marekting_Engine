@@ -26,7 +26,7 @@ function relevanceColor(score: number) {
   return score >= 70 ? 'var(--accent-green)' : score >= 40 ? 'var(--accent-orange)' : 'var(--text-muted)'
 }
 
-function SignalCard({ sig }: { sig: TrendSignal }) {
+function SignalCard({ sig, businessName }: { sig: TrendSignal; businessName: string }) {
   const rel = sig.relevance_score ?? 0
   const relColor = relevanceColor(rel)
   const isKeywordPhrase = sig.source === 'SEO Keywords' && !sig.url
@@ -44,7 +44,7 @@ function SignalCard({ sig }: { sig: TrendSignal }) {
         <span
           className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1"
           style={{ color: relColor, border: `1px solid ${relColor}` }}
-          title="AI relevance score (0-100) — how relevant this trend is to ScalePods"
+          title={`AI relevance score (0-100) — how relevant this trend is to ${businessName}`}
         >
           <TrendingUp size={11} /> {rel} relevance
         </span>
@@ -113,8 +113,19 @@ export default function Trends() {
   async function onRefresh() {
     if (!profile) return
     setRefreshing(true)
+    const before = run?.id ?? null
     await triggerTrends(profile.id)
-    await load(profile.id)
+    // triggerTrends only fires the webhook — it responds immediately, but the actual 8-source
+    // scan + AI ranking happens async in n8n afterward and never writes an interim "processing"
+    // row (it inserts once, at the end). Checking once right after triggering almost always ran
+    // before that row existed, so the button did fire it correctly but the page just kept
+    // showing "No trend scan yet" until you happened to reload. Poll for a genuinely NEW run
+    // (not just any run — an old completed one would otherwise pass instantly) instead.
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 3000))
+      const fresh = await load(profile.id)
+      if (fresh && fresh.id !== before) break
+    }
     setRefreshing(false)
   }
 
@@ -144,7 +155,7 @@ export default function Trends() {
       <PageHeader
         accent={<Badge tone="blue"><TrendingUp size={12} /> Trends</Badge>}
         title={`Trend Intelligence — ${profile.business_name}`}
-        subtitle="8 sources ranked for ScalePods relevance: Google Trends, Google News, Reddit, Instagram, YouTube, LinkedIn, SEO keywords, Competitor campaigns."
+        subtitle={`8 sources ranked for ${profile.business_name} relevance: Google Trends, Google News, Reddit, Instagram, YouTube, LinkedIn, SEO keywords, Competitor campaigns.`}
         actions={
           <Button variant="ghost" onClick={onRefresh} loading={refreshing || isActive}>
             <RefreshCw size={15} /> Refresh trends
@@ -219,7 +230,7 @@ export default function Trends() {
           ) : (
             <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
               {visible.map((s) => (
-                <SignalCard key={s.id} sig={s} />
+                <SignalCard key={s.id} sig={s} businessName={profile.business_name || 'this business'} />
               ))}
             </div>
           )}

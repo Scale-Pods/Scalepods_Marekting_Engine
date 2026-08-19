@@ -156,7 +156,7 @@ export default function Analytics() {
     setPosts(p)
     setState(s)
     setInsights(i)
-    return s
+    return { state: s, insights: i }
   }, [])
 
   useEffect(() => {
@@ -171,7 +171,7 @@ export default function Analytics() {
     let attempts = 0
     pollRef.current = setInterval(async () => {
       attempts += 1
-      const s = await load(profile.id)
+      const { state: s } = await load(profile.id)
       if ((s?.last_refreshed_at && s.last_refreshed_at !== before) || attempts >= 10) {
         if (pollRef.current) clearInterval(pollRef.current)
         pollRef.current = null
@@ -183,8 +183,18 @@ export default function Analytics() {
   async function onGenerateInsights() {
     if (!profile) return
     setGeneratingInsights(true)
+    const before = insights?.id ?? null
     await triggerInsights(profile.id)
-    setTimeout(() => load(profile.id), 6000)
+    // Same shape as onRefresh above (and the Trends/Strategy fix) - triggerInsights only fires
+    // the webhook, the actual GPT synthesis happens async afterward with no interim row to
+    // poll. The old single setTimeout(...,6000) checked exactly once and often ran before the
+    // new insights row existed, so generation worked but the page just kept showing "No
+    // insights yet". Poll for a genuinely NEW insights row instead.
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 3000))
+      const { insights: fresh } = await load(profile.id)
+      if (fresh && fresh.id !== before) break
+    }
     setGeneratingInsights(false)
   }
 
