@@ -63,7 +63,10 @@ export default function CreatePostModal({
   const isFacebook = platform === 'facebook'
   const isYoutube = platform === 'youtube'
   const supportsCarousel = isLinkedin || isInstagram
-  const supportsVideo = isFacebook || isYoutube
+  // Instagram video publishes as a Reel (its own media_type on IG's side, distinct from the
+  // Story/Feed image toggle below) — the n8n Publishing Engine now has a matching branch that
+  // creates a REELS container and polls until it's processed before publishing.
+  const supportsVideo = isFacebook || isYoutube || isInstagram
   const supportsStory = isInstagram
   // YouTube only supports Shorts through this composer — there's no photo/text post type for
   // it, so unlike Facebook it isn't a Photo/Video choice, it's just always video.
@@ -281,12 +284,32 @@ export default function CreatePostModal({
                 )}
                 {supportsStory && !isCarousel && (
                   <>
-                    <button type="button" onClick={() => setPostFormat('feed')} className={postFormat === 'feed' ? 'badge' : 'badge opacity-40'} style={{ textTransform: 'none' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setPostFormat('feed'); setMediaKind('image') }}
+                      className={postFormat === 'feed' && mediaKind === 'image' ? 'badge' : 'badge opacity-40'}
+                      style={{ textTransform: 'none' }}
+                    >
                       Feed post
                     </button>
-                    <button type="button" onClick={() => setPostFormat('story')} className={postFormat === 'story' ? 'badge badge-blue' : 'badge badge-blue opacity-40'} style={{ textTransform: 'none' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setPostFormat('story'); setMediaKind('image') }}
+                      className={postFormat === 'story' && mediaKind === 'image' ? 'badge badge-blue' : 'badge badge-blue opacity-40'}
+                      style={{ textTransform: 'none' }}
+                    >
                       Story
                     </button>
+                    {isInstagram && (
+                      <button
+                        type="button"
+                        onClick={() => { setMediaKind('video'); setPostFormat('feed') }}
+                        className={mediaKind === 'video' ? 'badge badge-blue' : 'badge badge-blue opacity-40'}
+                        style={{ textTransform: 'none' }}
+                      >
+                        Reel
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -361,7 +384,9 @@ export default function CreatePostModal({
               {mediaKind === 'video'
                 ? isYoutube
                   ? 'Required — vertical video, up to 3 minutes, posted as a YouTube Short.'
-                  : 'Required — upload the video file to post.'
+                  : isInstagram
+                    ? 'Required — vertical video, posted as an Instagram Reel. Processing can take up to ~1 minute after you save.'
+                    : 'Required — upload the video file to post.'
                 : postFormat === 'story'
                   ? 'A Story is a single image.'
                   : supportsCarousel
