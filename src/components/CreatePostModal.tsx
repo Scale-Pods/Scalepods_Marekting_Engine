@@ -508,6 +508,11 @@ export default function CreatePostModal({
               // preview than pretending it's a normal feed post.
               aspect={postFormat === 'story' ? 9 / 16 : (PLATFORM_ASPECT[platform] ?? 1)}
               caption={[caption, hashtags.map((h) => `#${h}`).join(' ')].filter(Boolean).join('\n\n')}
+              // PlatformMockup's default "Adjust the crop →" hint is written for MediaEditor,
+              // where there's an actual crop panel next to it. This composer has no crop tool at
+              // all, and a blank image here is usually a deliberate text-only post (see the help
+              // text below), not an unfinished crop — so the empty state needs its own wording.
+              emptyHint={postFormat === 'story' ? 'Upload an image to preview the Story' : 'No image — text-only post'}
             />
           )}
         </div>

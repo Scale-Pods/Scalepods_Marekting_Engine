@@ -96,8 +96,8 @@ export function PlatformBadge({ platform, size = 'md' }: { platform?: string | n
 //    for reviewing an already-published post, where cropping to a guessed aspect can hide part
 //    of the real image (e.g. a tall LinkedIn document graphic inside a 1.91:1 box).
 export function PlatformMockup({
-  platform, img, aspect, caption, fit = 'cover',
-}: { platform: string; img: string | null; aspect: number; caption?: string | null; fit?: 'cover' | 'contain' }) {
+  platform, img, aspect, caption, fit = 'cover', emptyHint = 'Adjust the crop →',
+}: { platform: string; img: string | null; aspect: number; caption?: string | null; fit?: 'cover' | 'contain'; emptyHint?: string }) {
   const isVideoFrame = platform.toLowerCase() === 'youtube'
   const maxW = fit === 'cover' && aspect < 1 ? Math.round(300 * aspect) : undefined
   return (
@@ -123,7 +123,7 @@ export function PlatformMockup({
             <img src={img} alt="preview" className="w-full h-auto max-h-[65vh] object-contain block" />
           )
         ) : fit === 'cover' ? (
-          <div className="absolute inset-0 flex items-center justify-center text-muted text-xs">Adjust the crop →</div>
+          <div className="absolute inset-0 flex items-center justify-center text-muted text-xs text-center px-4">{emptyHint}</div>
         ) : (
           <div className="flex items-center justify-center text-muted text-xs py-16">No image</div>
         )}
