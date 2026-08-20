@@ -5,7 +5,7 @@ import { PlatformBadge } from './mediaUi'
 import { Badge, Button } from './ui'
 import { useToast, toastMessage } from './Toast'
 import { cancelScheduledPost, editScheduledPost, triggerPublish, type ScheduledPost } from '../lib/publishing'
-import { PUBLISHING_ENABLED, deleteContentItem, type ContentItem } from '../lib/content'
+import { PUBLISHING_ENABLED, deleteContentItem, type ContentItem, type ContentSlide } from '../lib/content'
 
 // Shared building blocks for every "grid of posts -> click through to a native-looking
 // preview" surface in the app (Publishing's Ready to publish / Recent activity, Content
@@ -136,12 +136,20 @@ export function PostTile({
 // onto <body> (same reason as the shared Modal: avoids getting scoped by an ancestor's
 // backdrop-filter, which would otherwise trap a position:fixed overlay inside a card/panel).
 export function PostPreviewModal({
-  img, platform, caption, headerExtra, body, footer, mediaFallback,
+  img, platform, caption, hashtags, slides, headerExtra, body, footer, mediaFallback,
   onClose, hasPrev, hasNext, onPrev, onNext,
 }: {
   img: string | null
   platform: string
   caption?: string | null
+  /** Rendered appended to the caption, styled the same blue as inline #tags — content_items
+   *  keeps hashtags in metadata.hashtags rather than baked into body, so every caller that
+   *  wants a real-looking caption needs to pass them in here rather than just `body`. */
+  hashtags?: string[] | null
+  /** When there's more than one, the media side becomes a swipeable carousel (prev/next +
+   *  dots + a "2/6" counter) instead of a single static image — a carousel post previously
+   *  only ever showed its cover slide here, with no way to see the rest before publishing. */
+  slides?: ContentSlide[] | null
   headerExtra?: ReactNode
   body?: ReactNode
   footer?: ReactNode
@@ -152,6 +160,14 @@ export function PostPreviewModal({
   onPrev?: () => void
   onNext?: () => void
 }) {
+  const [slideIndex, setSlideIndex] = useState(0)
+  const hasSlides = Boolean(slides && slides.length > 1)
+
+  // Land back on slide 1 whenever the underlying post changes (prev/next between posts) —
+  // otherwise a post you view after browsing 4 slides into a previous carousel opens already
+  // scrolled in.
+  useEffect(() => setSlideIndex(0), [img])
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -203,8 +219,42 @@ export function PostPreviewModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Media side */}
-        <div className="flex-1 min-w-0 flex items-center justify-center" style={{ background: '#000' }}>
-          {img && isVideoUrl(img) ? (
+        <div className="flex-1 min-w-0 flex items-center justify-center relative" style={{ background: '#000' }}>
+          {hasSlides ? (
+            <>
+              <img src={slides![slideIndex].url} alt={slides![slideIndex].title || `Slide ${slideIndex + 1}`} className="max-h-[45vh] md:max-h-[85vh] w-full object-contain" />
+              <button
+                onClick={() => setSlideIndex((i) => (i - 1 + slides!.length) % slides!.length)}
+                className="absolute left-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full flex items-center justify-center text-white"
+                style={{ background: 'rgba(0,0,0,0.55)' }}
+                aria-label="Previous slide"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                onClick={() => setSlideIndex((i) => (i + 1) % slides!.length)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full flex items-center justify-center text-white"
+                style={{ background: 'rgba(0,0,0,0.55)' }}
+                aria-label="Next slide"
+              >
+                <ChevronRight size={16} />
+              </button>
+              <div className="absolute top-3 right-3 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(0,0,0,0.6)' }}>
+                {slideIndex + 1}/{slides!.length}
+              </div>
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                {slides!.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSlideIndex(i)}
+                    className="h-1.5 rounded-full transition-all"
+                    style={{ width: i === slideIndex ? 16 : 6, background: i === slideIndex ? 'var(--accent-green)' : 'rgba(255,255,255,0.5)' }}
+                    aria-label={`Slide ${i + 1}`}
+                  />
+                ))}
+              </div>
+            </>
+          ) : img && isVideoUrl(img) ? (
             <video src={img} controls className="max-h-[45vh] md:max-h-[85vh] w-full object-contain" />
           ) : img ? (
             <img src={img} alt="" className="max-h-[45vh] md:max-h-[85vh] w-full object-contain" />
@@ -224,10 +274,20 @@ export function PostPreviewModal({
             </div>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-3.5 max-h-[220px] md:max-h-none space-y-3">
-            {caption && (
+            {(caption || (hashtags && hashtags.length > 0)) && (
               <p className="text-sm leading-relaxed whitespace-pre-wrap">
                 <span className="font-semibold mr-1.5">scalepods</span>
-                <CaptionText text={caption} />
+                {caption && <CaptionText text={caption} />}
+                {hashtags && hashtags.length > 0 && (
+                  <>
+                    {caption ? ' ' : null}
+                    {hashtags.map((h, i) => (
+                      <span key={i} style={{ color: 'var(--accent-blue)' }}>
+                        #{h.replace(/^#/, '')}{i < hashtags.length - 1 ? ' ' : ''}
+                      </span>
+                    ))}
+                  </>
+                )}
               </p>
             )}
             {body}

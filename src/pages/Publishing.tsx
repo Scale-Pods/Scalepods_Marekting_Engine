@@ -165,7 +165,9 @@ export default function Publishing() {
 
       {readyItem && (
         <PostPreviewModal
-          img={readyItem.media_url}
+          img={readyItem.media_url || readyItem.metadata?.slides?.[0]?.url || null}
+          slides={readyItem.metadata?.slides}
+          hashtags={readyItem.metadata?.hashtags}
           platform={readyItem.platform}
           caption={readyItem.body}
           headerExtra={<ContentTypeChip type={readyItem.content_type} />}

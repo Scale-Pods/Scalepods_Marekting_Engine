@@ -324,29 +324,17 @@ export default function ContentFactory() {
       {activeItem && (
         <PostPreviewModal
           img={activeItem.media_url || activeItem.metadata?.slides?.[0]?.url || null}
+          slides={activeItem.metadata?.slides}
+          hashtags={activeItem.metadata?.hashtags}
           platform={activeItem.platform}
           caption={activeItem.body}
           headerExtra={<ContentTypeChip type={activeItem.content_type} />}
           body={
             <>
-              {(activeItem.metadata?.hashtags ?? []).length > 0 && (
-                <div className="flex gap-2 flex-wrap">
-                  {activeItem.metadata!.hashtags!.map((h, i) => (
-                    <span key={i} className="text-xs" style={{ color: 'var(--accent-blue)' }}>#{h.replace(/^#/, '')}</span>
-                  ))}
-                </div>
-              )}
               {activeItem.metadata?.cta && (
                 <div className="text-xs text-secondary panel !p-2 flex items-center gap-1.5">
                   <Megaphone size={13} className="shrink-0" style={{ color: typeColor(activeItem.content_type) }} />
                   <span><b className="text-ink">CTA:</b> {activeItem.metadata.cta}</span>
-                </div>
-              )}
-              {activeItem.content_type === 'carousel' && activeItem.metadata?.slides && activeItem.metadata.slides.length > 0 && (
-                <div className="flex gap-1.5 overflow-x-auto">
-                  {activeItem.metadata.slides.map((s) => (
-                    <img key={s.idx} src={s.url} alt={s.title} className="h-14 w-14 object-cover rounded shrink-0" />
-                  ))}
                 </div>
               )}
               <div className="flex items-center gap-1.5 text-xs">

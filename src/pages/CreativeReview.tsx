@@ -442,18 +442,13 @@ export default function CreativeReview() {
       {activeItem && (
         <PostPreviewModal
           img={activeItem.media_url || activeItem.metadata?.slides?.[0]?.url || null}
+          slides={activeItem.metadata?.slides}
+          hashtags={activeItem.metadata?.hashtags}
           platform={activeItem.platform}
           caption={activeItem.body}
           headerExtra={activeItem.status === 'revision' ? <Badge tone="orange">Sent back</Badge> : <ContentTypeChip type={activeItem.content_type} />}
           body={
             <>
-              {activeItem.content_type === 'carousel' && activeItem.metadata?.slides && activeItem.metadata.slides.length > 1 && (
-                <div className="flex gap-1.5 overflow-x-auto">
-                  {activeItem.metadata.slides.map((s) => (
-                    <img key={s.idx} src={s.url} alt={s.title} className="h-14 w-14 object-cover rounded shrink-0" />
-                  ))}
-                </div>
-              )}
               {activeItem.review_notes && <div className="text-xs text-terracotta">Notes: {activeItem.review_notes}</div>}
             </>
           }

@@ -335,7 +335,9 @@ export default function Calendar() {
 
       {activeItem && (
         <PostPreviewModal
-          img={activeItem.media_url}
+          img={activeItem.media_url || activeItem.metadata?.slides?.[0]?.url || null}
+          slides={activeItem.metadata?.slides}
+          hashtags={activeItem.metadata?.hashtags}
           platform={activeItem.platform}
           caption={activeItem.body}
           headerExtra={
