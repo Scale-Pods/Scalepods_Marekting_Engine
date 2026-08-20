@@ -141,9 +141,12 @@ export default function CreatePostModal({
     setError(null)
     try {
       const slides: ContentSlide[] = images.map((url, i) => ({ idx: i, title: '', caption: '', url }))
+      // 'story' now has to win over the video check — a video Story is content_type:'story'
+      // same as a photo Story (the Publishing Engine tells them apart itself, from whether
+      // media_url is a video file), not 'ugc_video' (that's specifically a feed Reel).
       const contentType =
-        mediaKind === 'video' ? 'ugc_video' :
         postFormat === 'story' ? 'story' :
+        mediaKind === 'video' ? 'ugc_video' :
         isCarousel ? 'carousel' :
         images[0] ? 'static_image' : 'social_caption'
       const item = await createManualItem({
@@ -294,8 +297,11 @@ export default function CreatePostModal({
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setPostFormat('story'); setMediaKind('image') }}
-                      className={postFormat === 'story' && mediaKind === 'image' ? 'badge badge-blue' : 'badge badge-blue opacity-40'}
+                      // Leaves mediaKind alone (unlike Feed post, which forces it back to
+                      // image) — a Story can be either, picked via the Photo/Video sub-toggle
+                      // below once Story is selected.
+                      onClick={() => setPostFormat('story')}
+                      className={postFormat === 'story' ? 'badge badge-blue' : 'badge badge-blue opacity-40'}
                       style={{ textTransform: 'none' }}
                     >
                       Story
@@ -304,7 +310,7 @@ export default function CreatePostModal({
                       <button
                         type="button"
                         onClick={() => { setMediaKind('video'); setPostFormat('feed') }}
-                        className={mediaKind === 'video' ? 'badge badge-blue' : 'badge badge-blue opacity-40'}
+                        className={mediaKind === 'video' && postFormat === 'feed' ? 'badge badge-blue' : 'badge badge-blue opacity-40'}
                         style={{ textTransform: 'none' }}
                       >
                         Reel
@@ -313,6 +319,19 @@ export default function CreatePostModal({
                   </>
                 )}
               </div>
+              {/* Story's own Photo/Video choice — Instagram Stories support video (media_type=
+                  STORIES + video_url, same container flow as Reels) just as much as a static
+                  image, this just wasn't wired up before. */}
+              {postFormat === 'story' && (
+                <div className="flex items-center gap-2 flex-wrap mt-2">
+                  <button type="button" onClick={() => setMediaKind('image')} className={mediaKind === 'image' ? 'badge' : 'badge opacity-40'} style={{ textTransform: 'none' }}>
+                    Photo
+                  </button>
+                  <button type="button" onClick={() => setMediaKind('video')} className={mediaKind === 'video' ? 'badge badge-blue' : 'badge badge-blue opacity-40'} style={{ textTransform: 'none' }}>
+                    Video
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -385,10 +404,12 @@ export default function CreatePostModal({
                 ? isYoutube
                   ? 'Required — vertical video, up to 3 minutes, posted as a YouTube Short.'
                   : isInstagram
-                    ? 'Required — vertical video, posted as an Instagram Reel. Processing can take up to ~1 minute after you save.'
+                    ? postFormat === 'story'
+                      ? 'Required — vertical video, posted as an Instagram Story (expires after 24h). Processing can take up to ~1 minute after you save.'
+                      : 'Required — vertical video, posted as an Instagram Reel. Processing can take up to ~1 minute after you save.'
                     : 'Required — upload the video file to post.'
                 : postFormat === 'story'
-                  ? 'A Story is a single image.'
+                  ? 'A photo Story is a single image.'
                   : supportsCarousel
                     ? `Optional — leave blank for a text-only post. Add 2 or more to post as a carousel${isLinkedin ? ' (swipeable gallery)' : ''}.`
                     : 'Optional — leave blank for a text-only post.'}
