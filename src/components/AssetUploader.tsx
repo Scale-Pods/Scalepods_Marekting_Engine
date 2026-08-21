@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { UploadCloud } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { supabase, sanitizeStorageFilename } from '../lib/supabase'
 import { Spinner } from './ui'
 
 export default function AssetUploader({
@@ -25,7 +25,7 @@ export default function AssetUploader({
     setUploading(true)
     setError(null)
     try {
-      const path = `${pathPrefix}/${Date.now()}-${file.name}`
+      const path = `${pathPrefix}/${Date.now()}-${sanitizeStorageFilename(file.name)}`
       const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, { upsert: true })
       if (upErr) throw upErr
       const { data } = supabase.storage.from(bucket).getPublicUrl(path)

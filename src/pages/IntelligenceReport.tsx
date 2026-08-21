@@ -5,7 +5,7 @@ import {
   ArrowLeft, Globe, Instagram, Facebook, Linkedin, TrendingUp, Search, Users, FileText, Pencil,
 } from 'lucide-react'
 import { getReport, getProfile, updateProfile, type BIReport, type BusinessProfile } from '../lib/clients'
-import { supabase } from '../lib/supabase'
+import { supabase, sanitizeStorageFilename } from '../lib/supabase'
 import { qk } from '../lib/queries'
 import { Spinner, EmptyState } from '../components/ui'
 import Markdown from '../components/Markdown'
@@ -83,7 +83,7 @@ export default function IntelligenceReport() {
   }, [report?.profile_id])
 
   async function uploadToStorage(file: File, tag: string): Promise<string> {
-    const path = `brand-assets/${profile!.id}/${tag}-${Date.now()}-${file.name}`
+    const path = `brand-assets/${profile!.id}/${tag}-${Date.now()}-${sanitizeStorageFilename(file.name)}`
     const { error: upErr } = await supabase.storage.from('content-media').upload(path, file, { upsert: true })
     if (upErr) throw upErr
     const { data } = supabase.storage.from('content-media').getPublicUrl(path)

@@ -16,6 +16,21 @@ export const supabase = createClient(url, anonKey, {
   },
 })
 
+/** Supabase Storage rejects object keys containing characters outside a narrow safe set —
+ *  apostrophes and spaces are common real-world offenders ("Invalid key" error) — and every
+ *  uploader in this app builds its storage path straight from the user's original filename, so a
+ *  file named e.g. "Raunak's Post.pdf" fails at upload with no earlier warning. Strips/replaces
+ *  anything outside [a-zA-Z0-9._-], collapses repeats, and keeps the extension intact so the file
+ *  is still recognizable in the storage browser. */
+export function sanitizeStorageFilename(name: string): string {
+  const dot = name.lastIndexOf('.')
+  const base = dot > 0 ? name.slice(0, dot) : name
+  const ext = dot > 0 ? name.slice(dot) : ''
+  const safeBase = base.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+  const safeExt = ext.replace(/[^a-zA-Z0-9.]+/g, '')
+  return (safeBase || 'file') + safeExt
+}
+
 /** Base URL for firing n8n webhooks (workflow triggers). */
 export const N8N_WEBHOOK_BASE = import.meta.env.VITE_N8N_WEBHOOK_BASE ?? ''
 

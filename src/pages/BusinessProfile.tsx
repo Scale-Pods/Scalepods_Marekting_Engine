@@ -5,7 +5,7 @@ import { Building2, Sparkles, UploadCloud, X, Pencil } from 'lucide-react'
 import {
   getProfile, createProfile, updateProfile, triggerAiAnalysis, type BusinessProfileInput,
 } from '../lib/clients'
-import { supabase } from '../lib/supabase'
+import { supabase, sanitizeStorageFilename } from '../lib/supabase'
 import { qk } from '../lib/queries'
 import { PageHeader, Button, Panel, Badge, Spinner } from '../components/ui'
 
@@ -90,7 +90,7 @@ export default function BusinessProfile() {
   }
 
   async function uploadToStorage(file: File, tag: string): Promise<string> {
-    const path = `brand-assets/${id}/${tag}-${Date.now()}-${file.name}`
+    const path = `brand-assets/${id}/${tag}-${Date.now()}-${sanitizeStorageFilename(file.name)}`
     const { error: upErr } = await supabase.storage.from('content-media').upload(path, file, { upsert: true })
     if (upErr) throw upErr
     const { data } = supabase.storage.from('content-media').getPublicUrl(path)
