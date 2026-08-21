@@ -6,6 +6,7 @@ import { Badge, Button } from './ui'
 import { useToast, toastMessage } from './Toast'
 import { cancelScheduledPost, editScheduledPost, triggerPublish, type ScheduledPost } from '../lib/publishing'
 import { PUBLISHING_ENABLED, deleteContentItem, type ContentItem, type ContentSlide } from '../lib/content'
+import { renderPdfPages } from '../lib/pdfPreview'
 
 // Shared building blocks for every "grid of posts -> click through to a native-looking
 // preview" surface in the app (Publishing's Ready to publish / Recent activity, Content
@@ -96,6 +97,36 @@ function PdfPlaceholder({ compact }: { compact?: boolean }) {
   )
 }
 
+// Renders just the PDF's first page client-side (same pdfPreview.ts pipeline the composer uses
+// for its full "How it'll look" preview) so a LinkedIn Document post shows its actual cover page
+// everywhere it's thumbnailed — grid tiles, "View post" — instead of a generic file icon. Falls
+// straight back to the plain placeholder while loading or if rendering fails; posting itself
+// never depends on this, it's presentation-only.
+function PdfCoverThumb({ url, compact }: { url: string; compact?: boolean }) {
+  const [cover, setCover] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setCover(null)
+    setFailed(false)
+    renderPdfPages(url, 1)
+      .then((pages) => { if (!cancelled) (pages[0] ? setCover(pages[0]) : setFailed(true)) })
+      .catch(() => { if (!cancelled) setFailed(true) })
+    return () => { cancelled = true }
+  }, [url])
+
+  if (!cover || failed) return <PdfPlaceholder compact={compact} />
+  return (
+    <img
+      src={cover}
+      alt=""
+      className={compact ? 'w-full h-full object-cover' : 'max-h-[45vh] md:max-h-[85vh] w-full object-contain'}
+      style={compact ? undefined : { background: 'var(--fill-tertiary)' }}
+    />
+  )
+}
+
 // Square Instagram-grid-style tile — thumbnail-first, minimal chrome. Platform badge sits
 // top-left; callers can add a status/type chip top-right and a selection control bottom-left.
 // `busyNote` replaces the image entirely (e.g. "Generating image…") and suppresses the
@@ -117,7 +148,7 @@ export function PostTile({
     <div className="relative aspect-square rounded-lg overflow-hidden group" style={{ background: 'var(--fill-tertiary)' }}>
       <button onClick={onClick} className="absolute inset-0 w-full h-full text-left" disabled={Boolean(busyNote)}>
         {img && isPdf ? (
-          <PdfPlaceholder compact />
+          <PdfCoverThumb url={img} compact />
         ) : img && isVideo ? (
           <>
             <video src={img} muted playsInline preload="metadata" className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105" />
@@ -290,9 +321,21 @@ export function PostPreviewModal({
               </div>
             </>
           ) : img && isPdfUrl(img) ? (
-            <a href={img} target="_blank" rel="noreferrer" className="block">
-              <PdfPlaceholder />
-            </a>
+            // Only the cover (page 1) renders here — there's no per-page slide array for a
+            // scheduled/ready item, just the raw PDF url — so "open full PDF" stays available
+            // for anyone who wants every page, same as the raw-file link this replaced.
+            <div className="relative w-full flex justify-center">
+              <PdfCoverThumb url={img} />
+              <a
+                href={img}
+                target="_blank"
+                rel="noreferrer"
+                className="absolute bottom-3 right-3 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1"
+                style={{ background: 'rgba(0,0,0,0.6)' }}
+              >
+                <ExternalLink size={11} /> Open full PDF
+              </a>
+            </div>
           ) : img && isVideoUrl(img) ? (
             <video src={img} controls className="max-h-[45vh] md:max-h-[85vh] w-full object-contain" />
           ) : img ? (
