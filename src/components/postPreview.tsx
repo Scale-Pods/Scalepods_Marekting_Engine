@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Eye, X, ChevronLeft, ChevronRight, CheckCircle2, Clock, Loader2, XCircle, Pencil, Ban, Check, ExternalLink, Send, Play, Trash2 } from 'lucide-react'
+import { Eye, X, ChevronLeft, ChevronRight, CheckCircle2, Clock, Loader2, XCircle, Pencil, Ban, Check, ExternalLink, Send, Play, Trash2, FileText } from 'lucide-react'
 import { PlatformBadge } from './mediaUi'
 import { Badge, Button } from './ui'
 import { useToast, toastMessage } from './Toast'
@@ -24,6 +24,7 @@ export const CONTENT_TYPE_COLOR: Record<string, string> = {
   ugc_video: 'var(--accent-orange)',
   motion_graphics: 'var(--accent-blue)',
   product_video: 'var(--accent-green)',
+  linkedin_pdf: '#0A66C2',
 }
 
 export function typeColor(type: string) {
@@ -77,6 +78,23 @@ const VIDEO_EXT_RE = /\.(mp4|mov|webm|m4v|avi|mkv)(\?|$)/i
 function isVideoUrl(url: string) {
   return VIDEO_EXT_RE.test(url)
 }
+// LinkedIn PDF Document posts point `media_url` at the raw .pdf, same problem as video above —
+// an <img> can't render it either, so show a plain file icon instead of a broken image.
+const PDF_EXT_RE = /\.pdf(\?|$)/i
+function isPdfUrl(url: string) {
+  return PDF_EXT_RE.test(url)
+}
+function PdfPlaceholder({ compact }: { compact?: boolean }) {
+  return (
+    <div
+      className={compact ? 'w-full h-full flex flex-col items-center justify-center gap-1.5 text-secondary' : 'flex flex-col items-center justify-center gap-2 text-white/70 py-16'}
+      style={compact ? { background: 'var(--fill-tertiary)' } : undefined}
+    >
+      <FileText size={compact ? 22 : 32} />
+      <span className={compact ? 'text-[10px] font-medium' : 'text-xs font-medium'}>PDF document</span>
+    </div>
+  )
+}
 
 // Square Instagram-grid-style tile — thumbnail-first, minimal chrome. Platform badge sits
 // top-left; callers can add a status/type chip top-right and a selection control bottom-left.
@@ -94,10 +112,13 @@ export function PostTile({
   onClick: () => void
 }) {
   const isVideo = Boolean(img && isVideoUrl(img))
+  const isPdf = Boolean(img && isPdfUrl(img))
   return (
     <div className="relative aspect-square rounded-lg overflow-hidden group" style={{ background: 'var(--fill-tertiary)' }}>
       <button onClick={onClick} className="absolute inset-0 w-full h-full text-left" disabled={Boolean(busyNote)}>
-        {img && isVideo ? (
+        {img && isPdf ? (
+          <PdfPlaceholder compact />
+        ) : img && isVideo ? (
           <>
             <video src={img} muted playsInline preload="metadata" className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105" />
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -254,6 +275,10 @@ export function PostPreviewModal({
                 ))}
               </div>
             </>
+          ) : img && isPdfUrl(img) ? (
+            <a href={img} target="_blank" rel="noreferrer" className="block">
+              <PdfPlaceholder />
+            </a>
           ) : img && isVideoUrl(img) ? (
             <video src={img} controls className="max-h-[45vh] md:max-h-[85vh] w-full object-contain" />
           ) : img ? (

@@ -10,6 +10,10 @@ export const PUBLISHING_ENABLED = true
 export type ContentType =
   | 'static_image' | 'carousel' | 'ugc_video' | 'motion_graphics' | 'product_video'
   | 'blog' | 'social_caption' | 'linkedin_article' | 'website_content' | 'email' | 'story'
+  /** A single PDF posted as a native LinkedIn Document post (swipeable page viewer) — LinkedIn's
+   *  actual "PDF carousel" mechanism, and a different API/media type from `carousel` above (which
+   *  is LinkedIn/Instagram's multi-*image* carousel). LinkedIn only. */
+  | 'linkedin_pdf'
 
 export type ContentStatus =
   | 'pending' | 'generating' | 'ready' | 'in_review' | 'approved' | 'revision'
@@ -302,7 +306,7 @@ export async function reviseWithAi(itemId: string, notes: string): Promise<void>
 export async function createManualItem(input: {
   profileId: string
   platform: string
-  contentType: 'static_image' | 'social_caption' | 'carousel' | 'story' | 'ugc_video'
+  contentType: 'static_image' | 'social_caption' | 'carousel' | 'story' | 'ugc_video' | 'linkedin_pdf'
   title: string | null
   body: string
   mediaUrl: string | null

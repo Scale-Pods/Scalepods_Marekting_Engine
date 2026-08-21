@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Send, CheckCircle2, X, RotateCcw } from 'lucide-react'
+import { Send, CheckCircle2, X, RotateCcw, FileText } from 'lucide-react'
 import { getComposerDraft, saveComposerDraft, clearComposerDraft } from '../lib/theme'
 import { createManualItem, LINKEDIN_ACCOUNTS, type ContentSlide } from '../lib/content'
 import { triggerPublish } from '../lib/publishing'
@@ -38,8 +38,11 @@ export default function CreatePostModal({
   const [images, setImages] = useState<string[]>(restored?.images ?? [])
   // Video is a separate media slot from images, not a 4th image — Facebook-only today (a plain
   // video post; Reels come later and will likely need their own constraints/preview anyway).
-  const [mediaKind, setMediaKind] = useState<'image' | 'video'>(restored?.mediaKind ?? 'image')
+  // 'pdf' is LinkedIn-only: posts as a native LinkedIn Document (the real API mechanism behind a
+  // "LinkedIn PDF carousel" — a swipeable page viewer, distinct from the multi-image carousel).
+  const [mediaKind, setMediaKind] = useState<'image' | 'video' | 'pdf'>(restored?.mediaKind ?? 'image')
   const [videoUrl, setVideoUrl] = useState<string | null>(restored?.videoUrl ?? null)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(restored?.pdfUrl ?? null)
   // Story vs feed — Instagram-only today, and only meaningful for a single image (a carousel or
   // video can't be posted as a Story through this composer yet).
   const [postFormat, setPostFormat] = useState<'feed' | 'story'>(restored?.postFormat ?? 'feed')
@@ -68,6 +71,10 @@ export default function CreatePostModal({
   // creates a REELS container and polls until it's processed before publishing.
   const supportsVideo = isFacebook || isYoutube || isInstagram
   const supportsStory = isInstagram
+  // A LinkedIn Document post (real API: Documents API + /rest/posts, media.id: urn:li:document:…)
+  // — the n8n Publishing Engine's matching branch creates the document, waits for it to finish
+  // processing, then posts it. Distinct from LinkedIn's multi-image carousel (`isCarousel` below).
+  const supportsPdf = isLinkedin
   // YouTube only supports Shorts through this composer — there's no photo/text post type for
   // it, so unlike Facebook it isn't a Photo/Video choice, it's just always video.
   const forcedVideo = isYoutube
@@ -83,6 +90,9 @@ export default function CreatePostModal({
   useEffect(() => {
     if (!supportsVideo && mediaKind === 'video') { setMediaKind('image'); setVideoUrl(null) }
   }, [supportsVideo, mediaKind])
+  useEffect(() => {
+    if (!supportsPdf && mediaKind === 'pdf') { setMediaKind('image'); setPdfUrl(null) }
+  }, [supportsPdf, mediaKind])
   useEffect(() => {
     if (forcedVideo && mediaKind !== 'video') setMediaKind('video')
   }, [forcedVideo, mediaKind])
@@ -106,10 +116,10 @@ export default function CreatePostModal({
   useEffect(() => {
     if (done) return
     saveComposerDraft({
-      platform, linkedinAccount, images, mediaKind, videoUrl, postFormat,
+      platform, linkedinAccount, images, mediaKind, videoUrl, pdfUrl, postFormat,
       caption, hashtagsInput, cta, when, scheduledDate, scheduledTime,
     })
-  }, [done, platform, linkedinAccount, images, mediaKind, videoUrl, postFormat, caption, hashtagsInput, cta, when, scheduledDate, scheduledTime])
+  }, [done, platform, linkedinAccount, images, mediaKind, videoUrl, pdfUrl, postFormat, caption, hashtagsInput, cta, when, scheduledDate, scheduledTime])
 
   function discardDraft() {
     clearComposerDraft()
@@ -119,6 +129,7 @@ export default function CreatePostModal({
     setImages([])
     setMediaKind('image')
     setVideoUrl(null)
+    setPdfUrl(null)
     setPostFormat('feed')
     setCaption('')
     setHashtagsInput('')
@@ -128,9 +139,9 @@ export default function CreatePostModal({
     setScheduledTime('')
   }
 
-  // A video post without a video isn't a thing — require it explicitly rather than letting
+  // A video/PDF post without the file isn't a thing — require it explicitly rather than letting
   // caption text alone satisfy "has content" the way it does for an image/text post.
-  const hasContent = mediaKind === 'video' ? Boolean(videoUrl) : Boolean(images.length || caption.trim())
+  const hasContent = mediaKind === 'video' ? Boolean(videoUrl) : mediaKind === 'pdf' ? Boolean(pdfUrl) : Boolean(images.length || caption.trim())
   // Previously this ignored `when` entirely, so you could pick "Set a target date", leave the
   // date blank, and save — the empty date was silently coerced to null and the post behaved
   // like an immediate one. That's the bug that made a scheduled post publish instantly.
@@ -146,6 +157,7 @@ export default function CreatePostModal({
       // media_url is a video file), not 'ugc_video' (that's specifically a feed Reel).
       const contentType =
         postFormat === 'story' ? 'story' :
+        mediaKind === 'pdf' ? 'linkedin_pdf' :
         mediaKind === 'video' ? 'ugc_video' :
         isCarousel ? 'carousel' :
         images[0] ? 'static_image' : 'social_caption'
@@ -155,7 +167,7 @@ export default function CreatePostModal({
         contentType,
         title: caption.trim() ? caption.trim().slice(0, 60) : null,
         body: caption.trim(),
-        mediaUrl: mediaKind === 'video' ? videoUrl : (images[0] ?? null),
+        mediaUrl: mediaKind === 'video' ? videoUrl : mediaKind === 'pdf' ? pdfUrl : (images[0] ?? null),
         slides,
         hashtags,
         cta: cta.trim(),
@@ -271,7 +283,7 @@ export default function CreatePostModal({
             </div>
           )}
 
-          {(isFacebook || supportsStory) && (
+          {(isFacebook || supportsStory || supportsPdf) && (
             <div>
               <div className="label mb-2">Post type</div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -282,6 +294,16 @@ export default function CreatePostModal({
                     </button>
                     <button type="button" onClick={() => setMediaKind('video')} className={mediaKind === 'video' ? 'badge badge-blue' : 'badge badge-blue opacity-40'} style={{ textTransform: 'none' }}>
                       Video
+                    </button>
+                  </>
+                )}
+                {supportsPdf && (
+                  <>
+                    <button type="button" onClick={() => setMediaKind('image')} className={mediaKind !== 'pdf' ? 'badge' : 'badge opacity-40'} style={{ textTransform: 'none' }}>
+                      Feed post
+                    </button>
+                    <button type="button" onClick={() => setMediaKind('pdf')} className={mediaKind === 'pdf' ? 'badge badge-blue' : 'badge badge-blue opacity-40'} style={{ textTransform: 'none' }}>
+                      PDF document
                     </button>
                   </>
                 )}
@@ -337,7 +359,7 @@ export default function CreatePostModal({
 
           <div>
             <div className="label mb-2">
-              {mediaKind === 'video' ? 'Video' : supportsCarousel ? 'Images' : 'Image'}
+              {mediaKind === 'video' ? 'Video' : mediaKind === 'pdf' ? 'PDF' : supportsCarousel ? 'Images' : 'Image'}
               {isCarousel && <span className="text-muted font-normal"> · carousel, {images.length} slides</span>}
             </div>
             {mediaKind === 'video' ? (
@@ -360,6 +382,37 @@ export default function CreatePostModal({
                   accept="video/*"
                   label="Upload video"
                   onUploaded={(url) => setVideoUrl(url)}
+                />
+              )
+            ) : mediaKind === 'pdf' ? (
+              pdfUrl ? (
+                <div className="relative w-fit">
+                  <a
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+                    style={{ background: 'var(--fill-tertiary)', border: '1px solid var(--border-subtle)' }}
+                  >
+                    <FileText size={16} className="text-sage shrink-0" />
+                    {pdfUrl.split('/').pop()?.replace(/^\d+-/, '') || 'document.pdf'}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPdfUrl(null)}
+                    className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full flex items-center justify-center text-white"
+                    style={{ background: 'var(--accent-orange)' }}
+                    aria-label="Remove PDF"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              ) : (
+                <AssetUploader
+                  pathPrefix={`manual/${profileId}`}
+                  accept="application/pdf"
+                  label="Upload PDF"
+                  onUploaded={(url) => setPdfUrl(url)}
                 />
               )
             ) : (
@@ -400,7 +453,9 @@ export default function CreatePostModal({
               </>
             )}
             <p className="text-muted text-xs mt-1.5">
-              {mediaKind === 'video'
+              {mediaKind === 'pdf'
+                ? 'Required — posted as a native LinkedIn Document (the same mechanism behind what people call a "LinkedIn PDF carousel" — a swipeable page-by-page viewer). Up to 100MB / 300 pages.'
+                : mediaKind === 'video'
                 ? isYoutube
                   ? 'Required — vertical video, up to 3 minutes, posted as a YouTube Short.'
                   : isInstagram
@@ -508,7 +563,25 @@ export default function CreatePostModal({
 
         <div className="w-full md:w-[300px] shrink-0">
           <div className="label mb-2 text-center">How it'll look</div>
-          {mediaKind === 'video' ? (
+          {mediaKind === 'pdf' ? (
+            pdfUrl ? (
+              <div
+                className="rounded-panel flex flex-col items-center justify-center gap-2 text-secondary py-16"
+                style={{ border: '1px solid var(--border-subtle)', background: 'var(--fill-tertiary)' }}
+              >
+                <FileText size={28} className="text-sage" />
+                <span className="text-xs font-medium px-4 text-center">{pdfUrl.split('/').pop()?.replace(/^\d+-/, '') || 'document.pdf'}</span>
+                <span className="text-muted text-[11px]">Posts as a swipeable LinkedIn Document</span>
+              </div>
+            ) : (
+              <div
+                className="rounded-panel flex items-center justify-center text-muted text-xs py-16"
+                style={{ border: '1px solid var(--border-subtle)', background: 'var(--fill-tertiary)' }}
+              >
+                Upload a PDF to preview
+              </div>
+            )
+          ) : mediaKind === 'video' ? (
             videoUrl ? (
               <video src={videoUrl} controls className="w-full rounded-panel" style={{ border: '1px solid var(--border-subtle)' }} />
             ) : (

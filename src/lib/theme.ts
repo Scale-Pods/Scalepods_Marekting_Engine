@@ -61,9 +61,12 @@ export interface ComposerDraft {
   images: string[]
   /** 'video' switches the composer to a single uploaded video instead of the image(s) above —
    *  Facebook only today (a plain video post; Reels come later). Older drafts have no value here
-   *  and default to 'image' on restore. */
-  mediaKind: 'image' | 'video'
+   *  and default to 'image' on restore. 'pdf' is LinkedIn-only: a single PDF posted as a native
+   *  LinkedIn Document post (the actual API mechanism behind what people call "LinkedIn PDF
+   *  carousels" — a swipeable page-by-page viewer, distinct from the multi-image carousel above). */
+  mediaKind: 'image' | 'video' | 'pdf'
   videoUrl: string | null
+  pdfUrl: string | null
   /** 'story' posts as a Story instead of a feed post — Instagram only today, and only for a
    *  single image (carousels/video aren't story-eligible in this composer yet). Older drafts
    *  default to 'feed' on restore. */
