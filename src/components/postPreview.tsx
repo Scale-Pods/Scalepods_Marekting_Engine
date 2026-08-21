@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Eye, X, ChevronLeft, ChevronRight, CheckCircle2, Clock, Loader2, XCircle, Pencil, Ban, Check, ExternalLink, Send, Play, Trash2, FileText } from 'lucide-react'
 import { PlatformBadge } from './mediaUi'
@@ -158,7 +158,7 @@ export function PostTile({
 // backdrop-filter, which would otherwise trap a position:fixed overlay inside a card/panel).
 export function PostPreviewModal({
   img, platform, caption, hashtags, slides, headerExtra, body, footer, mediaFallback,
-  onClose, hasPrev, hasNext, onPrev, onNext,
+  initialSlideIndex, onClose, hasPrev, hasNext, onPrev, onNext,
 }: {
   img: string | null
   platform: string
@@ -175,19 +175,33 @@ export function PostPreviewModal({
   body?: ReactNode
   footer?: ReactNode
   mediaFallback?: ReactNode
+  /** Opens straight to this slide instead of always slide 1 — e.g. enlarging a specific page
+   *  from a smaller inline carousel preview should land on that same page, not jump back to 1. */
+  initialSlideIndex?: number
   onClose: () => void
   hasPrev?: boolean
   hasNext?: boolean
   onPrev?: () => void
   onNext?: () => void
 }) {
-  const [slideIndex, setSlideIndex] = useState(0)
+  const [slideIndex, setSlideIndex] = useState(initialSlideIndex ?? 0)
   const hasSlides = Boolean(slides && slides.length > 1)
 
-  // Land back on slide 1 whenever the underlying post changes (prev/next between posts) —
-  // otherwise a post you view after browsing 4 slides into a previous carousel opens already
-  // scrolled in.
-  useEffect(() => setSlideIndex(0), [img])
+  // Land back on slide 1 whenever the underlying post actually changes (prev/next between
+  // posts) — otherwise a post you view after browsing 4 slides into a previous carousel opens
+  // already scrolled in. Compares against the last-seen `img` rather than a "have I run before"
+  // boolean: React 18 Strict Mode double-invokes effects in dev (mount → cleanup → mount again,
+  // same component instance), which would flip a boolean guard on the harmless second
+  // invocation and wrongly reset `initialSlideIndex` back to 0 right after mount. A ref seeded
+  // with the first render's `img` is naturally stable across that replay — it only ever fires
+  // when `img` genuinely differs from what's stored.
+  const lastImg = useRef(img)
+  useEffect(() => {
+    if (lastImg.current !== img) {
+      setSlideIndex(0)
+      lastImg.current = img
+    }
+  }, [img])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

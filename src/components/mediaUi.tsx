@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye } from 'lucide-react'
 import type { ContentSlide } from '../lib/content'
 
 // ── Platform badge — real brand glyphs + brand colors (ScalePods' 4 platforms only) ──
@@ -143,14 +143,52 @@ export function PlatformMockup({
   )
 }
 
-export function CarouselViewer({ slides }: { slides: ContentSlide[] }) {
+export function CarouselViewer({
+  slides, fit = 'cover', onEnlarge,
+}: {
+  slides: ContentSlide[]
+  /** 'cover' (default) matches the existing Instagram-carousel preview, which is always a fixed
+   *  social aspect ratio so cropping to fill looks right. A LinkedIn PDF page can be any aspect
+   *  (A4, Letter, landscape deck, ...), so cropping it cuts off real content — 'contain'
+   *  letterboxes instead so the whole page is always visible. */
+  fit?: 'cover' | 'contain'
+  /** When provided, the slide becomes clickable — same "click a post, it enlarges" affordance
+   *  used everywhere else in the app (PostTile → PostPreviewModal). Called with the currently
+   *  shown slide's index so the enlarged view can open on the same page instead of resetting. */
+  onEnlarge?: (index: number) => void
+}) {
   const [index, setIndex] = useState(0)
   if (!slides || slides.length === 0) return null
   const slide = slides[index]
 
+  const image = (
+    <img
+      src={slide.url}
+      alt={slide.title}
+      className={fit === 'contain' ? 'w-full h-72 object-contain rounded-lg' : 'w-full h-56 object-cover rounded-lg'}
+      style={fit === 'contain' ? { background: 'var(--fill-tertiary)' } : undefined}
+    />
+  )
+
   return (
     <div className="relative">
-      <img src={slide.url} alt={slide.title} className="w-full h-56 object-cover rounded-lg" />
+      {onEnlarge ? (
+        <button
+          type="button"
+          onClick={() => onEnlarge(index)}
+          className="relative block w-full group/enlarge"
+          aria-label="View full size"
+        >
+          {image}
+          <div className="absolute inset-0 rounded-lg bg-black/0 group-hover/enlarge:bg-black/40 transition-colors flex items-center justify-center pointer-events-none">
+            <span className="opacity-0 group-hover/enlarge:opacity-100 transition-opacity text-white text-xs font-semibold flex items-center gap-1.5">
+              <Eye size={14} /> View full size
+            </span>
+          </div>
+        </button>
+      ) : (
+        image
+      )}
       {slides.length > 1 && (
         <>
           <button

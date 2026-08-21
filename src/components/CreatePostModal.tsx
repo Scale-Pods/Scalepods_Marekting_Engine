@@ -7,6 +7,7 @@ import { triggerPublish } from '../lib/publishing'
 import { toastMessage } from './Toast'
 import { Modal, Button, Spinner } from './ui'
 import { PlatformBadge, PlatformMockup, CarouselViewer, PLATFORM_OPTIONS, PLATFORM_ASPECT } from './mediaUi'
+import { PostPreviewModal } from './postPreview'
 import AssetUploader from './AssetUploader'
 import { renderPdfPages } from '../lib/pdfPreview'
 
@@ -49,6 +50,9 @@ export default function CreatePostModal({
   // pages (not just a filename chip) is what answers "how will this look on LinkedIn" for real.
   const [pdfPages, setPdfPages] = useState<string[]>([])
   const [pdfPagesLoading, setPdfPagesLoading] = useState(false)
+  // Which page (if any) is blown up full-size — same click-to-enlarge PostPreviewModal used for
+  // every other post type in the app, so a PDF page behaves like any other post thumbnail.
+  const [pdfEnlargedIndex, setPdfEnlargedIndex] = useState<number | null>(null)
   // Story vs feed — Instagram-only today, and only meaningful for a single image (a carousel or
   // video can't be posted as a Story through this composer yet).
   const [postFormat, setPostFormat] = useState<'feed' | 'story'>(restored?.postFormat ?? 'feed')
@@ -592,7 +596,11 @@ export default function CreatePostModal({
                 </div>
               ) : pdfPages.length > 0 ? (
                 <div>
-                  <CarouselViewer slides={pdfPages.map((url, i) => ({ idx: i, title: '', caption: '', url }))} />
+                  <CarouselViewer
+                    slides={pdfPages.map((url, i) => ({ idx: i, title: '', caption: '', url }))}
+                    fit="contain"
+                    onEnlarge={setPdfEnlargedIndex}
+                  />
                   <p className="text-muted text-[11px] text-center mt-1.5">
                     Posts as a swipeable LinkedIn Document — swipe through above to see each page.
                   </p>
@@ -645,6 +653,18 @@ export default function CreatePostModal({
           )}
         </div>
       </div>
+      {pdfEnlargedIndex !== null && (
+        <PostPreviewModal
+          // `slides` drives the multi-page swipeable view, but PostPreviewModal only treats it
+          // as a carousel when there's more than one — a single-page PDF needs `img` too, as the
+          // plain-image fallback for that case.
+          img={pdfPages[pdfEnlargedIndex] ?? null}
+          platform={platform}
+          slides={pdfPages.map((url, i) => ({ idx: i, title: `Page ${i + 1}`, caption: '', url }))}
+          initialSlideIndex={pdfEnlargedIndex}
+          onClose={() => setPdfEnlargedIndex(null)}
+        />
+      )}
     </Modal>
   )
 }
