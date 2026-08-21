@@ -10,6 +10,22 @@ import type { BlogSection } from './blog'
 
 const INLINE_SPLIT = /(\[.*?\]\(.*?\)|\*\*.*?\*\*)/g
 
+// Ported verbatim from the site's BlogBodyClient.tsx (its own accordionItems render path,
+// ~line 3397) so the composer's preview shows the exact same "STEP 01"/"STAGE 02"/etc. tag the
+// live site will actually generate — first keyword match wins, empty string (no visible tag) if
+// none match. Keep this in sync if the site's list ever changes.
+export function tagPrefixForHeading(heading: string): string {
+  const h = heading.toLowerCase()
+  if (h.includes('building blocks')) return 'FOUNDATION'
+  if (h.includes('evolution')) return 'EVOLUTION'
+  if (h.includes('implement') || h.includes('step') || h.includes('framework')) return 'STEP'
+  if (h.includes('modern sales workflow') || h.includes('stage')) return 'STAGE'
+  if (h.includes('process')) return 'PROCESS'
+  if (h.includes('mistake')) return 'MISTAKE'
+  if (h.includes('use case')) return 'USE CASE'
+  return ''
+}
+
 function toMarkdownRun(text: string, marks: JSONContent['marks']): string {
   const link = marks?.find((m) => m.type === 'link')
   if (link?.attrs?.href) return `[${text}](${link.attrs.href})`
@@ -23,19 +39,21 @@ function inlineToMarkdown(content: JSONContent[] | undefined): string {
 }
 
 /** Tiptap doc -> BlogSection[]. `droppedImages` counts extra images beyond the first found in a
- *  section, so the caller can warn — the site schema holds exactly one image per section. */
-export function tiptapDocToSections(doc: JSONContent): { sections: BlogSection[]; droppedImages: number } {
+ *  section, so the caller can warn — the site schema holds exactly one image per section.
+ *  `droppedCardBlocks` is the same idea for a 2nd Cards block under one heading. */
+export function tiptapDocToSections(doc: JSONContent): { sections: BlogSection[]; droppedImages: number; droppedCardBlocks: number } {
   const sections: BlogSection[] = []
   let current: BlogSection = { heading: '', body: '' }
   let started = false
   let droppedImages = 0
+  let droppedCardBlocks = 0
 
   function pushLine(line: string) {
     if (!line.trim()) return
     current.body = current.body ? `${current.body}\n${line}` : line
   }
   function flush() {
-    if (current.heading || current.body.trim() || current.image || current.imageDark) sections.push(current)
+    if (current.heading || current.body.trim() || current.image || current.imageDark || current.accordionItems) sections.push(current)
   }
 
   for (const node of doc.content ?? []) {
@@ -75,10 +93,20 @@ export function tiptapDocToSections(doc: JSONContent): { sections: BlogSection[]
       }
       continue
     }
+    if (node.type === 'sectionCards') {
+      if (current.accordionItems) {
+        droppedCardBlocks += 1
+      } else {
+        const items = ((node.attrs?.items ?? []) as { title: string; content: string }[])
+          .filter((it) => it.title.trim() || it.content.trim())
+        if (items.length > 0) current.accordionItems = items
+      }
+      continue
+    }
   }
   flush()
 
-  return { sections, droppedImages }
+  return { sections, droppedImages, droppedCardBlocks }
 }
 
 function parseInlineMarkdown(line: string): JSONContent[] {
@@ -123,6 +151,9 @@ export function sectionsToTiptapDoc(sections: BlogSection[]): JSONContent {
       // Legacy/single-variant form (existing already-imported posts, e.g. AI Employees) — shows
       // up in the dark slot; add a light variant and it becomes a real theme-swap on next save.
       content.push({ type: 'sectionImage', attrs: { srcDark: s.image, srcLight: null, caption: s.imageCaption ?? '' } })
+    }
+    if (s.accordionItems && s.accordionItems.length > 0) {
+      content.push({ type: 'sectionCards', attrs: { items: s.accordionItems } })
     }
   }
   if (content.length === 0) content.push({ type: 'paragraph' })

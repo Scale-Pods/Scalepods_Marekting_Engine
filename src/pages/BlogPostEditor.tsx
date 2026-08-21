@@ -135,9 +135,12 @@ export default function BlogPostEditor() {
 
     setSaving(publish ? 'publish' : 'draft')
     try {
-      const { sections, droppedImages } = tiptapDocToSections(doc)
+      const { sections, droppedImages, droppedCardBlocks } = tiptapDocToSections(doc)
       if (droppedImages > 0) {
         toast.info(`${droppedImages} extra image${droppedImages > 1 ? 's were' : ' was'} removed — only one image per section reaches the site.`)
+      }
+      if (droppedCardBlocks > 0) {
+        toast.info(`${droppedCardBlocks} extra cards block${droppedCardBlocks > 1 ? 's were' : ' was'} removed — only one per section reaches the site.`)
       }
 
       const payload = {

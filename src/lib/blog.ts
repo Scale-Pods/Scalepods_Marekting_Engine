@@ -30,6 +30,19 @@ export interface BlogSection {
   imageDark?: string
   imageLight?: string
   imageCaption?: string
+  /** A "cards" widget — read the site's BlogBodyClient.tsx directly (it's a local repo,
+   *  F:\Scalepods.co\scalepods-website-nextjs) and confirmed this is a fully generic renderer,
+   *  NOT one of the ~30 bespoke per-post components the note below warns about: any section with
+   *  accordionItems gets each item rendered as a colored-left-border card (title + body), with a
+   *  "STEP 01"/"STAGE 02"/etc. tag auto-derived from keywords in the section heading (falls back
+   *  to no tag if nothing matches — see TAG_PREFIX_RULES in blogSerializer.ts, kept in sync with
+   *  the site's own keyword list). The site's publish route passes `sections` straight through
+   *  with no field allowlist, so this needs no site-side change to work.
+   *
+   *  Unlike accordionItems, `visual` (not modeled here) genuinely IS the bespoke-per-post
+   *  mechanism — a big enum of one-off hardcoded infographics (renderAITransform, renderBarriers,
+   *  etc.) with no generic composer equivalent. Don't confuse the two. */
+  accordionItems?: { title: string; content: string }[]
 }
 
 export interface BlogPost {

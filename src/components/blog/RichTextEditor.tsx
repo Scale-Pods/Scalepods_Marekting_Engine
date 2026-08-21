@@ -5,9 +5,10 @@ import { TextSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
-import { Bold, Heading2, List, ImageIcon, Link2, Check, X } from 'lucide-react'
+import { Bold, Heading2, List, ImageIcon, Link2, Check, X, LayoutGrid } from 'lucide-react'
 import { uploadBlogImage } from '../../lib/blogUpload'
 import { SectionImage, BlogImagePathContext } from './SectionImageNode'
+import { SectionCards } from './SectionCardsNode'
 
 // ProseMirror's own toggleHeading always converts the WHOLE paragraph(s) touched by the
 // selection — that's standard block-command behaviour (same in Notion/Google Docs), not a bug,
@@ -56,7 +57,10 @@ function toggleHeadingOnSelection(editor: Editor) {
 // understands (docs/blog-module.md) — H2-only headings mark section boundaries, bold + link are
 // the only inline marks, bullet lists only. Anything richer (italic, tables, nested lists,
 // H1/H3...) would look right here and render as plain/broken text on the live site, so it's
-// simplest to just not offer it.
+// simplest to just not offer it. Cards (SectionCards) are the one deliberate exception — read the
+// site's BlogBodyClient.tsx directly and confirmed it's a genuinely generic renderer (any
+// section's accordionItems), not one of the bespoke per-post `visual` components, so it's safe to
+// offer here — see blog.ts's BlogSection.accordionItems comment.
 function useBlogEditor(content: JSONContent, onChange: (doc: JSONContent) => void) {
   return useEditor({
     extensions: [
@@ -73,6 +77,7 @@ function useBlogEditor(content: JSONContent, onChange: (doc: JSONContent) => voi
       Link.configure({ openOnClick: false, autolink: false }),
       Placeholder.configure({ placeholder: 'Start with a heading, or just write…' }),
       SectionImage,
+      SectionCards,
     ],
     content,
     onUpdate: ({ editor }) => onChange(editor.getJSON()),
@@ -205,6 +210,12 @@ export default function RichTextEditor({
         </div>
         <ToolbarButton label="Insert image" onClick={() => fileInputRef.current?.click()}>
           <ImageIcon size={15} />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Insert cards (e.g. numbered steps)"
+          onClick={() => editor.chain().focus().insertContent({ type: 'sectionCards', attrs: { items: [{ title: '', content: '' }] } }).run()}
+        >
+          <LayoutGrid size={15} />
         </ToolbarButton>
         {uploading && <span className="text-muted text-xs ml-1">Uploading…</span>}
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onImageChosen} />

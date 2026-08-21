@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Sun, Moon } from 'lucide-react'
 import type { BlogSection } from '../../lib/blog'
+import { tagPrefixForHeading } from '../../lib/blogSerializer'
 
 // Faithful visual clone of the live scalepods.co article page (src/app/blog/[slug]/page.tsx +
 // components/ui/BlogBodyClient.tsx in the site repo, read-only reference — see
@@ -12,18 +13,18 @@ const SITE_THEME = {
   dark: {
     bgPage: '#04070D', bgCard: '#080A0E', bgCardAlt: '#10131C',
     textBright: '#E4E9F2', textBody: '#B8C7D9', textMuted: '#D5DBE6',
-    border: '#222222', blueMid: '#6DB6FF',
+    border: '#222222', blueMid: '#6DB6FF', greenText: '#B1D997',
   },
   light: {
     bgPage: '#F8FAF7', bgCard: '#FFFFFF', bgCardAlt: '#F1F5F9',
     textBright: '#0B1020', textBody: '#475467', textMuted: '#667085',
-    border: '#E2E8F0', blueMid: '#0080FF',
+    border: '#E2E8F0', blueMid: '#0080FF', greenText: '#8FBC6A',
   },
 } as const
 interface SiteColors {
   bgPage: string; bgCard: string; bgCardAlt: string
   textBright: string; textBody: string; textMuted: string
-  border: string; blueMid: string
+  border: string; blueMid: string; greenText: string
 }
 
 const FONT = "'Inter', 'Satoshi', ui-sans-serif, system-ui, sans-serif"
@@ -184,6 +185,36 @@ export function BlogPreviewModal({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   {renderBody(s.body, c)}
                 </div>
+                {s.accordionItems && s.accordionItems.length > 0 && (
+                  <div style={{ marginTop: 24, marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
+                    {s.accordionItems.map((item, idx) => {
+                      const tagPrefix = tagPrefixForHeading(s.heading)
+                      const highlightColor = idx % 2 === 0 ? c.greenText : c.blueMid
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            background: theme === 'dark' ? c.bgCardAlt : '#ffffff',
+                            borderStyle: 'solid', borderWidth: '1px 1px 1px 4px',
+                            borderColor: theme === 'dark'
+                              ? `${c.border} ${c.border} ${c.border} ${highlightColor}`
+                              : `rgba(15,23,42,0.06) rgba(15,23,42,0.06) rgba(15,23,42,0.06) ${highlightColor}`,
+                            borderRadius: 12, padding: 24, display: 'flex', flexDirection: 'column', gap: 10,
+                            boxShadow: theme === 'dark' ? '0 4px 20px rgba(0,0,0,0.15)' : '0 4px 20px rgba(15,23,42,0.02)',
+                          }}
+                        >
+                          {tagPrefix && (
+                            <div style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', color: highlightColor, textTransform: 'uppercase' }}>
+                              {tagPrefix} {String(idx + 1).padStart(2, '0')}
+                            </div>
+                          )}
+                          <h3 style={{ fontFamily: FONT, fontSize: 18, fontWeight: 700, color: c.textBright, margin: 0, lineHeight: 1.4 }}>{item.title}</h3>
+                          <p style={{ fontFamily: FONT, fontSize: 15, color: c.textBody, margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{parseInline(item.content, c)}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
                 {(() => {
                   // Same rule as the site's own section image render: an explicit `image`
                   // always wins; otherwise pick by theme when both variants exist.
