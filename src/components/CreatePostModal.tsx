@@ -5,9 +5,10 @@ import { getComposerDraft, saveComposerDraft, clearComposerDraft } from '../lib/
 import { createManualItem, LINKEDIN_ACCOUNTS, type ContentSlide } from '../lib/content'
 import { triggerPublish } from '../lib/publishing'
 import { toastMessage } from './Toast'
-import { Modal, Button } from './ui'
+import { Modal, Button, Spinner } from './ui'
 import { PlatformBadge, PlatformMockup, CarouselViewer, PLATFORM_OPTIONS, PLATFORM_ASPECT } from './mediaUi'
 import AssetUploader from './AssetUploader'
+import { renderPdfPages } from '../lib/pdfPreview'
 
 export default function CreatePostModal({
   profileId,
@@ -43,6 +44,11 @@ export default function CreatePostModal({
   const [mediaKind, setMediaKind] = useState<'image' | 'video' | 'pdf'>(restored?.mediaKind ?? 'image')
   const [videoUrl, setVideoUrl] = useState<string | null>(restored?.videoUrl ?? null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(restored?.pdfUrl ?? null)
+  // Rendered client-side (pdfPreview.ts) purely for the "How it'll look" panel below — LinkedIn
+  // Document posts really do render as a swipeable page-by-page viewer, so showing the actual
+  // pages (not just a filename chip) is what answers "how will this look on LinkedIn" for real.
+  const [pdfPages, setPdfPages] = useState<string[]>([])
+  const [pdfPagesLoading, setPdfPagesLoading] = useState(false)
   // Story vs feed — Instagram-only today, and only meaningful for a single image (a carousel or
   // video can't be posted as a Story through this composer yet).
   const [postFormat, setPostFormat] = useState<'feed' | 'story'>(restored?.postFormat ?? 'feed')
@@ -93,6 +99,17 @@ export default function CreatePostModal({
   useEffect(() => {
     if (!supportsPdf && mediaKind === 'pdf') { setMediaKind('image'); setPdfUrl(null) }
   }, [supportsPdf, mediaKind])
+  useEffect(() => {
+    if (!pdfUrl) { setPdfPages([]); return }
+    let cancelled = false
+    setPdfPagesLoading(true)
+    setPdfPages([])
+    renderPdfPages(pdfUrl)
+      .then((pages) => { if (!cancelled) setPdfPages(pages) })
+      .catch(() => { if (!cancelled) setPdfPages([]) })
+      .finally(() => { if (!cancelled) setPdfPagesLoading(false) })
+    return () => { cancelled = true }
+  }, [pdfUrl])
   useEffect(() => {
     if (forcedVideo && mediaKind !== 'video') setMediaKind('video')
   }, [forcedVideo, mediaKind])
@@ -565,14 +582,31 @@ export default function CreatePostModal({
           <div className="label mb-2 text-center">How it'll look</div>
           {mediaKind === 'pdf' ? (
             pdfUrl ? (
-              <div
-                className="rounded-panel flex flex-col items-center justify-center gap-2 text-secondary py-16"
-                style={{ border: '1px solid var(--border-subtle)', background: 'var(--fill-tertiary)' }}
-              >
-                <FileText size={28} className="text-sage" />
-                <span className="text-xs font-medium px-4 text-center">{pdfUrl.split('/').pop()?.replace(/^\d+-/, '') || 'document.pdf'}</span>
-                <span className="text-muted text-[11px]">Posts as a swipeable LinkedIn Document</span>
-              </div>
+              pdfPagesLoading ? (
+                <div
+                  className="rounded-panel flex flex-col items-center justify-center gap-2 text-muted text-xs py-16"
+                  style={{ border: '1px solid var(--border-subtle)', background: 'var(--fill-tertiary)' }}
+                >
+                  <Spinner size={20} />
+                  Rendering pages…
+                </div>
+              ) : pdfPages.length > 0 ? (
+                <div>
+                  <CarouselViewer slides={pdfPages.map((url, i) => ({ idx: i, title: '', caption: '', url }))} />
+                  <p className="text-muted text-[11px] text-center mt-1.5">
+                    Posts as a swipeable LinkedIn Document — swipe through above to see each page.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="rounded-panel flex flex-col items-center justify-center gap-2 text-secondary py-16"
+                  style={{ border: '1px solid var(--border-subtle)', background: 'var(--fill-tertiary)' }}
+                >
+                  <FileText size={28} className="text-sage" />
+                  <span className="text-xs font-medium px-4 text-center">{pdfUrl.split('/').pop()?.replace(/^\d+-/, '') || 'document.pdf'}</span>
+                  <span className="text-muted text-[11px]">Couldn't render a preview — posts fine regardless.</span>
+                </div>
+              )
             ) : (
               <div
                 className="rounded-panel flex items-center justify-center text-muted text-xs py-16"
