@@ -26,6 +26,15 @@ export function tagPrefixForHeading(heading: string): string {
   return ''
 }
 
+/** Resolves what tag word (if any) a section's cards actually show, honoring the explicit
+ *  accordionTagPrefix override (undefined = old auto-from-heading behavior, null = none, string =
+ *  that literal word) before falling back to tagPrefixForHeading. Shared by the composer's own
+ *  preview and (mirrored, not shared — separate repo) the site's real renderer. */
+export function resolveTagPrefix(section: BlogSection): string {
+  if (section.accordionTagPrefix === undefined) return tagPrefixForHeading(section.heading)
+  return section.accordionTagPrefix ?? ''
+}
+
 function toMarkdownRun(text: string, marks: JSONContent['marks']): string {
   const link = marks?.find((m) => m.type === 'link')
   if (link?.attrs?.href) return `[${text}](${link.attrs.href})`
@@ -99,7 +108,14 @@ export function tiptapDocToSections(doc: JSONContent): { sections: BlogSection[]
       } else {
         const items = ((node.attrs?.items ?? []) as { title: string; content: string }[])
           .filter((it) => it.title.trim() || it.content.trim())
-        if (items.length > 0) current.accordionItems = items
+        if (items.length > 0) {
+          current.accordionItems = items
+          const tagMode = node.attrs?.tagMode ?? 'auto'
+          const tagText = (node.attrs?.tagText ?? '').trim()
+          if (tagMode === 'none') current.accordionTagPrefix = null
+          else if (tagMode === 'custom') current.accordionTagPrefix = tagText ? tagText.toUpperCase() : null
+          // tagMode === 'auto' -> leave accordionTagPrefix unset, the old fallback behavior.
+        }
       }
       continue
     }
@@ -153,7 +169,9 @@ export function sectionsToTiptapDoc(sections: BlogSection[]): JSONContent {
       content.push({ type: 'sectionImage', attrs: { srcDark: s.image, srcLight: null, caption: s.imageCaption ?? '' } })
     }
     if (s.accordionItems && s.accordionItems.length > 0) {
-      content.push({ type: 'sectionCards', attrs: { items: s.accordionItems } })
+      const tagMode = s.accordionTagPrefix === undefined ? 'auto' : s.accordionTagPrefix === null ? 'none' : 'custom'
+      const tagText = typeof s.accordionTagPrefix === 'string' ? s.accordionTagPrefix : ''
+      content.push({ type: 'sectionCards', attrs: { items: s.accordionItems, tagMode, tagText } })
     }
   }
   if (content.length === 0) content.push({ type: 'paragraph' })

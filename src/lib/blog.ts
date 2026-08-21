@@ -43,6 +43,18 @@ export interface BlogSection {
    *  mechanism — a big enum of one-off hardcoded infographics (renderAITransform, renderBarriers,
    *  etc.) with no generic composer equivalent. Don't confuse the two. */
   accordionItems?: { title: string; content: string }[]
+  /** Overrides the auto-detected tag word ("STEP"/"STAGE"/etc., still auto-numbered 01/02/...) on
+   *  a section's accordionItems cards. Three states, not two — undefined/absent must mean
+   *  something different from null:
+   *    - absent (key not sent at all) -> old behavior, unchanged: the site auto-derives the word
+   *      from heading keywords (tagPrefixForHeading in blogSerializer.ts). Every section from
+   *      before this field existed, and any new one left on "Auto", relies on this.
+   *    - null -> explicitly no tag, even if the heading would otherwise match a keyword.
+   *    - a string -> use it verbatim as the tag word instead of auto-detecting.
+   *  Needs a matching site-side change (BlogBodyClient.tsx) to do anything — see
+   *  docs/blog-module.md. Requires the site's Cards render logic to check this field before
+   *  falling back to its own keyword list. */
+  accordionTagPrefix?: string | null
 }
 
 export interface BlogPost {

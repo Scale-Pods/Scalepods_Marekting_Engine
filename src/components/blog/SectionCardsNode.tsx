@@ -7,6 +7,8 @@ export interface CardItem {
   content: string
 }
 
+export type TagMode = 'auto' | 'custom' | 'none'
+
 // One accordionItems array per section is the site's data model (BlogSection.accordionItems on
 // scalepods.co — see blog.ts's comment) — a 2nd sectionCards node under the same heading gets
 // dropped on save, same rule as sectionImage's one-slot limit (blogSerializer.ts).
@@ -43,8 +45,45 @@ function CardRow({
   )
 }
 
+// Was unconditional auto-detection from the section heading (still the default — "Auto" keeps
+// that exact behavior) — this makes it a real choice instead. "Custom" needs the site to actually
+// honor accordionTagPrefix (BlogBodyClient.tsx on scalepods.co); until that ships, Custom/None
+// here won't change what the live site shows, only what this composer's own preview shows.
+function TagModeControl({
+  tagMode, tagText, onModeChange, onTextChange,
+}: { tagMode: TagMode; tagText: string; onModeChange: (m: TagMode) => void; onTextChange: (t: string) => void }) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-muted text-[11px]">Tag label:</span>
+      <select
+        className="input !py-1 !w-auto text-xs"
+        value={tagMode}
+        onChange={(e) => onModeChange(e.target.value as TagMode)}
+      >
+        <option value="auto">Auto (guess from heading)</option>
+        <option value="custom">Custom text</option>
+        <option value="none">None</option>
+      </select>
+      {tagMode === 'custom' && (
+        <input
+          className="input !py-1 !w-auto text-xs"
+          style={{ maxWidth: 140 }}
+          placeholder="e.g. STEP, PHASE"
+          value={tagText}
+          onChange={(e) => onTextChange(e.target.value)}
+        />
+      )}
+      {tagMode === 'custom' && tagText.trim() && (
+        <span className="text-muted text-[11px]">→ &ldquo;{tagText.trim().toUpperCase()} 01&rdquo;, &ldquo;{tagText.trim().toUpperCase()} 02&rdquo;…</span>
+      )}
+    </div>
+  )
+}
+
 function SectionCardsView({ node, updateAttributes, deleteNode }: NodeViewProps) {
   const items: CardItem[] = node.attrs.items ?? []
+  const tagMode: TagMode = node.attrs.tagMode ?? 'auto'
+  const tagText: string = node.attrs.tagText ?? ''
 
   function setItem(i: number, patch: Partial<CardItem>) {
     updateAttributes({ items: items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)) })
@@ -60,8 +99,14 @@ function SectionCardsView({ node, updateAttributes, deleteNode }: NodeViewProps)
     <NodeViewWrapper className="my-3" as="div" contentEditable={false}>
       <div className="relative flex flex-col gap-2 p-2.5 rounded-lg" style={{ background: 'var(--fill-tertiary)' }}>
         <div className="flex items-center gap-1.5 text-muted text-[11px] font-medium uppercase tracking-wide">
-          <LayoutGrid size={12} /> Cards — auto-tagged "STEP 01" etc. on the live site from this section's heading
+          <LayoutGrid size={12} /> Cards
         </div>
+        <TagModeControl
+          tagMode={tagMode}
+          tagText={tagText}
+          onModeChange={(m) => updateAttributes({ tagMode: m })}
+          onTextChange={(t) => updateAttributes({ tagText: t })}
+        />
         {items.map((item, i) => (
           <CardRow key={i} item={item} onChange={(patch) => setItem(i, patch)} onRemove={() => removeItem(i)} canRemove={items.length > 1} />
         ))}
@@ -91,6 +136,8 @@ export const SectionCards = Node.create({
   addAttributes() {
     return {
       items: { default: [{ title: '', content: '' }] },
+      tagMode: { default: 'auto' },
+      tagText: { default: '' },
     }
   },
 

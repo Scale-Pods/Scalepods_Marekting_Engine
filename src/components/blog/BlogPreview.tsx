@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Sun, Moon } from 'lucide-react'
 import type { BlogSection } from '../../lib/blog'
-import { tagPrefixForHeading } from '../../lib/blogSerializer'
+import { resolveTagPrefix } from '../../lib/blogSerializer'
 
 // Faithful visual clone of the live scalepods.co article page (src/app/blog/[slug]/page.tsx +
 // components/ui/BlogBodyClient.tsx in the site repo, read-only reference — see
@@ -188,7 +188,7 @@ export function BlogPreviewModal({
                 {s.accordionItems && s.accordionItems.length > 0 && (
                   <div style={{ marginTop: 24, marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
                     {s.accordionItems.map((item, idx) => {
-                      const tagPrefix = tagPrefixForHeading(s.heading)
+                      const tagPrefix = resolveTagPrefix(s)
                       const highlightColor = idx % 2 === 0 ? c.greenText : c.blueMid
                       return (
                         <div
