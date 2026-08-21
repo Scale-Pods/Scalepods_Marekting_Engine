@@ -67,10 +67,19 @@ integration contract instead of an n8n social-publish node.
   `parseMarkdownInline` in `src/components/ui/BlogBodyClient.tsx`, which supports **exactly**
   `**bold**` and `[text](url)` — nothing else. Bullet lines (`•`/`-`/`*`), `### `/`## ` headings,
   and `✅`/`💡`-prefixed highlight lines get special layout treatment automatically.
-  Do NOT emit the `visual`/`accordionItems`/`imagePosition` fields from `BlogSection` — those
-  power ~30 bespoke hardcoded infographic components tied to specific legacy posts
-  (`renderAITransform`, `renderBarriers`, etc. in `BlogBodyClient.tsx`) and have no generic
-  composer equivalent.
+  Do NOT emit the `visual` field from `BlogSection` — that's the one that powers ~30 bespoke
+  hardcoded infographic components tied to specific legacy posts (`renderAITransform`,
+  `renderBarriers`, etc. in `BlogBodyClient.tsx`) and has no generic composer equivalent.
+  **Correction (2026-08-20): `accordionItems` and `imagePosition` are safe and now supported** —
+  an earlier version of this doc lumped them in with `visual` as "don't emit," which was wrong.
+  Read the site's `BlogBodyClient.tsx` directly (local repo,
+  `F:\Scalepods.co\scalepods-website-nextjs`) and confirmed both are genuinely generic renderers:
+  any section's `accordionItems` (`{title, content}[]`) becomes colored-left-border cards with a
+  "STEP 01"/"STAGE 02"/etc. tag auto-derived from heading keywords (`tagPrefixForHeading` in
+  `blogSerializer.ts`, ported verbatim from the site's own list); `imagePosition` just picks
+  above/below placement for the section image. The Growth OS composer's "Cards" toolbar button
+  (`SectionCardsNode.tsx`) now uses `accordionItems` — verified live end-to-end (draft save +
+  cold reload round-trip).
 - **Rendering is fully dynamic** (`export const revalidate = 0` in both `blog/page.tsx` and
   `blog/[slug]/page.tsx`) — a new/updated row in `website_content` appears live immediately, no
   rebuild or redeploy needed.
