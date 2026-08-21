@@ -53,8 +53,16 @@ export function setRole(role: Role) {
 const DRAFT_KEY = 'sp-composer-draft'
 
 export interface ComposerDraft {
-  platform: string
+  /** One post is created per selected platform, all sharing the same media — cross-posting an
+   *  image/carousel/video to multiple platforms at once (e.g. Instagram + LinkedIn) instead of
+   *  building each one separately. PDF and Story stay single-platform (no cross-platform
+   *  equivalent for either), so this only ever has >1 entry for image/carousel/video posts. */
+  platforms: string[]
   linkedinAccount: string
+  /** Off by default: the same caption/hashtags go to every selected platform. On: each platform
+   *  gets its own editable caption+hashtags, seeded from the shared one when first switched on. */
+  perPlatformCaption: boolean
+  captionOverrides: Record<string, { caption: string; hashtagsInput: string }>
   /** One or more uploaded image URLs, in order. >1 on linkedin/instagram means a carousel — see
    *  CreatePostModal. Superseded the old single `mediaUrl` field; drafts saved before that
    *  change are migrated on restore (see CreatePostModal). */
@@ -81,19 +89,28 @@ export interface ComposerDraft {
 }
 
 /** Pre-carousel draft shape, kept only to migrate anything already sitting in localStorage. */
-interface LegacyComposerDraft extends Omit<ComposerDraft, 'images'> {
+interface LegacyComposerDraft extends Omit<ComposerDraft, 'images' | 'platforms' | 'perPlatformCaption' | 'captionOverrides'> {
   mediaUrl: string | null
+  /** Pre-multi-platform drafts had a single `platform` string instead of `platforms: string[]`. */
+  platform?: string
 }
 
 export function getComposerDraft(): ComposerDraft | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY)
     if (!raw) return null
-    const d = JSON.parse(raw) as ComposerDraft | LegacyComposerDraft
+    const d = JSON.parse(raw) as (ComposerDraft & { platform?: string }) | LegacyComposerDraft
     const images = 'images' in d ? d.images : d.mediaUrl ? [d.mediaUrl] : []
+    const platforms = 'platforms' in d && Array.isArray(d.platforms) && d.platforms.length ? d.platforms : d.platform ? [d.platform] : ['instagram']
     // Only offer to restore something with actual content in it.
     if (!(d.caption || images.length || d.hashtagsInput || d.cta)) return null
-    return { ...d, images }
+    return {
+      ...d,
+      images,
+      platforms,
+      perPlatformCaption: 'perPlatformCaption' in d ? d.perPlatformCaption : false,
+      captionOverrides: 'captionOverrides' in d ? d.captionOverrides : {},
+    }
   } catch {
     return null
   }

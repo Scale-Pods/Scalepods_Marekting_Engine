@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Send, CheckCircle2, X, RotateCcw, FileText } from 'lucide-react'
 import { getComposerDraft, saveComposerDraft, clearComposerDraft } from '../lib/theme'
-import { createManualItem, LINKEDIN_ACCOUNTS, type ContentSlide } from '../lib/content'
+import { createManualItem, LINKEDIN_ACCOUNTS, type ContentSlide, type ContentItem } from '../lib/content'
 import { triggerPublish } from '../lib/publishing'
 import { toastMessage } from './Toast'
 import { Modal, Button, Spinner } from './ui'
@@ -31,8 +31,21 @@ export default function CreatePostModal({
   const [restored] = useState(() => getComposerDraft())
   const [draftRestored, setDraftRestored] = useState(Boolean(restored))
 
-  const [platform, setPlatform] = useState(restored?.platform ?? 'instagram')
+  // One post gets created per selected platform, all sharing the same media — cross-posting an
+  // image/carousel/video to e.g. Instagram + LinkedIn at once instead of building each
+  // separately. PDF and Story stay single-platform (no other connected platform has an
+  // equivalent), enforced by the effects below rather than by restricting the picker itself.
+  const [platforms, setPlatforms] = useState<string[]>(restored?.platforms ?? ['instagram'])
   const [linkedinAccount, setLinkedinAccount] = useState(restored?.linkedinAccount ?? LINKEDIN_ACCOUNTS[0].value)
+  // Off by default: one caption/hashtag pair goes to every selected platform. On: each platform
+  // gets its own editable caption+hashtags (seeded from the shared ones the first time it's
+  // edited) — only reachable/relevant with 2+ platforms selected.
+  const [perPlatformCaption, setPerPlatformCaption] = useState(restored?.perPlatformCaption ?? false)
+  const [captionOverrides, setCaptionOverrides] = useState<Record<string, { caption: string; hashtagsInput: string }>>(restored?.captionOverrides ?? {})
+  // Which platform's mockup the "How it'll look" panel is currently showing, when there's more
+  // than one to choose from — not persisted, resets to the first selected platform each time the
+  // selection changes underneath it (see the clamp below).
+  const [previewTab, setPreviewTab] = useState<string | null>(null)
   // >1 image only turns into a real carousel on LinkedIn/Instagram — the only platforms the
   // Publishing Engine knows how to fan a multi-image post out to. Switching to a platform that
   // doesn't support it truncates back to a single cover image below so the composer never
@@ -71,38 +84,74 @@ export default function CreatePostModal({
     .map((h) => h.trim().replace(/^#/, ''))
     .filter(Boolean)
 
-  const isLinkedin = platform === 'linkedin'
-  const isInstagram = platform === 'instagram'
-  const isFacebook = platform === 'facebook'
-  const isYoutube = platform === 'youtube'
-  const supportsCarousel = isLinkedin || isInstagram
+  const hasLinkedin = platforms.includes('linkedin')
+  const hasInstagram = platforms.includes('instagram')
+  const isMultiPlatform = platforms.length > 1
   // Instagram video publishes as a Reel (its own media_type on IG's side, distinct from the
   // Story/Feed image toggle below) — the n8n Publishing Engine now has a matching branch that
   // creates a REELS container and polls until it's processed before publishing.
-  const supportsVideo = isFacebook || isYoutube || isInstagram
-  const supportsStory = isInstagram
+  const supportsVideoAll = platforms.every((p) => p === 'facebook' || p === 'youtube' || p === 'instagram')
+  // Story only has an Instagram equivalent, and a Document post only has a LinkedIn one — both
+  // stay single-platform, so these only ever apply when exactly that one platform is selected
+  // alone (not merely present alongside others).
+  const supportsStorySingle = platforms.length === 1 && hasInstagram
   // A LinkedIn Document post (real API: Documents API + /rest/posts, media.id: urn:li:document:…)
   // — the n8n Publishing Engine's matching branch creates the document, waits for it to finish
   // processing, then posts it. Distinct from LinkedIn's multi-image carousel (`isCarousel` below).
-  const supportsPdf = isLinkedin
+  const supportsPdfSingle = platforms.length === 1 && hasLinkedin
   // YouTube only supports Shorts through this composer — there's no photo/text post type for
   // it, so unlike Facebook it isn't a Photo/Video choice, it's just always video.
-  const forcedVideo = isYoutube
-  const isCarousel = supportsCarousel && mediaKind === 'image' && images.length > 1
+  const forcedVideo = platforms.includes('youtube')
+  // Carousel (2+ images) only has an API path on LinkedIn/Instagram — true only when every
+  // currently selected platform supports it, same idea as supportsVideoAll below.
+  const supportsCarouselAll = platforms.every((p) => p === 'linkedin' || p === 'instagram')
+  const isCarousel = supportsCarouselAll && mediaKind === 'image' && images.length > 1
+  // Falls back to the first selected platform whenever the tab last clicked isn't (or is no
+  // longer) part of the current selection — e.g. right after adding/removing a platform.
+  const activePreviewPlatform = previewTab && platforms.includes(previewTab) ? previewTab : platforms[0]
+  // Guards the *adding* direction — without this, checking an incompatible platform while e.g. a
+  // carousel is already active wouldn't get dropped by anything (the drop effects below only
+  // fire when media/format changes, not when the platform selection changes), so the carousel
+  // would silently break for the still-compatible platforms too, not just refuse the new one.
+  function platformCompatible(p: string): boolean {
+    if (mediaKind === 'pdf') return p === 'linkedin'
+    if (postFormat === 'story') return p === 'instagram'
+    if (mediaKind === 'video') return p === 'facebook' || p === 'youtube' || p === 'instagram'
+    if (images.length > 1) return p === 'linkedin' || p === 'instagram'
+    if (p === 'youtube') return false // YouTube has no photo/text mode in this composer
+    return true
+  }
 
-  // Drop whatever the current platform doesn't support the moment you switch to it, so the
-  // composer never lets you build something the Publishing Engine can't actually fan out —
-  // carousel is LinkedIn/Instagram only, video is Facebook/YouTube only, Story is Instagram
-  // only, and Story + carousel together aren't offered (a Story is always a single image here).
+  // Drop whatever the current selection doesn't support the moment media/format changes make it
+  // invalid, so the composer never lets you build something the Publishing Engine can't actually
+  // fan out to every selected platform — carousel is LinkedIn/Instagram only, video excludes
+  // LinkedIn, and Story/PDF are single-platform (Instagram/LinkedIn respectively), so picking
+  // either collapses the selection down to just that platform.
   useEffect(() => {
-    if (!supportsCarousel && images.length > 1) setImages((prev) => prev.slice(0, 1))
-  }, [supportsCarousel, images.length])
+    if (images.length > 1) {
+      setPlatforms((prev) => {
+        const next = prev.filter((p) => p === 'linkedin' || p === 'instagram')
+        return next.length ? next : ['instagram']
+      })
+    }
+  }, [images.length])
   useEffect(() => {
-    if (!supportsVideo && mediaKind === 'video') { setMediaKind('image'); setVideoUrl(null) }
-  }, [supportsVideo, mediaKind])
+    if (mediaKind === 'video') {
+      setPlatforms((prev) => {
+        const next = prev.filter((p) => p === 'facebook' || p === 'youtube' || p === 'instagram')
+        return next.length ? next : ['instagram']
+      })
+    }
+  }, [mediaKind])
   useEffect(() => {
-    if (!supportsPdf && mediaKind === 'pdf') { setMediaKind('image'); setPdfUrl(null) }
-  }, [supportsPdf, mediaKind])
+    if (mediaKind === 'pdf') setPlatforms(['linkedin'])
+  }, [mediaKind])
+  useEffect(() => {
+    if (postFormat === 'story') setPlatforms(['instagram'])
+  }, [postFormat])
+  useEffect(() => {
+    if (!supportsPdfSingle && mediaKind === 'pdf') { setMediaKind('image'); setPdfUrl(null) }
+  }, [supportsPdfSingle, mediaKind])
   useEffect(() => {
     if (!pdfUrl) { setPdfPages([]); return }
     let cancelled = false
@@ -118,8 +167,8 @@ export default function CreatePostModal({
     if (forcedVideo && mediaKind !== 'video') setMediaKind('video')
   }, [forcedVideo, mediaKind])
   useEffect(() => {
-    if (!supportsStory && postFormat === 'story') setPostFormat('feed')
-  }, [supportsStory, postFormat])
+    if (!supportsStorySingle && postFormat === 'story') setPostFormat('feed')
+  }, [supportsStorySingle, postFormat])
   useEffect(() => {
     if (isCarousel && postFormat === 'story') setPostFormat('feed')
   }, [isCarousel, postFormat])
@@ -137,16 +186,18 @@ export default function CreatePostModal({
   useEffect(() => {
     if (done) return
     saveComposerDraft({
-      platform, linkedinAccount, images, mediaKind, videoUrl, pdfUrl, postFormat,
+      platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat,
       caption, hashtagsInput, cta, when, scheduledDate, scheduledTime,
     })
-  }, [done, platform, linkedinAccount, images, mediaKind, videoUrl, pdfUrl, postFormat, caption, hashtagsInput, cta, when, scheduledDate, scheduledTime])
+  }, [done, platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat, caption, hashtagsInput, cta, when, scheduledDate, scheduledTime])
 
   function discardDraft() {
     clearComposerDraft()
     setDraftRestored(false)
-    setPlatform('instagram')
+    setPlatforms(['instagram'])
     setLinkedinAccount(LINKEDIN_ACCOUNTS[0].value)
+    setPerPlatformCaption(false)
+    setCaptionOverrides({})
     setImages([])
     setMediaKind('image')
     setVideoUrl(null)
@@ -161,8 +212,12 @@ export default function CreatePostModal({
   }
 
   // A video/PDF post without the file isn't a thing — require it explicitly rather than letting
-  // caption text alone satisfy "has content" the way it does for an image/text post.
-  const hasContent = mediaKind === 'video' ? Boolean(videoUrl) : mediaKind === 'pdf' ? Boolean(pdfUrl) : Boolean(images.length || caption.trim())
+  // caption text alone satisfy "has content" the way it does for an image/text post. When
+  // per-platform captions are on, the shared `caption` field can legitimately be left blank
+  // while every platform still has real text in its own override — check those too, or Save
+  // stays disabled despite there being content to save.
+  const hasCaptionText = caption.trim() || (isMultiPlatform && perPlatformCaption && platforms.some((p) => captionOverrides[p]?.caption?.trim()))
+  const hasContent = mediaKind === 'video' ? Boolean(videoUrl) : mediaKind === 'pdf' ? Boolean(pdfUrl) : Boolean(images.length || hasCaptionText)
   // Previously this ignored `when` entirely, so you could pick "Set a target date", leave the
   // date blank, and save — the empty date was silently coerced to null and the post behaved
   // like an immediate one. That's the bug that made a scheduled post publish instantly.
@@ -176,32 +231,49 @@ export default function CreatePostModal({
       // 'story' now has to win over the video check — a video Story is content_type:'story'
       // same as a photo Story (the Publishing Engine tells them apart itself, from whether
       // media_url is a video file), not 'ugc_video' (that's specifically a feed Reel).
-      const contentType =
-        postFormat === 'story' ? 'story' :
-        mediaKind === 'pdf' ? 'linkedin_pdf' :
-        mediaKind === 'video' ? 'ugc_video' :
-        isCarousel ? 'carousel' :
-        images[0] ? 'static_image' : 'social_caption'
-      const item = await createManualItem({
-        profileId,
-        platform,
-        contentType,
-        title: caption.trim() ? caption.trim().slice(0, 60) : null,
-        body: caption.trim(),
-        mediaUrl: mediaKind === 'video' ? videoUrl : mediaKind === 'pdf' ? pdfUrl : (images[0] ?? null),
-        slides,
-        hashtags,
-        cta: cta.trim(),
-        scheduledDate: scheduling && scheduledDate ? scheduledDate : null,
-        scheduledTime: scheduling && scheduledTime ? scheduledTime : null,
-        scheduledAt: targetInstant ? targetInstant.toISOString() : null,
-        linkedinAccount: platform === 'linkedin' ? linkedinAccount : null,
-      })
+      const mediaUrl = mediaKind === 'video' ? videoUrl : mediaKind === 'pdf' ? pdfUrl : (images[0] ?? null)
+      // One content_item per selected platform, all pointing at this same upload — a real
+      // "cross-post" is N separate items rather than one multi-platform row, so each fans out
+      // through the exact same single-platform pipeline everything else already uses (Post
+      // now/Schedule, the Publishing Engine's per-platform branches, etc). Tagged with a shared
+      // group id only when there's actually more than one, so a normal single-platform post's
+      // metadata looks exactly like it always has.
+      const crosspostGroupId = platforms.length > 1 ? crypto.randomUUID() : null
+      const createdItems: ContentItem[] = []
+      for (const p of platforms) {
+        const useOverride = isMultiPlatform && perPlatformCaption
+        const pCaption = useOverride ? (captionOverrides[p]?.caption ?? caption) : caption
+        const pHashtagsInput = useOverride ? (captionOverrides[p]?.hashtagsInput ?? hashtagsInput) : hashtagsInput
+        const pHashtags = pHashtagsInput.split(/[\s,]+/).map((h) => h.trim().replace(/^#/, '')).filter(Boolean)
+        const contentType =
+          postFormat === 'story' ? 'story' :
+          mediaKind === 'pdf' ? 'linkedin_pdf' :
+          mediaKind === 'video' ? 'ugc_video' :
+          isCarousel ? 'carousel' :
+          images[0] ? 'static_image' : 'social_caption'
+        const item = await createManualItem({
+          profileId,
+          platform: p,
+          contentType,
+          title: pCaption.trim() ? pCaption.trim().slice(0, 60) : null,
+          body: pCaption.trim(),
+          mediaUrl,
+          slides: contentType === 'carousel' ? slides : [],
+          hashtags: pHashtags,
+          cta: cta.trim(),
+          scheduledDate: scheduling && scheduledDate ? scheduledDate : null,
+          scheduledTime: scheduling && scheduledTime ? scheduledTime : null,
+          scheduledAt: targetInstant ? targetInstant.toISOString() : null,
+          linkedinAccount: p === 'linkedin' ? linkedinAccount : null,
+          crosspostGroupId,
+        })
+        createdItems.push(item)
+      }
       // A target date now actually schedules. Before this the date was only a tag: the post
       // landed in "Ready to publish" and you still had to click Schedule there — and clicking
       // the adjacent, primary-styled "Post now" silently discarded the date and published
       // immediately, which is exactly what testing hit.
-      if (targetInstant) await triggerPublish(item.id, false)
+      if (targetInstant) await Promise.all(createdItems.map((item) => triggerPublish(item.id, false)))
       clearComposerDraft()
       setDone(true)
     } catch (err) {
@@ -212,15 +284,17 @@ export default function CreatePostModal({
   }
 
   if (done) {
+    const n = platforms.length
     return (
-      <Modal title="Post created" onClose={onCreated}>
+      <Modal title={n > 1 ? 'Posts created' : 'Post created'} onClose={onCreated}>
         <div className="flex flex-col items-center text-center gap-3 py-4">
           <CheckCircle2 size={32} className="text-sage" />
           <div className="font-medium">{targetInstant ? 'Scheduled' : 'Sent to Publishing'}</div>
           <p className="text-secondary text-sm max-w-xs">
+            {n > 1 && `Created ${n} posts (one per platform) sharing this media. `}
             {targetInstant
-              ? `Your post is scheduled for ${targetInstant.toLocaleString()} and will publish automatically. You can see it under Publishing → Scheduled.`
-              : 'Your post is saved and ready — head to Publishing to post it now or schedule it.'}
+              ? `${n > 1 ? 'They are' : 'Your post is'} scheduled for ${targetInstant.toLocaleString()} and will publish automatically. You can see ${n > 1 ? 'them' : 'it'} under Publishing → Scheduled.`
+              : `${n > 1 ? 'They are' : 'Your post is'} saved and ready — head to Publishing to post ${n > 1 ? 'them' : 'it'} now or schedule ${n > 1 ? 'them' : 'it'}.`}
           </p>
           <div className="flex gap-2 mt-2">
             <Button variant="ghost" onClick={onCreated}>Close</Button>
@@ -254,27 +328,42 @@ export default function CreatePostModal({
           )}
 
           <div>
-            <div className="label mb-2">Platform</div>
+            <div className="label mb-2">Platform{platforms.length > 1 ? 's' : ''}</div>
             {/* Dimming the unselected options to 45% opacity (the old treatment) made every
                 platform except the active one look faded and disabled rather than just
                 "not chosen" — the opposite of inviting. Every option now stays full-strength
                 and is distinguished by its own button frame instead: a filled, ringed card
-                when active, a plain outlined one otherwise. Bigger tap targets too. */}
+                when active, a plain outlined one otherwise. Bigger tap targets too.
+                Multi-select: click toggles a platform in/out of the set (the last one can't be
+                unchecked — a post needs somewhere to go). Switching mediaKind/postFormat to
+                something an already-selected platform doesn't support drops that platform (see
+                the effects above); the reverse — trying to ADD a platform that doesn't support
+                the *current* media — is blocked right here instead, dimmed with a tooltip
+                explaining why, so checking Facebook mid-carousel can't silently break the
+                carousel for Instagram/LinkedIn too. */}
             <div className="flex gap-2 flex-wrap">
               {PLATFORM_OPTIONS.map((p) => {
-                const active = platform === p.value
+                const active = platforms.includes(p.value)
+                const disabled = !active && !platformCompatible(p.value)
                 return (
                   <button
                     key={p.value}
                     type="button"
-                    onClick={() => setPlatform(p.value)}
-                    className="rounded-full transition-all"
+                    disabled={disabled}
+                    title={disabled ? `${p.label} doesn't support this post type — change the media/post type first.` : undefined}
+                    onClick={() => setPlatforms((prev) => {
+                      if (active) return prev.length > 1 ? prev.filter((x) => x !== p.value) : prev
+                      if (!platformCompatible(p.value)) return prev
+                      return [...prev, p.value]
+                    })}
+                    className="rounded-full transition-all disabled:cursor-not-allowed"
                     style={{
                       padding: 4,
                       background: active ? 'var(--fill-primary)' : 'var(--fill-tertiary)',
                       outline: active ? '2px solid var(--accent-green)' : '1px solid var(--border-subtle)',
                       outlineOffset: -1,
                       transform: active ? 'scale(1.05)' : undefined,
+                      opacity: disabled ? 0.35 : 1,
                     }}
                   >
                     <PlatformBadge platform={p.value} />
@@ -282,9 +371,14 @@ export default function CreatePostModal({
                 )
               })}
             </div>
+            {isMultiPlatform && (
+              <p className="text-muted text-xs mt-1.5">
+                Posting to {platforms.length} platforms at once — one post is created for each, sharing this media.
+              </p>
+            )}
           </div>
 
-          {platform === 'linkedin' && (
+          {hasLinkedin && (
             <div>
               <label className="label">LinkedIn account</label>
               <select
@@ -304,21 +398,11 @@ export default function CreatePostModal({
             </div>
           )}
 
-          {(isFacebook || supportsStory || supportsPdf) && (
+          {(supportsVideoAll || supportsStorySingle || supportsPdfSingle) && (
             <div>
               <div className="label mb-2">Post type</div>
               <div className="flex items-center gap-2 flex-wrap">
-                {isFacebook && (
-                  <>
-                    <button type="button" onClick={() => setMediaKind('image')} className={mediaKind === 'image' ? 'badge' : 'badge opacity-40'} style={{ textTransform: 'none' }}>
-                      Photo
-                    </button>
-                    <button type="button" onClick={() => setMediaKind('video')} className={mediaKind === 'video' ? 'badge badge-blue' : 'badge badge-blue opacity-40'} style={{ textTransform: 'none' }}>
-                      Video
-                    </button>
-                  </>
-                )}
-                {supportsPdf && (
+                {supportsPdfSingle ? (
                   <>
                     <button type="button" onClick={() => setMediaKind('image')} className={mediaKind !== 'pdf' ? 'badge' : 'badge opacity-40'} style={{ textTransform: 'none' }}>
                       Feed post
@@ -327,8 +411,7 @@ export default function CreatePostModal({
                       PDF document
                     </button>
                   </>
-                )}
-                {supportsStory && !isCarousel && (
+                ) : supportsStorySingle && !isCarousel ? (
                   <>
                     <button
                       type="button"
@@ -349,18 +432,25 @@ export default function CreatePostModal({
                     >
                       Story
                     </button>
-                    {isInstagram && (
-                      <button
-                        type="button"
-                        onClick={() => { setMediaKind('video'); setPostFormat('feed') }}
-                        className={mediaKind === 'video' && postFormat === 'feed' ? 'badge badge-blue' : 'badge badge-blue opacity-40'}
-                        style={{ textTransform: 'none' }}
-                      >
-                        Reel
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => { setMediaKind('video'); setPostFormat('feed') }}
+                      className={mediaKind === 'video' && postFormat === 'feed' ? 'badge badge-blue' : 'badge badge-blue opacity-40'}
+                      style={{ textTransform: 'none' }}
+                    >
+                      Reel
+                    </button>
                   </>
-                )}
+                ) : supportsVideoAll && !isCarousel ? (
+                  <>
+                    <button type="button" onClick={() => setMediaKind('image')} className={mediaKind !== 'video' ? 'badge' : 'badge opacity-40'} style={{ textTransform: 'none' }}>
+                      Photo{isMultiPlatform ? '/carousel' : ''}
+                    </button>
+                    <button type="button" onClick={() => setMediaKind('video')} className={mediaKind === 'video' ? 'badge badge-blue' : 'badge badge-blue opacity-40'} style={{ textTransform: 'none' }}>
+                      Video{isMultiPlatform ? ' (Reel/Short where supported)' : ''}
+                    </button>
+                  </>
+                ) : null}
               </div>
               {/* Story's own Photo/Video choice — Instagram Stories support video (media_type=
                   STORIES + video_url, same container flow as Reels) just as much as a static
@@ -380,7 +470,7 @@ export default function CreatePostModal({
 
           <div>
             <div className="label mb-2">
-              {mediaKind === 'video' ? 'Video' : mediaKind === 'pdf' ? 'PDF' : supportsCarousel ? 'Images' : 'Image'}
+              {mediaKind === 'video' ? 'Video' : mediaKind === 'pdf' ? 'PDF' : supportsCarouselAll ? 'Images' : 'Image'}
               {isCarousel && <span className="text-muted font-normal"> · carousel, {images.length} slides</span>}
             </div>
             {mediaKind === 'video' ? (
@@ -464,7 +554,7 @@ export default function CreatePostModal({
                     ))}
                   </div>
                 )}
-                {(images.length === 0 || (supportsCarousel && postFormat !== 'story')) && (
+                {(images.length === 0 || (supportsCarouselAll && postFormat !== 'story')) && (
                   <AssetUploader
                     pathPrefix={`manual/${profileId}`}
                     label={images.length ? 'Add another slide' : 'Upload image'}
@@ -477,46 +567,85 @@ export default function CreatePostModal({
               {mediaKind === 'pdf'
                 ? 'Required — posted as a native LinkedIn Document (the same mechanism behind what people call a "LinkedIn PDF carousel" — a swipeable page-by-page viewer). Up to 100MB / 300 pages.'
                 : mediaKind === 'video'
-                ? isYoutube
-                  ? 'Required — vertical video, up to 3 minutes, posted as a YouTube Short.'
-                  : isInstagram
-                    ? postFormat === 'story'
-                      ? 'Required — vertical video, posted as an Instagram Story (expires after 24h). Processing can take up to ~1 minute after you save.'
-                      : 'Required — vertical video, posted as an Instagram Reel. Processing can take up to ~1 minute after you save.'
-                    : 'Required — upload the video file to post.'
+                ? isMultiPlatform
+                  ? `Required — one video, posted as ${platforms.map((p) => (p === 'instagram' ? 'a Reel on Instagram' : p === 'youtube' ? 'a Short on YouTube' : 'a video on Facebook')).join(', ')}. Processing can take up to ~1 minute per platform after you save.`
+                  : platforms[0] === 'youtube'
+                    ? 'Required — vertical video, up to 3 minutes, posted as a YouTube Short.'
+                    : platforms[0] === 'instagram'
+                      ? postFormat === 'story'
+                        ? 'Required — vertical video, posted as an Instagram Story (expires after 24h). Processing can take up to ~1 minute after you save.'
+                        : 'Required — vertical video, posted as an Instagram Reel. Processing can take up to ~1 minute after you save.'
+                      : 'Required — upload the video file to post.'
                 : postFormat === 'story'
                   ? 'A photo Story is a single image.'
-                  : supportsCarousel
-                    ? `Optional — leave blank for a text-only post. Add 2 or more to post as a carousel${isLinkedin ? ' (swipeable gallery)' : ''}.`
+                  : supportsCarouselAll
+                    ? `Optional — leave blank for a text-only post. Add 2 or more to post as a carousel${hasLinkedin ? ' (swipeable gallery)' : ''}.`
                     : 'Optional — leave blank for a text-only post.'}
             </p>
           </div>
 
           <div>
-            <label className="label">Caption</label>
-            <textarea
-              className="input mt-1.5"
-              rows={4}
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              placeholder="Write your post…"
-            />
+            <div className="flex items-center justify-between mb-2">
+              <label className="label !mb-0">Caption{isMultiPlatform ? ' & hashtags' : ''}</label>
+              {isMultiPlatform && (
+                <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={perPlatformCaption}
+                    onChange={(e) => setPerPlatformCaption(e.target.checked)}
+                  />
+                  Different per platform
+                </label>
+              )}
+            </div>
+            {isMultiPlatform && perPlatformCaption ? (
+              // One block per selected platform — each starts out showing the shared caption/
+              // hashtags below until edited, so switching this on never blanks anything out.
+              <div className="space-y-3">
+                {platforms.map((p) => (
+                  <div key={p} className="p-3 rounded-lg" style={{ background: 'var(--fill-tertiary)', border: '1px solid var(--border-subtle)' }}>
+                    <div className="mb-2"><PlatformBadge platform={p} size="sm" /></div>
+                    <textarea
+                      className="input"
+                      rows={3}
+                      value={captionOverrides[p]?.caption ?? caption}
+                      onChange={(e) => setCaptionOverrides((prev) => ({ ...prev, [p]: { caption: e.target.value, hashtagsInput: prev[p]?.hashtagsInput ?? hashtagsInput } }))}
+                      placeholder="Write your post…"
+                    />
+                    <input
+                      className="input mt-2"
+                      value={captionOverrides[p]?.hashtagsInput ?? hashtagsInput}
+                      onChange={(e) => setCaptionOverrides((prev) => ({ ...prev, [p]: { caption: prev[p]?.caption ?? caption, hashtagsInput: e.target.value } }))}
+                      placeholder="#GrowthOS #B2B"
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <textarea
+                  className="input"
+                  rows={4}
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  placeholder="Write your post…"
+                />
+                <div className="mt-3">
+                  <label className="label">Hashtags</label>
+                  <input
+                    className="input mt-1.5"
+                    value={hashtagsInput}
+                    onChange={(e) => setHashtagsInput(e.target.value)}
+                    placeholder="#GrowthOS #B2B"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Hashtags</label>
-              <input
-                className="input mt-1.5"
-                value={hashtagsInput}
-                onChange={(e) => setHashtagsInput(e.target.value)}
-                placeholder="#GrowthOS #B2B"
-              />
-            </div>
-            <div>
-              <label className="label">CTA (optional)</label>
-              <input className="input mt-1.5" value={cta} onChange={(e) => setCta(e.target.value)} placeholder="Book a demo" />
-            </div>
+          <div>
+            <label className="label">CTA (optional)</label>
+            <input className="input mt-1.5" value={cta} onChange={(e) => setCta(e.target.value)} placeholder="Book a demo" />
           </div>
 
           <div>
@@ -637,19 +766,49 @@ export default function CreatePostModal({
           ) : isCarousel ? (
             <CarouselViewer slides={images.map((url, i) => ({ idx: i, title: '', caption: '', url }))} />
           ) : (
-            <PlatformMockup
-              platform={platform}
-              img={images[0] ?? null}
-              // Stories are vertical, not the square/1.91:1 feed-card ratio — a more accurate
-              // preview than pretending it's a normal feed post.
-              aspect={postFormat === 'story' ? 9 / 16 : (PLATFORM_ASPECT[platform] ?? 1)}
-              caption={[caption, hashtags.map((h) => `#${h}`).join(' ')].filter(Boolean).join('\n\n')}
-              // PlatformMockup's default "Adjust the crop →" hint is written for MediaEditor,
-              // where there's an actual crop panel next to it. This composer has no crop tool at
-              // all, and a blank image here is usually a deliberate text-only post (see the help
-              // text below), not an unfinished crop — so the empty state needs its own wording.
-              emptyHint={postFormat === 'story' ? 'Upload an image to preview the Story' : 'No image — text-only post'}
-            />
+            <>
+              {/* Which platform's mockup is showing — only matters here, since this is the one
+                  view whose chrome/aspect ratio actually differs per platform (a video/PDF/
+                  carousel post is single-platform or looks the same regardless in this
+                  composer). */}
+              {isMultiPlatform && (
+                <div className="flex gap-1.5 justify-center mb-2">
+                  {platforms.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPreviewTab(p)}
+                      className="rounded-full"
+                      style={{
+                        padding: 3,
+                        outline: activePreviewPlatform === p ? '2px solid var(--accent-green)' : '1px solid var(--border-subtle)',
+                        outlineOffset: -1,
+                      }}
+                      aria-label={`Preview ${p}`}
+                    >
+                      <PlatformBadge platform={p} size="sm" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              <PlatformMockup
+                platform={activePreviewPlatform}
+                img={images[0] ?? null}
+                // Stories are vertical, not the square/1.91:1 feed-card ratio — a more accurate
+                // preview than pretending it's a normal feed post.
+                aspect={postFormat === 'story' ? 9 / 16 : (PLATFORM_ASPECT[activePreviewPlatform] ?? 1)}
+                caption={
+                  isMultiPlatform && perPlatformCaption
+                    ? [captionOverrides[activePreviewPlatform]?.caption ?? caption, captionOverrides[activePreviewPlatform]?.hashtagsInput ?? hashtagsInput].filter(Boolean).join('\n\n')
+                    : [caption, hashtags.map((h) => `#${h}`).join(' ')].filter(Boolean).join('\n\n')
+                }
+                // PlatformMockup's default "Adjust the crop →" hint is written for MediaEditor,
+                // where there's an actual crop panel next to it. This composer has no crop tool at
+                // all, and a blank image here is usually a deliberate text-only post (see the help
+                // text below), not an unfinished crop — so the empty state needs its own wording.
+                emptyHint={postFormat === 'story' ? 'Upload an image to preview the Story' : 'No image — text-only post'}
+              />
+            </>
           )}
         </div>
       </div>
@@ -657,9 +816,10 @@ export default function CreatePostModal({
         <PostPreviewModal
           // `slides` drives the multi-page swipeable view, but PostPreviewModal only treats it
           // as a carousel when there's more than one — a single-page PDF needs `img` too, as the
-          // plain-image fallback for that case.
+          // plain-image fallback for that case. PDF is always single-platform LinkedIn, so
+          // platforms[0] is always 'linkedin' here.
           img={pdfPages[pdfEnlargedIndex] ?? null}
-          platform={platform}
+          platform={platforms[0]}
           slides={pdfPages.map((url, i) => ({ idx: i, title: `Page ${i + 1}`, caption: '', url }))}
           initialSlideIndex={pdfEnlargedIndex}
           onClose={() => setPdfEnlargedIndex(null)}

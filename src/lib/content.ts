@@ -85,6 +85,11 @@ export interface ContentItemMetadata {
   /** Which of LINKEDIN_ACCOUNTS this post goes out as — only meaningful when platform is
    *  linkedin. Read by the Publishing Engine (n8n) to pick the right credential/author URN. */
   linkedin_account?: string
+  /** Set when this item was created alongside sibling items on other platforms from one composer
+   *  save (cross-posting the same media to e.g. Instagram + LinkedIn at once) — shared by every
+   *  item from that one save, purely for UI grouping ("posted together"). Doesn't affect
+   *  publishing at all; each item still fans out through its own single-platform pipeline. */
+  crosspost_group_id?: string
 }
 
 export interface ContentItem {
@@ -320,6 +325,11 @@ export async function createManualItem(input: {
   scheduledTime: string | null
   scheduledAt: string | null
   linkedinAccount: string | null
+  /** Set when this item was created alongside sibling items on other platforms from one composer
+   *  save (cross-posting the same media to e.g. Instagram + LinkedIn at once) — lets the UI show
+   *  "posted together" and group them, without changing how any single item publishes. Omitted
+   *  entirely for a normal single-platform post. */
+  crosspostGroupId?: string | null
 }): Promise<ContentItem> {
   const { data, error } = await supabase
     .from('content_items')
@@ -343,6 +353,7 @@ export async function createManualItem(input: {
         ...(input.scheduledAt ? { scheduled_at: input.scheduledAt } : {}),
         ...(input.linkedinAccount ? { linkedin_account: input.linkedinAccount } : {}),
         ...(input.slides.length > 1 ? { slides: input.slides } : {}),
+        ...(input.crosspostGroupId ? { crosspost_group_id: input.crosspostGroupId } : {}),
       },
     })
     .select()

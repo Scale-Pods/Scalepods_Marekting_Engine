@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Send, Clock, Loader2 } from 'lucide-react'
+import { Send, Clock, Loader2, Link2 } from 'lucide-react'
 import { useProfile, useApprovedItems, useScheduledPosts } from '../lib/queries'
 import { PageHeader, Badge, EmptyState, Spinner } from '../components/ui'
 import { PostTile, PostPreviewModal, ActivityPreviewModal, ReadyPreviewActions, ContentTypeChip, STATUS_META } from '../components/postPreview'
@@ -99,16 +99,34 @@ export default function Publishing() {
         <EmptyState icon={<Send size={28} />} title="Nothing approved yet" hint="Approve items in Creative Review — they land here once approved." />
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-1.5 mb-8">
-          {items.map((item, i) => (
-            <PostTile
-              key={item.id}
-              img={item.media_url}
-              platform={item.platform}
-              placeholder={item.title || item.body?.slice(0, 80)}
-              topRight={<ContentTypeChip type={item.content_type} />}
-              onClick={() => setReadyPreviewIndex(i)}
-            />
-          ))}
+          {items.map((item, i) => {
+            // Cross-posted from one composer save (e.g. Instagram + LinkedIn at once) share a
+            // group id — count siblings still sitting in this same list so the tile can show
+            // "posted together" instead of looking like an unrelated duplicate.
+            const groupId = item.metadata?.crosspost_group_id
+            const groupSize = groupId ? items.filter((x) => x.metadata?.crosspost_group_id === groupId).length : 1
+            return (
+              <PostTile
+                key={item.id}
+                img={item.media_url}
+                platform={item.platform}
+                placeholder={item.title || item.body?.slice(0, 80)}
+                topRight={<ContentTypeChip type={item.content_type} />}
+                bottomLeft={
+                  groupSize > 1 ? (
+                    <span
+                      className="flex items-center gap-1 text-[10px] font-semibold text-white rounded-full px-1.5 py-0.5"
+                      style={{ background: 'rgba(0,0,0,0.6)' }}
+                      title={`Posted together with ${groupSize - 1} other platform${groupSize > 2 ? 's' : ''}`}
+                    >
+                      <Link2 size={10} /> {groupSize}
+                    </span>
+                  ) : undefined
+                }
+                onClick={() => setReadyPreviewIndex(i)}
+              />
+            )
+          })}
         </div>
       )}
 
