@@ -90,6 +90,28 @@ export interface ContentItemMetadata {
    *  item from that one save, purely for UI grouping ("posted together"). Doesn't affect
    *  publishing at all; each item still fans out through its own single-platform pipeline. */
   crosspost_group_id?: string
+  /** Per-post comment-to-DM automation. When someone comments `keyword` on this post once it's
+   *  live, the n8n Comment-to-DM workflow sends them a single Instagram private reply containing
+   *  `message` (and `asset_url` if set). Looked up by matching the incoming comment webhook's
+   *  media id against this item's scheduled_posts.platform_post_id, so it only takes effect after
+   *  the post actually publishes and Instagram assigns it a real media id. */
+  comment_automation?: CommentAutomation
+}
+
+/** Instagram-only today. Meta's Private Replies rules constrain this hard: exactly ONE reply per
+ *  comment, and only within 7 days of that comment — so this is a single fixed response, not a
+ *  conversation. There is deliberately no "only if they follow us" option: Instagram exposes no
+ *  API to check whether a given user follows an account (follower COUNT and aggregate demographics
+ *  only), so that gate cannot be built against the official API at all. */
+export interface CommentAutomation {
+  enabled: boolean
+  /** Case-insensitive substring match against the comment text. */
+  keyword: string
+  /** The DM body sent to whoever commented the keyword. */
+  message: string
+  /** Optional link/PDF/document appended to the message — an uploaded file's public URL or any
+   *  URL typed in directly. */
+  asset_url?: string
 }
 
 export interface ContentItem {
@@ -330,6 +352,9 @@ export async function createManualItem(input: {
    *  "posted together" and group them, without changing how any single item publishes. Omitted
    *  entirely for a normal single-platform post. */
   crosspostGroupId?: string | null
+  /** Per-post comment-to-DM automation (Instagram only). Only written when actually enabled, so a
+   *  normal post's metadata looks exactly as it always has. */
+  commentAutomation?: CommentAutomation | null
 }): Promise<ContentItem> {
   const { data, error } = await supabase
     .from('content_items')
@@ -354,6 +379,7 @@ export async function createManualItem(input: {
         ...(input.linkedinAccount ? { linkedin_account: input.linkedinAccount } : {}),
         ...(input.slides.length > 1 ? { slides: input.slides } : {}),
         ...(input.crosspostGroupId ? { crosspost_group_id: input.crosspostGroupId } : {}),
+        ...(input.commentAutomation?.enabled ? { comment_automation: input.commentAutomation } : {}),
       },
     })
     .select()

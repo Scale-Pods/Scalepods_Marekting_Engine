@@ -72,6 +72,13 @@ export default function CreatePostModal({
   const [caption, setCaption] = useState(restored?.caption ?? '')
   const [hashtagsInput, setHashtagsInput] = useState(restored?.hashtagsInput ?? '')
   const [cta, setCta] = useState(restored?.cta ?? '')
+  // Comment-to-DM automation for this specific post: someone comments `commentKeyword` on it once
+  // it's live, they get one Instagram private reply with `commentDmMessage` (+ the asset link).
+  // Instagram-only — Meta's Private Replies mechanism is per-platform, and only IG is wired up.
+  const [commentAutomationEnabled, setCommentAutomationEnabled] = useState(restored?.commentAutomationEnabled ?? false)
+  const [commentKeyword, setCommentKeyword] = useState(restored?.commentKeyword ?? '')
+  const [commentDmMessage, setCommentDmMessage] = useState(restored?.commentDmMessage ?? '')
+  const [commentAssetUrl, setCommentAssetUrl] = useState(restored?.commentAssetUrl ?? '')
   const [when, setWhen] = useState<'now' | 'date'>(restored?.when ?? (initialDate ? 'date' : 'now'))
   const [scheduledDate, setScheduledDate] = useState(restored?.scheduledDate ?? initialDate ?? '')
   const [scheduledTime, setScheduledTime] = useState(restored?.scheduledTime ?? '')
@@ -109,6 +116,11 @@ export default function CreatePostModal({
   // Falls back to the first selected platform whenever the tab last clicked isn't (or is no
   // longer) part of the current selection — e.g. right after adding/removing a platform.
   const activePreviewPlatform = previewTab && platforms.includes(previewTab) ? previewTab : platforms[0]
+  // Comment-to-DM needs a post that actually has a public comment thread Meta will send us a
+  // webhook for. Stories are excluded: they have replies, not comments, and no comments webhook.
+  // Instagram-only for now — the same Private Replies mechanism exists for Facebook Pages but
+  // that branch isn't built yet.
+  const supportsCommentAutomation = hasInstagram && postFormat !== 'story'
   // Guards the *adding* direction — without this, checking an incompatible platform while e.g. a
   // carousel is already active wouldn't get dropped by anything (the drop effects below only
   // fire when media/format changes, not when the platform selection changes), so the carousel
@@ -172,6 +184,11 @@ export default function CreatePostModal({
   useEffect(() => {
     if (isCarousel && postFormat === 'story') setPostFormat('feed')
   }, [isCarousel, postFormat])
+  // Switching to a Story (or dropping Instagram) makes comment automation impossible — turn it
+  // off rather than silently saving an automation that could never fire.
+  useEffect(() => {
+    if (!supportsCommentAutomation && commentAutomationEnabled) setCommentAutomationEnabled(false)
+  }, [supportsCommentAutomation, commentAutomationEnabled])
 
   const scheduling = when === 'date'
   // Built from the date+time inputs as LOCAL time (no trailing Z), then converted to an
@@ -187,9 +204,10 @@ export default function CreatePostModal({
     if (done) return
     saveComposerDraft({
       platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat,
-      caption, hashtagsInput, cta, when, scheduledDate, scheduledTime,
+      caption, hashtagsInput, cta, commentAutomationEnabled, commentKeyword, commentDmMessage, commentAssetUrl,
+      when, scheduledDate, scheduledTime,
     })
-  }, [done, platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat, caption, hashtagsInput, cta, when, scheduledDate, scheduledTime])
+  }, [done, platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat, caption, hashtagsInput, cta, commentAutomationEnabled, commentKeyword, commentDmMessage, commentAssetUrl, when, scheduledDate, scheduledTime])
 
   function discardDraft() {
     clearComposerDraft()
@@ -206,6 +224,10 @@ export default function CreatePostModal({
     setCaption('')
     setHashtagsInput('')
     setCta('')
+    setCommentAutomationEnabled(false)
+    setCommentKeyword('')
+    setCommentDmMessage('')
+    setCommentAssetUrl('')
     setWhen('now')
     setScheduledDate('')
     setScheduledTime('')
@@ -218,10 +240,14 @@ export default function CreatePostModal({
   // stays disabled despite there being content to save.
   const hasCaptionText = caption.trim() || (isMultiPlatform && perPlatformCaption && platforms.some((p) => captionOverrides[p]?.caption?.trim()))
   const hasContent = mediaKind === 'video' ? Boolean(videoUrl) : mediaKind === 'pdf' ? Boolean(pdfUrl) : Boolean(images.length || hasCaptionText)
+  // An automation that's switched on but has no keyword or no message could never do anything
+  // useful, so block saving rather than storing a broken config that silently never fires.
+  const commentAutomationActive = supportsCommentAutomation && commentAutomationEnabled
+  const commentAutomationValid = !commentAutomationActive || Boolean(commentKeyword.trim() && commentDmMessage.trim())
   // Previously this ignored `when` entirely, so you could pick "Set a target date", leave the
   // date blank, and save — the empty date was silently coerced to null and the post behaved
   // like an immediate one. That's the bug that made a scheduled post publish instantly.
-  const canSave = hasContent && (!scheduling || (targetValid && !targetInPast))
+  const canSave = hasContent && commentAutomationValid && (!scheduling || (targetValid && !targetInPast))
 
   async function onSave() {
     setSaving(true)
@@ -266,6 +292,16 @@ export default function CreatePostModal({
           scheduledAt: targetInstant ? targetInstant.toISOString() : null,
           linkedinAccount: p === 'linkedin' ? linkedinAccount : null,
           crosspostGroupId,
+          // Instagram-only, and only on the Instagram sibling when cross-posting — the other
+          // platforms' items must not carry an automation their branch can't honour.
+          commentAutomation: commentAutomationActive && p === 'instagram'
+            ? {
+                enabled: true,
+                keyword: commentKeyword.trim(),
+                message: commentDmMessage.trim(),
+                ...(commentAssetUrl.trim() ? { asset_url: commentAssetUrl.trim() } : {}),
+              }
+            : null,
         })
         createdItems.push(item)
       }
@@ -647,6 +683,80 @@ export default function CreatePostModal({
             <label className="label">CTA (optional)</label>
             <input className="input mt-1.5" value={cta} onChange={(e) => setCta(e.target.value)} placeholder="Book a demo" />
           </div>
+
+          {supportsCommentAutomation && (
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={commentAutomationEnabled}
+                  onChange={(e) => setCommentAutomationEnabled(e.target.checked)}
+                />
+                <span className="label !mb-0">Auto-DM people who comment a keyword</span>
+              </label>
+              {commentAutomationEnabled ? (
+                <div
+                  className="mt-2 p-3 rounded-lg space-y-3"
+                  style={{ background: 'var(--fill-tertiary)', border: '1px solid var(--border-subtle)' }}
+                >
+                  <div>
+                    <label className="label">Trigger keyword</label>
+                    <input
+                      className="input mt-1.5"
+                      value={commentKeyword}
+                      onChange={(e) => setCommentKeyword(e.target.value)}
+                      placeholder="SALES"
+                    />
+                    <p className="text-muted text-xs mt-1.5">
+                      Case-insensitive. Fires when a comment contains this word — put the same word in your caption
+                      ("Comment SALES to get…") so people know what to type.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="label">DM to send</label>
+                    <textarea
+                      className="input mt-1.5"
+                      rows={3}
+                      value={commentDmMessage}
+                      onChange={(e) => setCommentDmMessage(e.target.value)}
+                      placeholder="Thanks for commenting! Here's the guide you asked for:"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Link or file (optional)</label>
+                    <input
+                      className="input mt-1.5"
+                      value={commentAssetUrl}
+                      onChange={(e) => setCommentAssetUrl(e.target.value)}
+                      placeholder="https://scalepods.co/guide.pdf"
+                    />
+                    <div className="mt-2">
+                      <AssetUploader
+                        pathPrefix={`manual/${profileId}`}
+                        accept="application/pdf,image/*"
+                        label="Upload a file instead"
+                        onUploaded={(url) => setCommentAssetUrl(url)}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-muted text-xs">
+                    Instagram allows exactly one automated reply per comment, sent within 7 days of it — so this is a
+                    single message, not a conversation. It can't check whether the person follows you: Instagram
+                    provides no API for that.
+                  </p>
+                  {!commentAutomationValid && (
+                    <p className="text-[var(--accent-orange)] text-xs">
+                      Add both a trigger keyword and a DM message, or switch this off.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted text-xs mt-1.5">
+                  Someone comments your keyword on this post → they get a DM with your link or file, automatically.
+                </p>
+              )}
+            </div>
+          )}
 
           <div>
             <div className="label mb-2">When</div>

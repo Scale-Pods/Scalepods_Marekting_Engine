@@ -82,6 +82,12 @@ export interface ComposerDraft {
   caption: string
   hashtagsInput: string
   cta: string
+  /** Per-post comment-to-DM automation (Instagram only) — see CommentAutomation in content.ts.
+   *  Older drafts have no value here and default to disabled/empty on restore. */
+  commentAutomationEnabled: boolean
+  commentKeyword: string
+  commentDmMessage: string
+  commentAssetUrl: string
   when: 'now' | 'date'
   scheduledDate: string
   scheduledTime: string
@@ -89,7 +95,7 @@ export interface ComposerDraft {
 }
 
 /** Pre-carousel draft shape, kept only to migrate anything already sitting in localStorage. */
-interface LegacyComposerDraft extends Omit<ComposerDraft, 'images' | 'platforms' | 'perPlatformCaption' | 'captionOverrides'> {
+interface LegacyComposerDraft extends Omit<ComposerDraft, 'images' | 'platforms' | 'perPlatformCaption' | 'captionOverrides' | 'commentAutomationEnabled' | 'commentKeyword' | 'commentDmMessage' | 'commentAssetUrl'> {
   mediaUrl: string | null
   /** Pre-multi-platform drafts had a single `platform` string instead of `platforms: string[]`. */
   platform?: string
@@ -110,6 +116,10 @@ export function getComposerDraft(): ComposerDraft | null {
       platforms,
       perPlatformCaption: 'perPlatformCaption' in d ? d.perPlatformCaption : false,
       captionOverrides: 'captionOverrides' in d ? d.captionOverrides : {},
+      commentAutomationEnabled: 'commentAutomationEnabled' in d ? d.commentAutomationEnabled : false,
+      commentKeyword: 'commentKeyword' in d ? d.commentKeyword : '',
+      commentDmMessage: 'commentDmMessage' in d ? d.commentDmMessage : '',
+      commentAssetUrl: 'commentAssetUrl' in d ? d.commentAssetUrl : '',
     }
   } catch {
     return null
