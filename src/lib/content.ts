@@ -104,19 +104,40 @@ export interface ContentItemMetadata {
 }
 
 /** Instagram-only today. Meta's Private Replies rules constrain this hard: exactly ONE reply per
- *  comment, and only within 7 days of that comment — so this is a single fixed response, not a
- *  conversation. There is deliberately no "only if they follow us" option: Instagram exposes no
- *  API to check whether a given user follows an account (follower COUNT and aggregate demographics
- *  only), so that gate cannot be built against the official API at all. */
+ *  comment, and only within 7 days of that comment — so the FIRST message (either `message`
+ *  directly, or `follow_gate.follow_message` when the gate is on) is always a single fixed private
+ *  reply, not a conversation. Everything after that (the follow-gate back-and-forth) happens over
+ *  a normal Instagram DM thread once the private reply has opened it, not more private replies. */
 export interface CommentAutomation {
   enabled: boolean
   /** Case-insensitive substring match against the comment text. */
   keyword: string
-  /** The DM body sent to whoever commented the keyword. */
+  /** The DM body sent once someone's cleared the gate (or immediately, if there's no gate) — the
+   *  actual "here's your link" message. */
   message: string
-  /** Optional link/PDF/document appended to the message — an uploaded file's public URL or any
-   *  URL typed in directly. */
+  /** Optional link/PDF/document appended to `message` — an uploaded file's public URL or any URL
+   *  typed in directly. */
   asset_url?: string
+  /** Require the commenter to follow the account before they get `message`/`asset_url`. Verified
+   *  via Meta's Instagram Messaging User Profile API (`is_user_follow_business`) — only queryable
+   *  once someone is in an active message thread with the account, which the follow-request DM
+   *  itself opens. There's no way to check this before that first DM, and no way to check it for
+   *  someone who never interacts with the DM at all — Meta doesn't expose follower checks outside
+   *  an active messaging relationship. */
+  follow_gate?: FollowGate
+}
+
+export interface FollowGate {
+  enabled: boolean
+  /** Sent as the private reply instead of `message` when the gate is on — asks them to follow,
+   *  with a quick-reply button attached (see `button_text`). */
+  follow_message: string
+  /** Quick-reply button title, e.g. "I've followed". Tapping it is what triggers the real
+   *  server-side follow check — the tap itself is never trusted as proof. */
+  button_text: string
+  /** Sent (with the same quick-reply button again, so they can retry) when the follow check comes
+   *  back false. */
+  not_following_message: string
 }
 
 export interface ContentItem {

@@ -79,6 +79,17 @@ export default function CreatePostModal({
   const [commentKeyword, setCommentKeyword] = useState(restored?.commentKeyword ?? '')
   const [commentDmMessage, setCommentDmMessage] = useState(restored?.commentDmMessage ?? '')
   const [commentAssetUrl, setCommentAssetUrl] = useState(restored?.commentAssetUrl ?? '')
+  // Optional follow-gate nested inside the automation above: instead of sending commentDmMessage
+  // straight away, ask them to follow first (with a quick-reply button), and only send it once a
+  // real server-side check confirms they actually did — see FollowGate in content.ts.
+  const [followGateEnabled, setFollowGateEnabled] = useState(restored?.followGateEnabled ?? false)
+  const [followGateMessage, setFollowGateMessage] = useState(
+    restored?.followGateMessage ?? "Hey! 👋 Follow our account first, then tap \"I've followed\" and I'll send you the link."
+  )
+  const [followGateButtonText, setFollowGateButtonText] = useState(restored?.followGateButtonText ?? "I've followed")
+  const [followGateNotFollowingMessage, setFollowGateNotFollowingMessage] = useState(
+    restored?.followGateNotFollowingMessage ?? "It looks like you haven't followed yet. Please follow us and then tap the button again."
+  )
   const [when, setWhen] = useState<'now' | 'date'>(restored?.when ?? (initialDate ? 'date' : 'now'))
   const [scheduledDate, setScheduledDate] = useState(restored?.scheduledDate ?? initialDate ?? '')
   const [scheduledTime, setScheduledTime] = useState(restored?.scheduledTime ?? '')
@@ -205,9 +216,10 @@ export default function CreatePostModal({
     saveComposerDraft({
       platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat,
       caption, hashtagsInput, cta, commentAutomationEnabled, commentKeyword, commentDmMessage, commentAssetUrl,
+      followGateEnabled, followGateMessage, followGateButtonText, followGateNotFollowingMessage,
       when, scheduledDate, scheduledTime,
     })
-  }, [done, platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat, caption, hashtagsInput, cta, commentAutomationEnabled, commentKeyword, commentDmMessage, commentAssetUrl, when, scheduledDate, scheduledTime])
+  }, [done, platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat, caption, hashtagsInput, cta, commentAutomationEnabled, commentKeyword, commentDmMessage, commentAssetUrl, followGateEnabled, followGateMessage, followGateButtonText, followGateNotFollowingMessage, when, scheduledDate, scheduledTime])
 
   function discardDraft() {
     clearComposerDraft()
@@ -228,6 +240,10 @@ export default function CreatePostModal({
     setCommentKeyword('')
     setCommentDmMessage('')
     setCommentAssetUrl('')
+    setFollowGateEnabled(false)
+    setFollowGateMessage("Hey! 👋 Follow our account first, then tap \"I've followed\" and I'll send you the link.")
+    setFollowGateButtonText("I've followed")
+    setFollowGateNotFollowingMessage("It looks like you haven't followed yet. Please follow us and then tap the button again.")
     setWhen('now')
     setScheduledDate('')
     setScheduledTime('')
@@ -243,7 +259,9 @@ export default function CreatePostModal({
   // An automation that's switched on but has no keyword or no message could never do anything
   // useful, so block saving rather than storing a broken config that silently never fires.
   const commentAutomationActive = supportsCommentAutomation && commentAutomationEnabled
-  const commentAutomationValid = !commentAutomationActive || Boolean(commentKeyword.trim() && commentDmMessage.trim())
+  const followGateActive = commentAutomationActive && followGateEnabled
+  const followGateValid = !followGateActive || Boolean(followGateMessage.trim() && followGateButtonText.trim() && followGateNotFollowingMessage.trim())
+  const commentAutomationValid = !commentAutomationActive || Boolean(commentKeyword.trim() && commentDmMessage.trim() && followGateValid)
   // Previously this ignored `when` entirely, so you could pick "Set a target date", leave the
   // date blank, and save — the empty date was silently coerced to null and the post behaved
   // like an immediate one. That's the bug that made a scheduled post publish instantly.
@@ -300,6 +318,16 @@ export default function CreatePostModal({
                 keyword: commentKeyword.trim(),
                 message: commentDmMessage.trim(),
                 ...(commentAssetUrl.trim() ? { asset_url: commentAssetUrl.trim() } : {}),
+                ...(followGateActive
+                  ? {
+                      follow_gate: {
+                        enabled: true,
+                        follow_message: followGateMessage.trim(),
+                        button_text: followGateButtonText.trim(),
+                        not_following_message: followGateNotFollowingMessage.trim(),
+                      },
+                    }
+                  : {}),
               }
             : null,
         })
@@ -713,7 +741,7 @@ export default function CreatePostModal({
                     </p>
                   </div>
                   <div>
-                    <label className="label">DM to send</label>
+                    <label className="label">DM to send{followGateEnabled ? ' (after they follow)' : ''}</label>
                     <textarea
                       className="input mt-1.5"
                       rows={3}
@@ -740,13 +768,56 @@ export default function CreatePostModal({
                     </div>
                   </div>
                   <p className="text-muted text-xs">
-                    Instagram allows exactly one automated reply per comment, sent within 7 days of it — so this is a
-                    single message, not a conversation. It can't check whether the person follows you: Instagram
-                    provides no API for that.
+                    Instagram allows exactly one automated reply per comment, sent within 7 days of it — so the first
+                    message is always a single reply, not a conversation. Everything after that (including the
+                    follow-gate check below) happens over the DM thread that reply opens.
                   </p>
+
+                  <div className="pt-1" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                    <label className="flex items-center gap-2 cursor-pointer mt-3">
+                      <input type="checkbox" checked={followGateEnabled} onChange={(e) => setFollowGateEnabled(e.target.checked)} />
+                      <span className="label !mb-0">Require them to follow us before sending the link</span>
+                    </label>
+                    {followGateEnabled ? (
+                      <div className="mt-2 space-y-3">
+                        <div>
+                          <label className="label">Follow request message</label>
+                          <textarea
+                            className="input mt-1.5"
+                            rows={2}
+                            value={followGateMessage}
+                            onChange={(e) => setFollowGateMessage(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="label">Button text</label>
+                          <input className="input mt-1.5" value={followGateButtonText} onChange={(e) => setFollowGateButtonText(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="label">If they haven't followed yet</label>
+                          <textarea
+                            className="input mt-1.5"
+                            rows={2}
+                            value={followGateNotFollowingMessage}
+                            onChange={(e) => setFollowGateNotFollowingMessage(e.target.value)}
+                          />
+                        </div>
+                        <p className="text-muted text-xs">
+                          They get the message above with an "{followGateButtonText || 'I’ve followed'}" button instead of the
+                          link. Tapping it triggers a real server-side follow check (Meta's Instagram API) before the DM above is
+                          sent — a tap alone is never trusted as proof.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-muted text-xs mt-1.5">Off — the DM and link above go out immediately once they comment the keyword.</p>
+                    )}
+                  </div>
+
                   {!commentAutomationValid && (
                     <p className="text-[var(--accent-orange)] text-xs">
-                      Add both a trigger keyword and a DM message, or switch this off.
+                      {!(commentKeyword.trim() && commentDmMessage.trim())
+                        ? 'Add both a trigger keyword and a DM message, or switch this off.'
+                        : 'Fill in the follow request message, button text, and not-followed message, or turn the follow gate off.'}
                     </p>
                   )}
                 </div>
