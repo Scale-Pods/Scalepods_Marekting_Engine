@@ -96,6 +96,11 @@ export interface ContentItemMetadata {
    *  media id against this item's scheduled_posts.platform_post_id, so it only takes effect after
    *  the post actually publishes and Instagram assigns it a real media id. */
   comment_automation?: CommentAutomation
+  /** Set when this row represents a real Instagram post that was published outside Growth OS
+   *  (tracked after the fact via Settings -> "Track an existing post", see instagramTracking.ts)
+   *  rather than composed and published through this app. Purely a UI marker — the comment
+   *  automation lookup itself doesn't care how the row got here. */
+  external_post?: boolean
 }
 
 /** Instagram-only today. Meta's Private Replies rules constrain this hard: exactly ONE reply per
@@ -386,4 +391,32 @@ export async function createManualItem(input: {
     .single()
   if (error) throw error
   return data as ContentItem
+}
+
+/** Every content item (composer-created or tracked-via-URL) with comment-to-DM currently
+ *  enabled — powers the "Comment automations" list in Settings so there's one place to see
+ *  and manage every keyword/post pair, not just the one you're actively composing. */
+export async function listCommentAutomations(profileId: string): Promise<ContentItem[]> {
+  const { data, error } = await supabase
+    .from('content_items')
+    .select('*')
+    .eq('profile_id', profileId)
+    .eq('platform', 'instagram')
+    .eq('metadata->comment_automation->>enabled', 'true')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data as ContentItem[]
+}
+
+/** Turns a post's comment automation on/off without touching its keyword/message/asset_url —
+ *  used by the disable toggle in Settings' automations list. Re-enabling later keeps whatever
+ *  was configured before. */
+export async function setCommentAutomationEnabled(itemId: string, enabled: boolean): Promise<void> {
+  const { data: existing, error: fetchErr } = await supabase.from('content_items').select('metadata').eq('id', itemId).single()
+  if (fetchErr) throw fetchErr
+  const metadata = { ...(existing?.metadata ?? {}) }
+  if (!metadata.comment_automation) return
+  metadata.comment_automation = { ...metadata.comment_automation, enabled }
+  const { error } = await supabase.from('content_items').update({ metadata }).eq('id', itemId)
+  if (error) throw error
 }

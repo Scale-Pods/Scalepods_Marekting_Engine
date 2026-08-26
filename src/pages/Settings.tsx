@@ -1,16 +1,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Settings as SettingsIcon, User, ShieldCheck, Sun, Moon, LogOut, Building2, Sparkles, Send, Instagram, Link2, Unlink, RefreshCw } from 'lucide-react'
+import { Settings as SettingsIcon, User, ShieldCheck, Sun, Moon, LogOut, Building2, Sparkles, Send, Instagram, Link2, Unlink, RefreshCw, MessageCircle, Power, CheckCircle2 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
-import { GENERATION_ENABLED, PUBLISHING_ENABLED } from '../lib/content'
+import { useProfile } from '../lib/queries'
+import { GENERATION_ENABLED, PUBLISHING_ENABLED, listCommentAutomations, setCommentAutomationEnabled, type ContentItem } from '../lib/content'
 import { toggleTheme, getCurrentTheme, type Theme, ROLE_ACCENT } from '../lib/theme'
 import { connectInstagram, disconnectInstagram, getInstagramConnectionStatus, type InstagramConnectionStatus } from '../lib/instagramConnection'
+import { trackExternalPost, type TrackExternalPostResult } from '../lib/instagramTracking'
 import { PageHeader, Badge, Panel, Button } from '../components/ui'
+import AssetUploader from '../components/AssetUploader'
 
 const ROLE_LABEL = { admin: 'Admin', client: 'Client', designer: 'Designer' } as const
 
 export default function Settings() {
   const { user, role, signOut } = useAuth()
+  const { data: profile } = useProfile()
   const [theme, setTheme] = useState<Theme>(getCurrentTheme())
   const [igStatus, setIgStatus] = useState<InstagramConnectionStatus | null>(null)
   const [igBusy, setIgBusy] = useState(false)
@@ -37,6 +41,65 @@ export default function Settings() {
     } finally {
       setIgBusy(false)
     }
+  }
+
+  // Comment automations: every post/reel currently wired to auto-DM on a keyword, whether it was
+  // composed here or an already-live post tracked by URL below.
+  const [automations, setAutomations] = useState<ContentItem[]>([])
+  const [automationsLoading, setAutomationsLoading] = useState(false)
+  const profileId = profile?.id
+
+  const refreshAutomations = useCallback(() => {
+    if (!profileId) return
+    setAutomationsLoading(true)
+    listCommentAutomations(profileId)
+      .then(setAutomations)
+      .catch(() => setAutomations([]))
+      .finally(() => setAutomationsLoading(false))
+  }, [profileId])
+
+  useEffect(() => {
+    refreshAutomations()
+  }, [refreshAutomations])
+
+  const [trackUrl, setTrackUrl] = useState('')
+  const [trackKeyword, setTrackKeyword] = useState('')
+  const [trackMessage, setTrackMessage] = useState('')
+  const [trackAssetUrl, setTrackAssetUrl] = useState('')
+  const [trackBusy, setTrackBusy] = useState(false)
+  const [trackResult, setTrackResult] = useState<TrackExternalPostResult | null>(null)
+  const canTrack = Boolean(profileId && trackUrl.trim() && trackKeyword.trim() && trackMessage.trim())
+
+  async function handleTrackSubmit() {
+    if (!profileId || !canTrack) return
+    setTrackBusy(true)
+    setTrackResult(null)
+    try {
+      const result = await trackExternalPost({
+        postUrl: trackUrl.trim(),
+        keyword: trackKeyword.trim(),
+        message: trackMessage.trim(),
+        assetUrl: trackAssetUrl.trim() || undefined,
+        profileId,
+      })
+      setTrackResult(result)
+      if (result.success) {
+        setTrackUrl('')
+        setTrackKeyword('')
+        setTrackMessage('')
+        setTrackAssetUrl('')
+        refreshAutomations()
+      }
+    } catch (e) {
+      setTrackResult({ success: false, error: e instanceof Error ? e.message : 'Something went wrong.' })
+    } finally {
+      setTrackBusy(false)
+    }
+  }
+
+  async function handleDisableAutomation(itemId: string) {
+    await setCommentAutomationEnabled(itemId, false)
+    refreshAutomations()
   }
 
   return (
@@ -142,6 +205,96 @@ export default function Settings() {
         <p className="text-secondary text-xs mt-3">
           Needed for the per-post "auto-DM on comment" automation and for Meta's app review to approve it for real users.
         </p>
+      </Panel>
+
+      <Panel className="mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2 font-medium">
+            <MessageCircle size={16} className="text-sage" /> Comment automations
+          </div>
+          <button onClick={refreshAutomations} className="text-muted hover:text-primary" title="Refresh">
+            <RefreshCw size={14} />
+          </button>
+        </div>
+        <p className="text-secondary text-sm mb-4">
+          Auto-DM anyone who comments a keyword on a specific Instagram post or reel. New posts are configured from the
+          composer — use this to attach it to a post that's already live but wasn't published through Growth OS.
+        </p>
+
+        <div className="card p-3 mb-4">
+          <div className="label mb-2">Track an existing Instagram post</div>
+          <div className="space-y-2">
+            <input
+              className="input"
+              placeholder="https://www.instagram.com/reel/..."
+              value={trackUrl}
+              onChange={(e) => setTrackUrl(e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Trigger keyword (e.g. ANALYST)"
+              value={trackKeyword}
+              onChange={(e) => setTrackKeyword(e.target.value)}
+            />
+            <textarea
+              className="input"
+              rows={2}
+              placeholder="DM to send"
+              value={trackMessage}
+              onChange={(e) => setTrackMessage(e.target.value)}
+            />
+            <div className="flex items-center gap-2">
+              <input
+                className="input flex-1"
+                placeholder="Link or file (optional)"
+                value={trackAssetUrl}
+                onChange={(e) => setTrackAssetUrl(e.target.value)}
+              />
+              <AssetUploader pathPrefix={`manual/${profileId ?? 'shared'}`} label="Upload" onUploaded={(url) => setTrackAssetUrl(url)} />
+            </div>
+            <Button variant="primary" className="!py-1.5 !px-3 text-xs" onClick={handleTrackSubmit} disabled={trackBusy || !canTrack}>
+              {trackBusy ? 'Looking up post…' : 'Track this post'}
+            </Button>
+          </div>
+          {trackResult && (
+            trackResult.success ? (
+              <div className="mt-3 flex items-start gap-1.5 text-xs" style={{ color: 'var(--accent-green, #B1D997)' }}>
+                <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
+                <span>{trackResult.updated ? 'Automation updated on' : 'Now tracking'} "{(trackResult.caption || '').slice(0, 70)}
+                  {(trackResult.caption?.length ?? 0) > 70 ? '…' : ''}"</span>
+              </div>
+            ) : (
+              <div className="mt-3 text-xs" style={{ color: 'var(--accent-orange, #CC6B49)' }}>{trackResult.error}</div>
+            )
+          )}
+        </div>
+
+        {automations.length === 0 ? (
+          <p className="text-muted text-xs">{automationsLoading ? 'Loading…' : 'No active comment automations yet.'}</p>
+        ) : (
+          <div className="space-y-2">
+            {automations.map((item) => {
+              const auto = item.metadata.comment_automation
+              if (!auto) return null
+              return (
+                <div key={item.id} className="card p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm truncate flex items-center gap-2">
+                      {item.title || 'Untitled post'}
+                      {item.metadata.external_post && <Badge tone="blue">External</Badge>}
+                    </div>
+                    <div className="text-muted text-xs mt-0.5 truncate">Keyword "{auto.keyword}" — {auto.message}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button variant="ghost" className="!py-1 !px-2 text-xs" onClick={() => handleDisableAutomation(item.id)}>
+                      <Power size={12} /> Disable
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </Panel>
 
       <Panel>
