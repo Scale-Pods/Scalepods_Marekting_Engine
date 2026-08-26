@@ -144,7 +144,7 @@ export function PlatformMockup({
 }
 
 export function CarouselViewer({
-  slides, fit = 'cover', onEnlarge,
+  slides, fit = 'cover', aspect = 1, onEnlarge,
 }: {
   slides: ContentSlide[]
   /** 'cover' (default) matches the existing Instagram-carousel preview, which is always a fixed
@@ -152,6 +152,12 @@ export function CarouselViewer({
    *  (A4, Letter, landscape deck, ...), so cropping it cuts off real content — 'contain'
    *  letterboxes instead so the whole page is always visible. */
   fit?: 'cover' | 'contain'
+  /** Width/height ratio for 'cover' mode — same numbers as PLATFORM_ASPECT (Instagram's square
+   *  1 by default). Previously this was a fixed pixel height regardless of the panel's actual
+   *  width, so the crop shown here never matched the real square/1.91:1 shape the post actually
+   *  publishes as. Unused in 'contain' mode, which letterboxes to a fixed height instead since a
+   *  PDF page's real aspect varies per file. */
+  aspect?: number
   /** When provided, the slide becomes clickable — same "click a post, it enlarges" affordance
    *  used everywhere else in the app (PostTile → PostPreviewModal). Called with the currently
    *  shown slide's index so the enlarged view can open on the same page instead of resetting. */
@@ -165,8 +171,8 @@ export function CarouselViewer({
     <img
       src={slide.url}
       alt={slide.title}
-      className={fit === 'contain' ? 'w-full h-72 object-contain rounded-lg' : 'w-full h-56 object-cover rounded-lg'}
-      style={fit === 'contain' ? { background: 'var(--fill-tertiary)' } : undefined}
+      className={fit === 'contain' ? 'w-full h-72 object-contain rounded-lg' : 'w-full object-cover rounded-lg'}
+      style={fit === 'contain' ? { background: 'var(--fill-tertiary)' } : { aspectRatio: String(aspect), background: 'var(--fill-tertiary)' }}
     />
   )
 

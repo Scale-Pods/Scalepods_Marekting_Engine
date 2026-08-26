@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Eye, X, ChevronLeft, ChevronRight, CheckCircle2, Clock, Loader2, XCircle, Pencil, Ban, Check, ExternalLink, Send, Play, Trash2, FileText } from 'lucide-react'
+import { Eye, X, ChevronLeft, ChevronRight, CheckCircle2, Clock, Loader2, XCircle, Pencil, Ban, Check, ExternalLink, Send, Play, Trash2, FileText, MessageCircle } from 'lucide-react'
 import { PlatformBadge } from './mediaUi'
 import { Badge, Button } from './ui'
 import { useToast, toastMessage } from './Toast'
-import { cancelScheduledPost, editScheduledPost, triggerPublish, type ScheduledPost } from '../lib/publishing'
-import { PUBLISHING_ENABLED, deleteContentItem, type ContentItem, type ContentSlide } from '../lib/content'
+import { cancelScheduledPost, editScheduledPost, saveCommentAutomation, triggerPublish, type ScheduledPost } from '../lib/publishing'
+import { PUBLISHING_ENABLED, deleteContentItem, type CommentAutomation, type ContentItem, type ContentSlide } from '../lib/content'
 import { renderPdfPages } from '../lib/pdfPreview'
+import AssetUploader from './AssetUploader'
 
 // Shared building blocks for every "grid of posts -> click through to a native-looking
 // preview" surface in the app (Publishing's Ready to publish / Recent activity, Content
@@ -468,6 +469,125 @@ export function ReadyPreviewActions({ item, onDone }: { item: ContentItem; onDon
   )
 }
 
+// Comment-to-DM (+ optional follow-gate) editor for an already-scheduled/published post — the
+// composer's own version of these fields (CreatePostModal.tsx) only ever runs once at creation
+// time; this is the same set of fields, editable afterward, since a mistyped keyword or a
+// stale/dead link shouldn't mean waiting for the next post. Draws its own Save/Cancel rather
+// than using PostPreviewModal's separate `footer` slot, since it needs the whole "is this valid"
+// check to gate one button right next to the fields it's validating.
+function CommentAutomationEditor({
+  contentItemId, profileId, initial, onSaved, onCancel,
+}: {
+  contentItemId: string
+  profileId: string
+  initial: CommentAutomation | null | undefined
+  onSaved: () => void
+  onCancel: () => void
+}) {
+  const toast = useToast()
+  const [enabled, setEnabled] = useState(Boolean(initial?.enabled))
+  const [keyword, setKeyword] = useState(initial?.keyword ?? '')
+  const [message, setMessage] = useState(initial?.message ?? '')
+  const [assetUrl, setAssetUrl] = useState(initial?.asset_url ?? '')
+  const [gateEnabled, setGateEnabled] = useState(Boolean(initial?.follow_gate?.enabled))
+  const [gateMessage, setGateMessage] = useState(
+    initial?.follow_gate?.follow_message ?? "Hey! 👋 Follow our account first, then tap \"I've followed\" and I'll send you the link."
+  )
+  const [gateButtonText, setGateButtonText] = useState(initial?.follow_gate?.button_text ?? "I've followed")
+  const [gateNotFollowing, setGateNotFollowing] = useState(
+    initial?.follow_gate?.not_following_message ?? "It looks like you haven't followed yet. Please follow us and then tap the button again."
+  )
+  const [saving, setSaving] = useState(false)
+
+  const valid = !enabled || Boolean(
+    keyword.trim() && message.trim() && (!gateEnabled || (gateMessage.trim() && gateButtonText.trim() && gateNotFollowing.trim()))
+  )
+
+  async function onSave() {
+    if (!valid) return
+    setSaving(true)
+    try {
+      const automation: CommentAutomation | null = enabled
+        ? {
+            enabled: true,
+            keyword: keyword.trim(),
+            message: message.trim(),
+            ...(assetUrl.trim() ? { asset_url: assetUrl.trim() } : {}),
+            ...(gateEnabled
+              ? { follow_gate: { enabled: true, follow_message: gateMessage.trim(), button_text: gateButtonText.trim(), not_following_message: gateNotFollowing.trim() } }
+              : {}),
+          }
+        : null
+      await saveCommentAutomation(contentItemId, automation)
+      toast.success('Comment automation saved')
+      onSaved()
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not save comment automation'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3 w-full">
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+        <span className="label !mb-0">Auto-DM people who comment a keyword</span>
+      </label>
+      {enabled && (
+        <div className="p-3 rounded-lg space-y-3" style={{ background: 'var(--fill-tertiary)', border: '1px solid var(--border-subtle)' }}>
+          <div>
+            <label className="label">Trigger keyword</label>
+            <input className="input mt-1.5" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="SALES" />
+          </div>
+          <div>
+            <label className="label">DM to send{gateEnabled ? ' (after they follow)' : ''}</label>
+            <textarea className="input mt-1.5" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Link or file (optional)</label>
+            <input className="input mt-1.5" value={assetUrl} onChange={(e) => setAssetUrl(e.target.value)} placeholder="https://scalepods.co/guide.pdf" />
+            <div className="mt-2">
+              <AssetUploader pathPrefix={`manual/${profileId}`} accept="application/pdf,image/*" label="Upload a file instead" onUploaded={(url) => setAssetUrl(url)} />
+            </div>
+          </div>
+          <div className="pt-1" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+            <label className="flex items-center gap-2 cursor-pointer mt-3">
+              <input type="checkbox" checked={gateEnabled} onChange={(e) => setGateEnabled(e.target.checked)} />
+              <span className="label !mb-0">Require them to follow us before sending the link</span>
+            </label>
+            {gateEnabled && (
+              <div className="mt-2 space-y-3">
+                <div>
+                  <label className="label">Follow request message</label>
+                  <textarea className="input mt-1.5" rows={2} value={gateMessage} onChange={(e) => setGateMessage(e.target.value)} />
+                </div>
+                <div>
+                  <label className="label">Button text</label>
+                  <input className="input mt-1.5" value={gateButtonText} onChange={(e) => setGateButtonText(e.target.value)} />
+                </div>
+                <div>
+                  <label className="label">If they haven't followed yet</label>
+                  <textarea className="input mt-1.5" rows={2} value={gateNotFollowing} onChange={(e) => setGateNotFollowing(e.target.value)} />
+                </div>
+              </div>
+            )}
+          </div>
+          {!valid && <p className="text-[var(--accent-orange)] text-xs">Fill in the required fields above, or switch this off.</p>}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Button className="flex-1 justify-center !py-2 text-xs" loading={saving} disabled={!valid} onClick={onSave}>
+          <Check size={13} /> Save
+        </Button>
+        <Button variant="ghost" className="flex-1 justify-center !py-2 text-xs" disabled={saving} onClick={onCancel}>
+          <X size={13} /> Cancel
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // Full preview + Edit/Cancel for a scheduled_posts-backed item — shared by Publishing's "Recent
 // activity" and Calendar's post chips, so editing/cancelling a schedule behaves identically
 // everywhere it can be reached from. Owns its own `editing` state, so it has to be a real
@@ -487,6 +607,7 @@ export function ActivityPreviewModal({
 }) {
   const toast = useToast()
   const [editing, setEditing] = useState(false)
+  const [editingAutomation, setEditingAutomation] = useState(false)
   const [title, setTitle] = useState(post.title ?? '')
   const [body, setBody] = useState(post.caption ?? '')
   const [saving, setSaving] = useState(false)
@@ -495,8 +616,15 @@ export function ActivityPreviewModal({
   function startEdit() {
     setTitle(post.title ?? '')
     setBody(post.caption ?? '')
+    setEditingAutomation(false)
     setEditing(true)
   }
+
+  // Instagram only (Meta's comments webhook has no Story equivalent — matches the same
+  // restriction the composer applies at creation time), and only when the source content_item
+  // is still around to edit (a falsy check here, not `!== 'story'`, since undefined would
+  // otherwise read as "not a story" and wrongly allow editing with no real data behind it).
+  const canEditAutomation = post.platform === 'instagram' && Boolean(post.content_items) && post.content_items!.content_type !== 'story'
 
   async function onSave() {
     if (!body.trim()) return toast.error("Caption can't be empty.")
@@ -532,11 +660,20 @@ export function ActivityPreviewModal({
   return (
     <PostPreviewModal
       img={post.media_url}
+      slides={post.content_items?.metadata?.slides}
       platform={post.platform}
-      caption={editing ? undefined : post.caption || post.title}
+      caption={editing || editingAutomation ? undefined : post.caption || post.title}
       headerExtra={<Badge tone={meta.tone}>{meta.label}</Badge>}
       body={
-        editing ? (
+        editingAutomation ? (
+          <CommentAutomationEditor
+            contentItemId={post.content_item_id}
+            profileId={post.profile_id}
+            initial={post.content_items?.metadata?.comment_automation}
+            onSaved={() => { setEditingAutomation(false); onChanged() }}
+            onCancel={() => setEditingAutomation(false)}
+          />
+        ) : editing ? (
           <div className="space-y-2.5 w-full">
             <input
               className="input !py-1.5 text-sm"
@@ -566,7 +703,7 @@ export function ActivityPreviewModal({
         )
       }
       footer={
-        editing ? (
+        editingAutomation ? undefined : editing ? (
           <div className="flex gap-2 w-full">
             <Button className="flex-1 justify-center !py-2 text-xs" loading={saving} onClick={onSave}>
               <Check size={13} /> Save
@@ -575,26 +712,35 @@ export function ActivityPreviewModal({
               <X size={13} /> Discard
             </Button>
           </div>
-        ) : post.status === 'scheduled' ? (
-          <div className="flex gap-2 w-full">
-            <Button variant="ghost" className="flex-1 justify-center !py-2 text-xs" onClick={startEdit}>
-              <Pencil size={13} /> Edit
-            </Button>
-            <Button
-              variant="ghost"
-              className="flex-1 justify-center !py-2 text-xs"
-              style={{ color: 'var(--accent-orange)' }}
-              loading={cancelling}
-              onClick={onCancelSchedule}
-            >
-              <Ban size={13} /> Cancel schedule
-            </Button>
+        ) : (
+          <div className="space-y-2 w-full">
+            {post.status === 'scheduled' ? (
+              <div className="flex gap-2 w-full">
+                <Button variant="ghost" className="flex-1 justify-center !py-2 text-xs" onClick={startEdit}>
+                  <Pencil size={13} /> Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="flex-1 justify-center !py-2 text-xs"
+                  style={{ color: 'var(--accent-orange)' }}
+                  loading={cancelling}
+                  onClick={onCancelSchedule}
+                >
+                  <Ban size={13} /> Cancel schedule
+                </Button>
+              </div>
+            ) : post.post_url ? (
+              <a href={post.post_url} target="_blank" rel="noreferrer" className="btn-primary w-full !py-2 text-xs justify-center">
+                View live <ExternalLink size={13} />
+              </a>
+            ) : null}
+            {canEditAutomation && (
+              <Button variant="ghost" className="w-full justify-center !py-2 text-xs" onClick={() => setEditingAutomation(true)}>
+                <MessageCircle size={13} /> Edit comment automation
+              </Button>
+            )}
           </div>
-        ) : post.post_url ? (
-          <a href={post.post_url} target="_blank" rel="noreferrer" className="btn-primary w-full !py-2 text-xs justify-center">
-            View live <ExternalLink size={13} />
-          </a>
-        ) : undefined
+        )
       }
       onClose={onClose}
       hasPrev={hasPrev}

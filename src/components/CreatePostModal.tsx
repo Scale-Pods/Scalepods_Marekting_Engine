@@ -945,7 +945,10 @@ export default function CreatePostModal({
               </div>
             )
           ) : isCarousel ? (
-            <CarouselViewer slides={images.map((url, i) => ({ idx: i, title: '', caption: '', url }))} />
+            <CarouselViewer
+              slides={images.map((url, i) => ({ idx: i, title: '', caption: '', url }))}
+              aspect={PLATFORM_ASPECT[activePreviewPlatform] ?? 1}
+            />
           ) : (
             <>
               {/* Which platform's mockup is showing — only matters here, since this is the one
