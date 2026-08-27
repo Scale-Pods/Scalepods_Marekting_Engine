@@ -3,13 +3,14 @@ import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import {
-  BarChart3, RefreshCw, Sparkles, Heart, MessageCircle, Eye, Zap, Clock, Gauge, Quote, Users, Star,
+  BarChart3, RefreshCw, Sparkles, Heart, MessageCircle, Eye, Zap, Clock, Gauge, Quote, Users, Star, Download, UserCheck,
 } from 'lucide-react'
 import { useProfile } from '../lib/queries'
 import {
   listPostAnalytics, getAnalyticsState, triggerAnalyticsRefresh,
   getLatestInsights, triggerInsights, type PostAnalytics, type AnalyticsState, type AiInsight,
 } from '../lib/analytics'
+import { listInstagramLeads, triggerCommentSync, leadsToCsv, type InstagramLead } from '../lib/leads'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
 import { PlatformBadge } from '../components/mediaUi'
 
@@ -149,15 +150,43 @@ export default function Analytics() {
   const [insights, setInsights] = useState<AiInsight | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [generatingInsights, setGeneratingInsights] = useState(false)
+  const [leads, setLeads] = useState<InstagramLead[]>([])
+  const [syncingLeads, setSyncingLeads] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async (profileId: string) => {
-    const [p, s, i] = await Promise.all([listPostAnalytics(profileId), getAnalyticsState(), getLatestInsights(profileId)])
+    const [p, s, i, l] = await Promise.all([listPostAnalytics(profileId), getAnalyticsState(), getLatestInsights(profileId), listInstagramLeads()])
     setPosts(p)
     setState(s)
     setInsights(i)
+    setLeads(l)
     return { state: s, insights: i }
   }, [])
+
+  async function onSyncLeads() {
+    setSyncingLeads(true)
+    try {
+      await triggerCommentSync()
+      // Same fixed-delay-then-reload shape as onGenerateInsights below — the sync webhook
+      // responds only once every tracked post's comments have actually been fetched and
+      // upserted (it's not fire-and-forget), so a single reload after a short buffer is enough.
+      await new Promise((r) => setTimeout(r, 1500))
+      setLeads(await listInstagramLeads())
+    } finally {
+      setSyncingLeads(false)
+    }
+  }
+
+  function onExportLeadsCsv() {
+    const csv = leadsToCsv(leads)
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `instagram-leads-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   useEffect(() => {
     if (profile) load(profile.id)
@@ -294,6 +323,59 @@ export default function Analytics() {
             ))}
           </div>
         </>
+      )}
+
+      <PageHeader
+        accent={<Badge tone="blue"><UserCheck size={12} /> Leads</Badge>}
+        title="Instagram comments"
+        subtitle="Every real comment on a tracked post — this is the lead list. Likes/shares only ever expose aggregate counts (Meta, LinkedIn, and YouTube all restrict this) — comments are the one place real usernames are available."
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onExportLeadsCsv} disabled={leads.length === 0}>
+              <Download size={15} /> Export CSV
+            </Button>
+            <Button variant="ghost" onClick={onSyncLeads} loading={syncingLeads}>
+              <RefreshCw size={15} /> Sync now
+            </Button>
+          </div>
+        }
+      />
+
+      {leads.length === 0 ? (
+        <EmptyState icon={<MessageCircle size={24} />} title="No comments captured yet" hint="Click Sync now to pull comment history for every tracked Instagram post." />
+      ) : (
+        <div className="overflow-x-auto mb-8">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="text-left text-muted text-xs uppercase tracking-wide">
+                <th className="pb-2 pr-3 font-medium">Username</th>
+                <th className="pb-2 pr-3 font-medium">Comment</th>
+                <th className="pb-2 pr-3 font-medium">Post</th>
+                <th className="pb-2 pr-3 font-medium">When</th>
+                <th className="pb-2 pr-3 font-medium">Keyword</th>
+                <th className="pb-2 pr-3 font-medium">DM</th>
+                <th className="pb-2 font-medium">Follower</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map((l) => (
+                <tr key={l.id} style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                  <td className="py-2 pr-3 font-medium whitespace-nowrap">@{l.commenter_username || l.commenter_id}</td>
+                  <td className="py-2 pr-3 text-secondary max-w-xs truncate" title={l.comment_text ?? ''}>{l.comment_text}</td>
+                  <td className="py-2 pr-3 text-muted max-w-[160px] truncate" title={l.content_items?.title ?? l.media_id}>
+                    {l.content_items?.title ?? l.media_id}
+                  </td>
+                  <td className="py-2 pr-3 text-muted whitespace-nowrap tabular-nums">
+                    {l.commented_at ? new Date(l.commented_at).toLocaleDateString() : '—'}
+                  </td>
+                  <td className="py-2 pr-3">{l.matched_keyword && <Badge tone="green">{l.matched_keyword}</Badge>}</td>
+                  <td className="py-2 pr-3">{l.dm_sent && <Badge tone="blue">Sent</Badge>}</td>
+                  <td className="py-2 text-muted tabular-nums">{l.follower_count ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <PageHeader
