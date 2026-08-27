@@ -90,6 +90,10 @@ export default function CreatePostModal({
   const [followGateNotFollowingMessage, setFollowGateNotFollowingMessage] = useState(
     restored?.followGateNotFollowingMessage ?? "It looks like you haven't followed yet. Please follow us and then tap the button again."
   )
+  // Public reply-back on the comment itself, independent of the follow-gate above — acknowledges
+  // the comment for anyone reading it, e.g. "Sent! Check your DMs".
+  const [publicReplyEnabled, setPublicReplyEnabled] = useState(restored?.publicReplyEnabled ?? false)
+  const [publicReplyMessage, setPublicReplyMessage] = useState(restored?.publicReplyMessage ?? 'Sent! ✅ Check your DMs 📩')
   const [when, setWhen] = useState<'now' | 'date'>(restored?.when ?? (initialDate ? 'date' : 'now'))
   const [scheduledDate, setScheduledDate] = useState(restored?.scheduledDate ?? initialDate ?? '')
   const [scheduledTime, setScheduledTime] = useState(restored?.scheduledTime ?? '')
@@ -217,9 +221,10 @@ export default function CreatePostModal({
       platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat,
       caption, hashtagsInput, cta, commentAutomationEnabled, commentKeyword, commentDmMessage, commentAssetUrl,
       followGateEnabled, followGateMessage, followGateButtonText, followGateNotFollowingMessage,
+      publicReplyEnabled, publicReplyMessage,
       when, scheduledDate, scheduledTime,
     })
-  }, [done, platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat, caption, hashtagsInput, cta, commentAutomationEnabled, commentKeyword, commentDmMessage, commentAssetUrl, followGateEnabled, followGateMessage, followGateButtonText, followGateNotFollowingMessage, when, scheduledDate, scheduledTime])
+  }, [done, platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat, caption, hashtagsInput, cta, commentAutomationEnabled, commentKeyword, commentDmMessage, commentAssetUrl, followGateEnabled, followGateMessage, followGateButtonText, followGateNotFollowingMessage, publicReplyEnabled, publicReplyMessage, when, scheduledDate, scheduledTime])
 
   function discardDraft() {
     clearComposerDraft()
@@ -244,6 +249,8 @@ export default function CreatePostModal({
     setFollowGateMessage("Hey! 👋 Follow our account first, then tap \"I've followed\" and I'll send you the link.")
     setFollowGateButtonText("I've followed")
     setFollowGateNotFollowingMessage("It looks like you haven't followed yet. Please follow us and then tap the button again.")
+    setPublicReplyEnabled(false)
+    setPublicReplyMessage('Sent! ✅ Check your DMs 📩')
     setWhen('now')
     setScheduledDate('')
     setScheduledTime('')
@@ -261,7 +268,9 @@ export default function CreatePostModal({
   const commentAutomationActive = supportsCommentAutomation && commentAutomationEnabled
   const followGateActive = commentAutomationActive && followGateEnabled
   const followGateValid = !followGateActive || Boolean(followGateMessage.trim() && followGateButtonText.trim() && followGateNotFollowingMessage.trim())
-  const commentAutomationValid = !commentAutomationActive || Boolean(commentKeyword.trim() && commentDmMessage.trim() && followGateValid)
+  const publicReplyActive = commentAutomationActive && publicReplyEnabled
+  const publicReplyValid = !publicReplyActive || Boolean(publicReplyMessage.trim())
+  const commentAutomationValid = !commentAutomationActive || Boolean(commentKeyword.trim() && commentDmMessage.trim() && followGateValid && publicReplyValid)
   // Previously this ignored `when` entirely, so you could pick "Set a target date", leave the
   // date blank, and save — the empty date was silently coerced to null and the post behaved
   // like an immediate one. That's the bug that made a scheduled post publish instantly.
@@ -327,6 +336,9 @@ export default function CreatePostModal({
                         not_following_message: followGateNotFollowingMessage.trim(),
                       },
                     }
+                  : {}),
+                ...(publicReplyActive
+                  ? { public_reply: { enabled: true, message: publicReplyMessage.trim() } }
                   : {}),
               }
             : null,
@@ -813,11 +825,37 @@ export default function CreatePostModal({
                     )}
                   </div>
 
+                  <div className="pt-1" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                    <label className="flex items-center gap-2 cursor-pointer mt-3">
+                      <input type="checkbox" checked={publicReplyEnabled} onChange={(e) => setPublicReplyEnabled(e.target.checked)} />
+                      <span className="label !mb-0">Also reply on the comment publicly</span>
+                    </label>
+                    {publicReplyEnabled ? (
+                      <div className="mt-2">
+                        <label className="label">Public reply</label>
+                        <textarea
+                          className="input mt-1.5"
+                          rows={2}
+                          value={publicReplyMessage}
+                          onChange={(e) => setPublicReplyMessage(e.target.value)}
+                        />
+                        <p className="text-muted text-xs mt-1.5">
+                          Posted as a reply to their comment: "@{'{'}their username{'}'} {publicReplyMessage || '…'}" — visible to
+                          anyone, in addition to the private DM above.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-muted text-xs mt-1.5">Off — only the private DM goes out, nothing shows in the comments.</p>
+                    )}
+                  </div>
+
                   {!commentAutomationValid && (
                     <p className="text-[var(--accent-orange)] text-xs">
                       {!(commentKeyword.trim() && commentDmMessage.trim())
                         ? 'Add both a trigger keyword and a DM message, or switch this off.'
-                        : 'Fill in the follow request message, button text, and not-followed message, or turn the follow gate off.'}
+                        : !followGateValid
+                          ? 'Fill in the follow request message, button text, and not-followed message, or turn the follow gate off.'
+                          : 'Add a public reply message, or turn that off.'}
                     </p>
                   )}
                 </div>

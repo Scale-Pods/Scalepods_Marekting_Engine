@@ -110,7 +110,10 @@ export interface ContentItemMetadata {
  *  a normal Instagram DM thread once the private reply has opened it, not more private replies. */
 export interface CommentAutomation {
   enabled: boolean
-  /** Case-insensitive substring match against the comment text. */
+  /** Case-insensitive match against the comment text — tolerates a small typo (one missing/extra/
+   *  wrong letter, e.g. "Ai Employe" still matches "Ai Employee") via edit-distance matching in
+   *  the n8n workflow, not a strict substring check. Someone who took the effort to comment close
+   *  to the right word still gets the DM. */
   keyword: string
   /** The DM body sent once someone's cleared the gate (or immediately, if there's no gate) — the
    *  actual "here's your link" message. */
@@ -125,6 +128,12 @@ export interface CommentAutomation {
    *  someone who never interacts with the DM at all — Meta doesn't expose follower checks outside
    *  an active messaging relationship. */
   follow_gate?: FollowGate
+  /** Also post a public reply on the triggering comment itself, in addition to the private DM —
+   *  acknowledges it for anyone else reading the comments, e.g. "Sent! Check your DMs". Sent as
+   *  `@{commenter's username} {message}` — the workflow adds the @mention prefix automatically,
+   *  don't duplicate it here. Uses instagram_business_manage_comments, already granted for the
+   *  private-reply feature itself — confirmed via a real live reply, no extra Meta permission. */
+  public_reply?: PublicReply
 }
 
 export interface FollowGate {
@@ -138,6 +147,11 @@ export interface FollowGate {
   /** Sent (with the same quick-reply button again, so they can retry) when the follow check comes
    *  back false. */
   not_following_message: string
+}
+
+export interface PublicReply {
+  enabled: boolean
+  message: string
 }
 
 export interface ContentItem {

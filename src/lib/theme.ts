@@ -94,6 +94,10 @@ export interface ComposerDraft {
   followGateMessage: string
   followGateButtonText: string
   followGateNotFollowingMessage: string
+  /** Public reply-back-on-the-comment sub-config — see PublicReply in content.ts. Older drafts
+   *  have no value here and default to disabled/blank on restore. */
+  publicReplyEnabled: boolean
+  publicReplyMessage: string
   when: 'now' | 'date'
   scheduledDate: string
   scheduledTime: string
@@ -101,7 +105,7 @@ export interface ComposerDraft {
 }
 
 /** Pre-carousel draft shape, kept only to migrate anything already sitting in localStorage. */
-interface LegacyComposerDraft extends Omit<ComposerDraft, 'images' | 'platforms' | 'perPlatformCaption' | 'captionOverrides' | 'commentAutomationEnabled' | 'commentKeyword' | 'commentDmMessage' | 'commentAssetUrl' | 'followGateEnabled' | 'followGateMessage' | 'followGateButtonText' | 'followGateNotFollowingMessage'> {
+interface LegacyComposerDraft extends Omit<ComposerDraft, 'images' | 'platforms' | 'perPlatformCaption' | 'captionOverrides' | 'commentAutomationEnabled' | 'commentKeyword' | 'commentDmMessage' | 'commentAssetUrl' | 'followGateEnabled' | 'followGateMessage' | 'followGateButtonText' | 'followGateNotFollowingMessage' | 'publicReplyEnabled' | 'publicReplyMessage'> {
   mediaUrl: string | null
   /** Pre-multi-platform drafts had a single `platform` string instead of `platforms: string[]`. */
   platform?: string
@@ -130,6 +134,8 @@ export function getComposerDraft(): ComposerDraft | null {
       followGateMessage: 'followGateMessage' in d ? d.followGateMessage : '',
       followGateButtonText: 'followGateButtonText' in d ? d.followGateButtonText : '',
       followGateNotFollowingMessage: 'followGateNotFollowingMessage' in d ? d.followGateNotFollowingMessage : '',
+      publicReplyEnabled: 'publicReplyEnabled' in d ? d.publicReplyEnabled : false,
+      publicReplyMessage: 'publicReplyMessage' in d ? d.publicReplyMessage : '',
     }
   } catch {
     return null

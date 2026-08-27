@@ -497,10 +497,14 @@ function CommentAutomationEditor({
   const [gateNotFollowing, setGateNotFollowing] = useState(
     initial?.follow_gate?.not_following_message ?? "It looks like you haven't followed yet. Please follow us and then tap the button again."
   )
+  const [publicReplyEnabled, setPublicReplyEnabled] = useState(Boolean(initial?.public_reply?.enabled))
+  const [publicReplyMessage, setPublicReplyMessage] = useState(initial?.public_reply?.message ?? 'Sent! ✅ Check your DMs 📩')
   const [saving, setSaving] = useState(false)
 
   const valid = !enabled || Boolean(
-    keyword.trim() && message.trim() && (!gateEnabled || (gateMessage.trim() && gateButtonText.trim() && gateNotFollowing.trim()))
+    keyword.trim() && message.trim()
+    && (!gateEnabled || (gateMessage.trim() && gateButtonText.trim() && gateNotFollowing.trim()))
+    && (!publicReplyEnabled || publicReplyMessage.trim())
   )
 
   async function onSave() {
@@ -516,6 +520,7 @@ function CommentAutomationEditor({
             ...(gateEnabled
               ? { follow_gate: { enabled: true, follow_message: gateMessage.trim(), button_text: gateButtonText.trim(), not_following_message: gateNotFollowing.trim() } }
               : {}),
+            ...(publicReplyEnabled ? { public_reply: { enabled: true, message: publicReplyMessage.trim() } } : {}),
           }
         : null
       await saveCommentAutomation(contentItemId, automation)
@@ -573,6 +578,20 @@ function CommentAutomationEditor({
               </div>
             )}
           </div>
+
+          <div className="pt-1" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+            <label className="flex items-center gap-2 cursor-pointer mt-3">
+              <input type="checkbox" checked={publicReplyEnabled} onChange={(e) => setPublicReplyEnabled(e.target.checked)} />
+              <span className="label !mb-0">Also reply on the comment publicly</span>
+            </label>
+            {publicReplyEnabled && (
+              <div className="mt-2">
+                <label className="label">Public reply</label>
+                <textarea className="input mt-1.5" rows={2} value={publicReplyMessage} onChange={(e) => setPublicReplyMessage(e.target.value)} />
+              </div>
+            )}
+          </div>
+
           {!valid && <p className="text-[var(--accent-orange)] text-xs">Fill in the required fields above, or switch this off.</p>}
         </div>
       )}
