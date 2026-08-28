@@ -152,6 +152,7 @@ export default function Analytics() {
   const [generatingInsights, setGeneratingInsights] = useState(false)
   const [leads, setLeads] = useState<InstagramLead[]>([])
   const [syncingLeads, setSyncingLeads] = useState(false)
+  const [leadsPostFilter, setLeadsPostFilter] = useState('all')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async (profileId: string) => {
@@ -178,7 +179,7 @@ export default function Analytics() {
   }
 
   function onExportLeadsCsv() {
-    const csv = leadsToCsv(leads)
+    const csv = leadsToCsv(leadsPostFilter === 'all' ? leads : leads.filter((l) => (l.content_item_id ?? l.media_id) === leadsPostFilter))
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -261,6 +262,17 @@ export default function Analytics() {
   const chartData = Object.entries(byPlatform).map(([platform, engagement]) => ({ platform, engagement }))
   const topPosts = [...posts].sort((a, b) => b.engagement - a.engagement).slice(0, 5)
 
+  // Distinct posts represented in the leads list, keyed by content_item_id (falls back to the
+  // raw media_id for comments on posts no longer tracked in Growth OS) — powers the Post filter.
+  const leadPostOptions = Array.from(
+    leads.reduce((acc, l) => {
+      const key = l.content_item_id ?? l.media_id
+      if (!acc.has(key)) acc.set(key, l.content_items?.title ?? l.media_id)
+      return acc
+    }, new Map<string, string>()),
+  )
+  const filteredLeads = leadsPostFilter === 'all' ? leads : leads.filter((l) => (l.content_item_id ?? l.media_id) === leadsPostFilter)
+
   return (
     <div>
       <PageHeader
@@ -331,7 +343,19 @@ export default function Analytics() {
         subtitle="Every real comment on a tracked post — this is the lead list. Likes/shares only ever expose aggregate counts (Meta, LinkedIn, and YouTube all restrict this) — comments are the one place real usernames are available."
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={onExportLeadsCsv} disabled={leads.length === 0}>
+            {leadPostOptions.length > 0 && (
+              <select
+                className="input !w-auto !py-1.5 text-xs max-w-[200px]"
+                value={leadsPostFilter}
+                onChange={(e) => setLeadsPostFilter(e.target.value)}
+              >
+                <option value="all">All posts</option>
+                {leadPostOptions.map(([id, title]) => (
+                  <option key={id} value={id}>{title}</option>
+                ))}
+              </select>
+            )}
+            <Button variant="ghost" onClick={onExportLeadsCsv} disabled={filteredLeads.length === 0}>
               <Download size={15} /> Export CSV
             </Button>
             <Button variant="ghost" onClick={onSyncLeads} loading={syncingLeads}>
@@ -343,6 +367,8 @@ export default function Analytics() {
 
       {leads.length === 0 ? (
         <EmptyState icon={<MessageCircle size={24} />} title="No comments captured yet" hint="Click Sync now to pull comment history for every tracked Instagram post." />
+      ) : filteredLeads.length === 0 ? (
+        <EmptyState icon={<MessageCircle size={24} />} title="No comments on this post" hint="Pick a different post from the filter, or choose All posts." />
       ) : (
         <div className="overflow-x-auto mb-8">
           <table className="w-full text-sm border-collapse">
@@ -358,7 +384,7 @@ export default function Analytics() {
               </tr>
             </thead>
             <tbody>
-              {leads.map((l) => (
+              {filteredLeads.map((l) => (
                 <tr key={l.id} style={{ borderTop: '1px solid var(--border-subtle)' }}>
                   <td className="py-2 pr-3 font-medium whitespace-nowrap">@{l.commenter_username || l.commenter_id}</td>
                   <td className="py-2 pr-3 text-secondary max-w-xs truncate" title={l.comment_text ?? ''}>{l.comment_text}</td>
