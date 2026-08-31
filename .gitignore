@@ -15,3 +15,10 @@ vite.config.js
 vite.config.d.ts
 tsconfig.node.tsbuildinfo
 *.tsbuildinfo
+
+# Carousel Studio — rendered output (frames/MP4s) is disposable, regenerated per job, stays
+# local. assets/ (avatar cutouts) is the OPPOSITE: those are curated, approved, load-bearing
+# source assets the render worker's Docker image must actually ship with — tracked normally,
+# same as vendor/fonts/. Source (gen.js, render.sh, slide templates, base.css) also tracked.
+carousel-studio/output/*
+!carousel-studio/output/.gitkeep

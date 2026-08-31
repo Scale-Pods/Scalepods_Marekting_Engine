@@ -1,0 +1,256 @@
+/* ============================================================================
+   Carousel Studio — base design system
+   ============================================================================
+   Every slide links this one file. The whole look is driven by the 6
+   variables in :root below — swap those 6 and every slide re-skins itself,
+   nothing else in this file (or in any slide template) needs to change.
+
+   The "premium spatial" look this is going for:
+     - a soft radial-lit dark background (not flat black — a glow behind
+       whatever the eye should land on)
+     - floating white "tile" cards for content (icon + heading + line)
+     - deep dark "plates" behind headline text (the cover slide's centerpiece)
+     - exactly ONE accent color used sparingly (icon backgrounds, CTA button,
+       small accents) — never as a big flat fill
+     - tight, confident Inter typography, self-hosted (no network dependency
+       at render time — headless Chrome renders these completely offline)
+   ============================================================================ */
+
+@font-face {
+  font-family: 'Inter';
+  src: url('vendor/fonts/Inter-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block; /* block, not swap — we render deterministic frames, a late-swapping web font would make two renders of the same frame differ */
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('vendor/fonts/Inter-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('vendor/fonts/Inter-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('vendor/fonts/Inter-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  /* ---- THE 6 REBRAND VARIABLES ------------------------------------------ */
+  --accent: #3B82F6;        /* 1. the ONE accent color — electric blue by default */
+  --bg-base: #05070C;       /* 2. deep background base (almost black) */
+  --bg-glow: #17233F;       /* 3. radial glow color, blended into bg-base behind the subject */
+  --plate: #0B0E15;         /* 4. dark headline-plate fill (cover slide centerpiece) */
+  --tile: #FFFFFF;          /* 5. floating content-card fill */
+  --ink: #0A0D14;           /* 6. dark text color, used on light tiles */
+  /* ------------------------------------------------------------------------ */
+
+  /* Derived tokens — never edit these directly, they all trace back to the 6 above */
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 55%, var(--bg-glow) 45%);
+  --tile-muted: color-mix(in srgb, var(--tile) 92%, var(--ink) 8%);
+  --text-on-dark: #F5F7FB;
+  --text-on-dark-dim: color-mix(in srgb, #F5F7FB 65%, transparent);
+  --text-on-light: var(--ink);
+  --text-on-light-dim: color-mix(in srgb, var(--ink) 60%, transparent);
+
+  --radius-lg: 40px;
+  --radius-md: 28px;
+  --radius-sm: 18px;
+
+  --stage-w: 1080px;
+  --stage-h: 1350px; /* 4:5 — native Instagram carousel frame */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: var(--stage-w);
+  height: var(--stage-h);
+  overflow: hidden;
+  background: var(--bg-base);
+  font-family: 'Inter', -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ----------------------------------------------------------------------------
+   .stage — every slide's root element. Exactly 1080x1350, fills the frame,
+   nothing renders outside it. The radial glow lives here so it's always the
+   base-most layer, behind everything else on the slide.
+---------------------------------------------------------------------------- */
+.stage {
+  position: relative;
+  width: var(--stage-w);
+  height: var(--stage-h);
+  background:
+    radial-gradient(120% 90% at 50% 32%, var(--bg-glow) 0%, transparent 60%),
+    var(--bg-base);
+  color: var(--text-on-dark);
+  overflow: hidden;
+}
+
+/* A second, tighter glow for the exact spot behind the avatar / focal point.
+   Use by giving the focal element's parent this class alongside .stage, or
+   dropping a standalone <div class="focal-glow"> positioned behind the subject. */
+.focal-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(38% 30% at var(--focal-x, 50%) var(--focal-y, 55%), var(--accent-glow) 0%, transparent 70%);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* ----------------------------------------------------------------------------
+   Dark headline plate — the cover slide's centerpiece. A floating dark card
+   that holds the big headline, ringed by icons/elements per the cover template.
+---------------------------------------------------------------------------- */
+.plate-dark {
+  position: relative;
+  background: var(--plate);
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--text-on-dark) 10%, transparent);
+  box-shadow:
+    0 40px 80px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  padding: 64px 56px;
+}
+
+/* ----------------------------------------------------------------------------
+   Floating white tile — content-slide cards (icon tile + heading + one line).
+---------------------------------------------------------------------------- */
+.tile {
+  position: relative;
+  background: var(--tile);
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 30px 60px -16px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  color: var(--text-on-light);
+  padding: 48px;
+}
+
+.tile--muted { background: var(--tile-muted); }
+
+/* Small square icon chip, filled with the one accent color — the only place
+   accent appears as a solid fill of any real size. */
+.icon-chip {
+  width: 76px;
+  height: 76px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.icon-chip img, .icon-chip svg { width: 40px; height: 40px; }
+
+/* Ring of small icon chips around the cover plate ("filling the frame") */
+.icon-ring { position: absolute; inset: 0; pointer-events: none; }
+.icon-ring .icon-chip {
+  position: absolute;
+  width: 84px;
+  height: 84px;
+  background: var(--tile);
+  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.5);
+}
+.icon-ring .icon-chip img, .icon-ring .icon-chip svg { width: 44px; height: 44px; }
+
+/* ----------------------------------------------------------------------------
+   Typography scale — tight, confident, one weight jump between levels.
+---------------------------------------------------------------------------- */
+.eyebrow {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.display {
+  font-size: 76px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.heading {
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+}
+.body-lg {
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.body {
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.stat {
+  font-size: 160px;
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  color: var(--accent);
+}
+.label {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-on-dark-dim);
+}
+
+.dim { opacity: 0.7; }
+
+/* ----------------------------------------------------------------------------
+   CTA button — flat accent fill, dark text (matches the design-system rule:
+   "primary button = sage fill + dark text" pattern from the parent brand,
+   generalized here as accent fill + --bg-base text for contrast).
+---------------------------------------------------------------------------- */
+.cta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--accent);
+  color: var(--bg-base);
+  font-weight: 700;
+  font-size: 30px;
+  padding: 22px 40px;
+  border-radius: 999px;
+  box-shadow: 0 20px 50px -12px var(--accent-glow);
+}
+
+/* ----------------------------------------------------------------------------
+   Layout helpers
+---------------------------------------------------------------------------- */
+.abs-fill { position: absolute; inset: 0; }
+.flex-col { display: flex; flex-direction: column; }
+.flex-row { display: flex; flex-direction: row; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-sm { gap: 16px; }
+.gap-md { gap: 32px; }
+.gap-lg { gap: 56px; }
+
+/* Avatar cutout — dropped in per-slide, positioned per template. Height-
+   anchored (not width) so poses of different proportions still read as the
+   same "hosting scale" across slides. */
+.avatar {
+  position: absolute;
+  height: 900px;
+  bottom: 0;
+  filter: drop-shadow(0 40px 60px rgba(0, 0, 0, 0.5));
+}

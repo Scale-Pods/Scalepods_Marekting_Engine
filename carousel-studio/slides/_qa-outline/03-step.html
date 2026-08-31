@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>step</title>
+<link rel="stylesheet" href="../../base.css">
+<script src="../../vendor/gsap.min.js"></script>
+<style></style>
+</head>
+<body>
+
+  <div class="stage">
+    <div class="focal-glow" style="--focal-x:28%; --focal-y:70%;"></div>
+    <div class="flex-col gap-sm" style="position:absolute; left:64px; top:80px; right:64px;">
+      <div class="eyebrow" id="eyebrow">STEP 2</div>
+      <div class="heading" id="heading" style="font-size:56px; max-width:900px;">Three things it automates daily</div>
+    </div>
+    <!-- content column fills the whole zone below the heading and is vertically centered in
+         it, so a single tile doesn't strand itself near the top with dead space below — a
+         stacked multi-item list still reads top-down fine, just centered as a group -->
+    <div class="flex-col gap-md justify-center" id="tiles" style="position:absolute; right:64px; left:420px; top:300px; bottom:64px;">
+      
+    <div class="tile flex-row gap-md items-center step-tile" id="tile-0" style="">
+      <div class="icon-chip" style=""><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:32px;color:white;">F</span></div>
+      <div class="flex-col gap-sm">
+        <div class="heading" style="font-size:34px;">Follow-ups</div>
+        <div class="body dim">Never drops a warm lead.</div>
+      </div>
+    </div>
+
+    <div class="tile flex-row gap-md items-center step-tile" id="tile-1" style="">
+      <div class="icon-chip" style=""><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:32px;color:white;">M</span></div>
+      <div class="flex-col gap-sm">
+        <div class="heading" style="font-size:34px;">Meeting booking</div>
+        <div class="body dim">Syncs straight to your calendar.</div>
+      </div>
+    </div>
+
+    <div class="tile flex-row gap-md items-center step-tile" id="tile-2" style="">
+      <div class="icon-chip" style=""><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:32px;color:white;">C</span></div>
+      <div class="flex-col gap-sm">
+        <div class="heading" style="font-size:34px;">CRM updates</div>
+        <div class="body dim">Every touch logged automatically.</div>
+      </div>
+    </div>
+    </div>
+    <img class="avatar step-avatar" style="left: 20px; bottom: 0; height: 760px;" src="../../assets/pose-arms-crossed-cutout.png" alt="">
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true, defaults: { ease: 'power2.out' } });
+    tl.from('#heading', { opacity: 0, y: 20, duration: 0.5 })
+      .from('.step-avatar', { opacity: 0, x: -60, duration: 0.6 }, 0.1)
+      .from('.step-tile', { opacity: 0, y: 30, duration: 0.5, stagger: 0.18 }, 0.25);
+  </script>
+  
+<script>
+  const params = new URLSearchParams(location.search);
+  const frame = params.get('frame');
+  const fps = params.get('fps');
+  if (frame !== null && fps !== null) {
+    const elapsed = Number(frame) / Number(fps);
+    const p = Math.max(0, Math.min(1, elapsed / tl.duration()));
+    tl.progress(p).pause();
+    document.documentElement.dataset.rendered = 'true'; // render.sh waits on this
+  } else {
+    tl.play();
+  }
+</script>
+</body>
+</html>

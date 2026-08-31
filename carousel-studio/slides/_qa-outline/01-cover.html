@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>cover</title>
+<link rel="stylesheet" href="../../base.css">
+<script src="../../vendor/gsap.min.js"></script>
+<style></style>
+</head>
+<body>
+
+  <div class="stage">
+    <div class="focal-glow" style="--focal-x:72%; --focal-y:66%;"></div>
+    <div class="icon-ring">
+      <div class="icon-chip frame-icon" style="top:64px;left:64px"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:32px;color:var(--ink);">A</span></div>
+    <div class="icon-chip frame-icon" style="top:64px;right:64px"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:32px;color:var(--ink);">A</span></div>
+    <div class="icon-chip frame-icon" style="bottom:64px;left:64px"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:32px;color:var(--ink);">A</span></div>
+    </div>
+    <div class="plate-dark flex-col gap-md" id="plate" style="position:absolute; left:64px; top:150px; width:620px;">
+      <div class="eyebrow" id="eyebrow">SCALEPODS · AI EMPLOYEES</div>
+      <div class="display" id="headline">Your outreach<br>runs while<br>you sleep</div>
+      <div class="body-lg dim" id="subhead">How we replaced a full SDR shift with one AI Pod.</div>
+    </div>
+    <img class="avatar cover-avatar" style="right: 10px; height: 980px;" src="../../assets/pose-pointing-cutout.png" alt="">
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true, defaults: { ease: 'power2.out' } });
+    tl.from('.frame-icon', { opacity: 0, scale: 0.5, duration: 0.5, stagger: 0.08 })
+      .from('#plate', { opacity: 0, y: 50, duration: 0.6 }, 0.15)
+      .from('#eyebrow', { opacity: 0, y: 12, duration: 0.4 }, 0.35)
+      .from('#headline', { opacity: 0, y: 16, duration: 0.5 }, 0.45)
+      .from('.cover-avatar', { opacity: 0, x: 80, duration: 0.7 }, 0.3);
+  </script>
+  
+<script>
+  const params = new URLSearchParams(location.search);
+  const frame = params.get('frame');
+  const fps = params.get('fps');
+  if (frame !== null && fps !== null) {
+    const elapsed = Number(frame) / Number(fps);
+    const p = Math.max(0, Math.min(1, elapsed / tl.duration()));
+    tl.progress(p).pause();
+    document.documentElement.dataset.rendered = 'true'; // render.sh waits on this
+  } else {
+    tl.play();
+  }
+</script>
+</body>
+</html>

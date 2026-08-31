@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>cta</title>
+<link rel="stylesheet" href="../../base.css">
+<script src="../../vendor/gsap.min.js"></script>
+<style></style>
+</head>
+<body>
+
+  <div class="stage">
+    <div class="focal-glow" style="--focal-x:70%; --focal-y:55%;"></div>
+    <div class="plate-dark flex-col gap-md" id="plate" style="position:absolute; left:64px; top:50%; transform:translateY(-50%); width:600px;">
+      <div class="eyebrow" id="eyebrow">WANT THE PLAYBOOK?</div>
+      <div class="display" id="headline" style="font-size:60px;">Get the exact<br>setup we use</div>
+      <div class="cta-pill" id="pill" style="align-self:flex-start;">Comment &ldquo;AI EMPLOYEE&rdquo; below&nbsp;👇</div>
+    </div>
+    <img class="avatar cta-avatar" style="bottom: 0; right: 10px; height: 980px;" src="../../assets/pose-victory-cutout.png" alt="">
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true, defaults: { ease: 'back.out(1.6)' } });
+    tl.from('#plate', { opacity: 0, y: 40, duration: 0.5, ease: 'power2.out' })
+      .from('.cta-avatar', { opacity: 0, x: 60, duration: 0.6, ease: 'power2.out' }, 0.15)
+      .from('#pill', { opacity: 0, scale: 0.7, duration: 0.5 }, 0.5);
+  </script>
+  
+<script>
+  const params = new URLSearchParams(location.search);
+  const frame = params.get('frame');
+  const fps = params.get('fps');
+  if (frame !== null && fps !== null) {
+    const elapsed = Number(frame) / Number(fps);
+    const p = Math.max(0, Math.min(1, elapsed / tl.duration()));
+    tl.progress(p).pause();
+    document.documentElement.dataset.rendered = 'true'; // render.sh waits on this
+  } else {
+    tl.play();
+  }
+</script>
+</body>
+</html>

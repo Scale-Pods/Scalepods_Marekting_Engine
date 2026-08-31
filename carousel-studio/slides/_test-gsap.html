@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../base.css">
+<script src="../vendor/gsap.min.js"></script>
+</head>
+<body style="background:#111;">
+<div id="box" style="width:100px;height:100px;background:var(--accent);"></div>
+<div id="result" style="color:white;font-family:Inter;font-size:24px;padding:20px;"></div>
+<script>
+  const tl = gsap.timeline({ paused: true });
+  tl.to('#box', { x: 400, rotation: 180, duration: 2 });
+  tl.progress(0.5); // seek to exact frame — the deterministic-render trick
+  document.getElementById('result').textContent =
+    'gsap version: ' + gsap.version + ' | box x at progress 0.5: ' + gsap.getProperty('#box', 'x');
+</script>
+</body></html>

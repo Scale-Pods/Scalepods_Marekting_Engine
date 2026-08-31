@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<!-- QA harness for base.css — NOT a real slide template. One page showing every
+     base.css building block at once (plate, tiles, stat, CTA, avatar) so the
+     design system can be eyeballed before gen.js's real templates are built on
+     top of it. Delete or ignore once the real templates are QA'd. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../base.css">
+<style>
+  body { background: #222; } /* outside-the-stage backdrop, just for this harness */
+  .stage { margin: 0 auto; }
+  .ring-demo { position: absolute; top: 60px; right: 60px; display: flex; gap: 16px; }
+</style>
+</head>
+<body>
+  <div class="stage flex-col items-center justify-center">
+    <div class="focal-glow" style="--focal-x:50%; --focal-y:60%;"></div>
+
+    <!-- cover-style dark plate with headline -->
+    <div class="plate-dark flex-col gap-md" style="width: 820px;">
+      <div class="eyebrow">ScalePods · AI Employees</div>
+      <div class="display">This is what<br>a headline<br>plate looks like</div>
+      <div class="body-lg dim">One idea per slide. Fill the frame.</div>
+    </div>
+
+    <!-- avatar hosting the slide -->
+    <img class="avatar" style="right: 20px;" src="../assets/pose-pointing-cutout.png">
+
+    <!-- small icon ring sample -->
+    <div class="ring-demo">
+      <div class="icon-chip"><div style="width:20px;height:20px;background:var(--ink);border-radius:6px;"></div></div>
+      <div class="icon-chip"><div style="width:20px;height:20px;background:var(--ink);border-radius:6px;"></div></div>
+    </div>
+
+    <!-- content tile + stat + CTA sample, stacked at the bottom for the eyeball test -->
+    <div class="abs-fill flex-col justify-between" style="padding: 48px; pointer-events:none;">
+      <div></div>
+      <div class="flex-row gap-md items-center" style="pointer-events:auto;">
+        <div class="tile flex-row gap-md items-center" style="width: 480px;">
+          <div class="icon-chip"><div style="width:24px;height:24px;background:white;border-radius:4px;"></div></div>
+          <div class="flex-col gap-sm">
+            <div class="heading" style="font-size:32px;">Step tile heading</div>
+            <div class="body dim">One supporting line of copy.</div>
+          </div>
+        </div>
+        <div class="flex-col">
+          <div class="stat">83%</div>
+          <div class="label">of tasks automated</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

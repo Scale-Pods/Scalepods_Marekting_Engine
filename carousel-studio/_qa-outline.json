@@ -1,0 +1,44 @@
+[
+  {
+    "type": "cover",
+    "eyebrow": "SCALEPODS · AI EMPLOYEES",
+    "headline": "Your outreach\nruns while\nyou sleep",
+    "subhead": "How we replaced a full SDR shift with one AI Pod.",
+    "pose": "pointing"
+  },
+  {
+    "type": "step",
+    "stepLabel": "STEP 1",
+    "heading": "It reads every reply for you",
+    "pose": "pointing",
+    "items": [
+      { "heading": "Inbox triage", "body": "Sorts interested vs. not in seconds." }
+    ]
+  },
+  {
+    "type": "step",
+    "stepLabel": "STEP 2",
+    "heading": "Three things it automates daily",
+    "pose": "arms-crossed",
+    "items": [
+      { "heading": "Follow-ups", "body": "Never drops a warm lead." },
+      { "heading": "Meeting booking", "body": "Syncs straight to your calendar." },
+      { "heading": "CRM updates", "body": "Every touch logged automatically." }
+    ]
+  },
+  {
+    "type": "stat",
+    "eyebrow": "RESULT",
+    "value": 83,
+    "suffix": "%",
+    "label": "of outbound tasks fully automated",
+    "pose": "victory"
+  },
+  {
+    "type": "cta",
+    "eyebrow": "WANT THE PLAYBOOK?",
+    "headline": "Get the exact\nsetup we use",
+    "keyword": "AI EMPLOYEE",
+    "pose": "victory"
+  }
+]

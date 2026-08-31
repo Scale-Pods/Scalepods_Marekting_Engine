@@ -1,0 +1,31 @@
+{
+  "slug": "_qa-outline",
+  "fps": 30,
+  "slides": [
+    {
+      "file": "01-cover.html",
+      "type": "cover",
+      "durationS": 3.2
+    },
+    {
+      "file": "02-step.html",
+      "type": "step",
+      "durationS": 3.4
+    },
+    {
+      "file": "03-step.html",
+      "type": "step",
+      "durationS": 3.4
+    },
+    {
+      "file": "04-stat.html",
+      "type": "stat",
+      "durationS": 3.4
+    },
+    {
+      "file": "05-cta.html",
+      "type": "cta",
+      "durationS": 3.6
+    }
+  ]
+}

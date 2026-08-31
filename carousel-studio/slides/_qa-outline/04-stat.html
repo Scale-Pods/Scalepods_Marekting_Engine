@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>stat</title>
+<link rel="stylesheet" href="../../base.css">
+<script src="../../vendor/gsap.min.js"></script>
+<style></style>
+</head>
+<body>
+
+  <div class="stage">
+    <div class="focal-glow" style="--focal-x:62%; --focal-y:44%;"></div>
+    <div class="flex-col gap-sm" style="position:absolute; right:70px; top:300px; text-align:right;">
+      <div class="eyebrow" id="eyebrow" style="align-self:flex-end;">RESULT</div>
+      <div class="stat" id="stat">0%</div>
+      <div class="body-lg dim" id="label">of outbound tasks fully automated</div>
+    </div>
+    <img class="avatar stat-avatar" style="left: 10px; bottom: 0; height: 900px;" src="../../assets/pose-victory-cutout.png" alt="">
+  </div>
+  <script>
+    const statEl = document.getElementById('stat');
+    const target = 83;
+    const suffix = "%";
+    const counter = { n: 0 };
+    const tl = gsap.timeline({ paused: true, defaults: { ease: 'power2.out' } });
+    tl.from('.stat-avatar', { opacity: 0, x: -60, duration: 0.6 })
+      .from('#eyebrow', { opacity: 0, y: 12, duration: 0.4 }, 0.1)
+      .to(counter, {
+        n: target, duration: 0.9, ease: 'power1.out',
+        onUpdate: () => { statEl.textContent = Math.round(counter.n) + suffix; },
+      }, 0.15)
+      .from('#label', { opacity: 0, y: 12, duration: 0.4 }, 0.6);
+  </script>
+  
+<script>
+  const params = new URLSearchParams(location.search);
+  const frame = params.get('frame');
+  const fps = params.get('fps');
+  if (frame !== null && fps !== null) {
+    const elapsed = Number(frame) / Number(fps);
+    const p = Math.max(0, Math.min(1, elapsed / tl.duration()));
+    tl.progress(p).pause();
+    document.documentElement.dataset.rendered = 'true'; // render.sh waits on this
+  } else {
+    tl.play();
+  }
+</script>
+</body>
+</html>
