@@ -133,7 +133,8 @@ function ffmpegEncode(framesDir, fps, outfile) {
 // Now: one page load per slide, then seek + screenshot in a loop via the __seekFrame hook
 // gen.js exposes. Same deterministic output (absolute .progress() per frame, never relative),
 // ~600x fewer processes, and no per-frame cold start.
-async function renderSlide(browser, baseUrl, outDir, slide, fps, opts) {
+async function renderSlide(browser, baseUrl, outDir, slide, fps, opts, onProgress) {
+  const report = (patch) => { if (onProgress) onProgress(patch); };
   const slideName = slide.file.replace(/\.html$/, '');
   const frameCount = Math.max(1, Math.round(slide.durationS * fps));
   const framesDir = path.join(outDir, 'frames', slideName);
@@ -142,6 +143,7 @@ async function renderSlide(browser, baseUrl, outDir, slide, fps, opts) {
   const frameFile = (i) => path.join(framesDir, `frame-${String(i).padStart(5, '0')}.png`);
 
   console.log(`  ${slide.file}: capturing ${frameCount} frames...`);
+  report({ phase: 'loading', frame: 0, frameTotal: frameCount });
   const page = await browser.newPage();
   try {
     await page.setViewport({ width: 1080, height: 1350, deviceScaleFactor: 1 });
@@ -152,6 +154,7 @@ async function renderSlide(browser, baseUrl, outDir, slide, fps, opts) {
     await page.evaluate(() => document.fonts.ready);
 
     const missing = [];
+    report({ phase: 'capturing', frame: 0, frameTotal: frameCount });
     for (let i = 0; i < frameCount; i++) {
       await page.evaluate((frame, f) => window.__seekFrame(frame, f), i, fps);
       await page.screenshot({ path: frameFile(i) });
@@ -160,12 +163,14 @@ async function renderSlide(browser, baseUrl, outDir, slide, fps, opts) {
       if (!fs.existsSync(frameFile(i)) || fs.statSync(frameFile(i)).size < MIN_VALID_PNG_BYTES) {
         missing.push(i);
       }
+      report({ phase: 'capturing', frame: i + 1, frameTotal: frameCount });
     }
 
     // Retry pass, kept from the original design. Far less likely to trigger now that frames
     // don't each depend on a fresh process launch, but a dropped write is still a dropped write.
     for (let attempt = 1; attempt <= MAX_RETRIES && missing.length > 0; attempt++) {
       console.log(`  ${slide.file}: retry pass ${attempt} — ${missing.length} dropped frame(s): [${missing.join(', ')}]`);
+      report({ phase: 'retrying', frame: frameCount - missing.length, frameTotal: frameCount, message: `Retrying ${missing.length} dropped frame(s) (pass ${attempt}/${MAX_RETRIES})` });
       const stillMissing = [];
       for (const i of missing) {
         await page.evaluate((frame, f) => window.__seekFrame(frame, f), i, fps);
@@ -192,6 +197,7 @@ async function renderSlide(browser, baseUrl, outDir, slide, fps, opts) {
 
   const outfile = path.join(outDir, `${slideName}.mp4`);
   console.log(`  ${slide.file}: encoding -> ${path.relative(ROOT, outfile)}`);
+  report({ phase: 'encoding', frame: frameCount, frameTotal: frameCount });
   await ffmpegEncode(framesDir, fps, outfile);
 
   if (!opts.keepFrames) fs.rmSync(framesDir, { recursive: true, force: true });
@@ -200,10 +206,15 @@ async function renderSlide(browser, baseUrl, outDir, slide, fps, opts) {
 }
 
 // The reusable core, used by both the CLI (main(), below) and server.js's HTTP job runner.
-// `opts.onSlideDone(outfile, slide)`, if given, fires after EACH slide finishes (encode +
-// cleanup done) — server.js uses this to upload and update the job row slide-by-slide instead
-// of waiting for the whole carousel, so the FE can show slides landing one at a time.
-async function renderCarousel({ slug, opts, onSlideDone }) {
+//
+// `onSlideDone(outfile, slide)` fires after EACH slide finishes (encode + cleanup done) —
+// server.js uses this to upload and update the job row slide-by-slide instead of waiting for
+// the whole carousel, so the FE can show slides landing one at a time.
+//
+// `onProgress(progress)` fires continuously *within* a slide (page load → each captured frame →
+// encode). server.js throttles these into the job row's render_progress column so the FE can
+// show what's actually happening during a multi-minute render rather than a blank spinner.
+async function renderCarousel({ slug, opts, onSlideDone, onProgress }) {
   const slidesDir = path.join(ROOT, 'slides', slug);
   const manifestPath = path.join(slidesDir, 'manifest.json');
   if (!fs.existsSync(manifestPath)) {
@@ -233,14 +244,31 @@ async function renderCarousel({ slug, opts, onSlideDone }) {
   let browser;
   try {
     browser = await launchBrowser();
-    for (const slide of slides) {
+    for (let idx = 0; idx < slides.length; idx++) {
+      const slide = slides[idx];
+      // Per-slide progress is enriched with carousel-level position here so the callback
+      // receives one complete picture ("slide 2 of 6, frame 45 of 102") rather than the FE
+      // having to stitch two sources together.
+      const slideProgress = (patch) => {
+        if (!onProgress) return;
+        onProgress({
+          slideIndex: idx + 1,
+          slideTotal: slides.length,
+          slideName: slide.file,
+          ...patch,
+        });
+      };
       try {
-        const outfile = await renderSlide(browser, baseUrl, outDir, slide, manifest.fps, opts);
+        const outfile = await renderSlide(browser, baseUrl, outDir, slide, manifest.fps, opts, slideProgress);
         rendered.push(outfile);
+        slideProgress({ phase: 'uploading' });
         if (onSlideDone) await onSlideDone(outfile, slide);
       } catch (err) {
         console.error(`  FAILED: ${err.message}`);
         failed.push(slide.file);
+        // Surface the real reason to the FE rather than only the console — a slide that fails
+        // mid-carousel otherwise looks identical to one still in progress.
+        slideProgress({ phase: 'slide_failed', message: err.message.slice(0, 300) });
       }
     }
   } finally {

@@ -89,19 +89,46 @@ function cleanupJobFiles(jobId) {
 // listening on the original HTTP connection by the time this matters.
 async function runJob(jobId, outline) {
   const slideUrls = [];
+
+  // Progress arrives once per captured frame (~100 per slide) — far too chatty to write straight
+  // through to Postgres. Throttled to at most one write per PROGRESS_THROTTLE_MS, except for
+  // phase changes (loading → capturing → encoding → uploading → slide_failed) which always write
+  // immediately so the FE never sits on a stale phase label. Writes are fire-and-forget: a
+  // dropped progress update is cosmetic and must never fail or slow the actual render.
+  const PROGRESS_THROTTLE_MS = 1200;
+  let lastProgressAt = 0;
+  let lastPhase = null;
+  let progressInFlight = false;
+  const reportProgress = (progress) => {
+    const now = Date.now();
+    const phaseChanged = progress.phase !== lastPhase;
+    if (!phaseChanged && now - lastProgressAt < PROGRESS_THROTTLE_MS) return;
+    if (progressInFlight && !phaseChanged) return;
+    lastProgressAt = now;
+    lastPhase = progress.phase;
+    progressInFlight = true;
+    patchJob(jobId, { render_progress: progress })
+      .catch(() => {})
+      .finally(() => { progressInFlight = false; });
+  };
+
   try {
-    await patchJob(jobId, { status: 'rendering' });
+    await patchJob(jobId, {
+      status: 'rendering',
+      render_progress: { phase: 'starting', slideIndex: 0, slideTotal: outline.length },
+    });
 
     generateCarousel(outline, jobId); // slug = job_id — keeps every job's slide files isolated
 
     const { failed } = await renderCarousel({
       slug: jobId,
       opts: { keepFrames: false, only: null },
+      onProgress: reportProgress,
       onSlideDone: async (outfile, slide) => {
         const url = await uploadSlide(jobId, slide.file, outfile);
         slideUrls.push(url);
-        // Written after EACH slide, not just at the end, so the FE's poll can show slides
-        // landing one at a time during an 11-minute render instead of one opaque wait.
+        // Written after EACH slide, not just at the end, so the FE shows slides landing one at
+        // a time during a multi-minute render instead of one opaque wait.
         await patchJob(jobId, { slide_urls: slideUrls });
       },
     });
@@ -109,14 +136,23 @@ async function runJob(jobId, outline) {
     if (failed.length > 0) {
       await patchJob(jobId, {
         status: 'failed',
-        error_detail: `${failed.length} slide(s) failed to render: ${failed.join(', ')}`,
+        error_detail: `${failed.length} of ${outline.length} slide(s) failed to render: ${failed.join(', ')}`,
         slide_urls: slideUrls,
+        render_progress: { phase: 'failed', slideTotal: outline.length, message: `${slideUrls.length} slide(s) completed before the failure` },
       });
     } else {
-      await patchJob(jobId, { status: 'done', slide_urls: slideUrls });
+      await patchJob(jobId, {
+        status: 'done',
+        slide_urls: slideUrls,
+        render_progress: { phase: 'done', slideIndex: outline.length, slideTotal: outline.length },
+      });
     }
   } catch (err) {
-    await patchJob(jobId, { status: 'failed', error_detail: err.message }).catch((e) =>
+    await patchJob(jobId, {
+      status: 'failed',
+      error_detail: err.message,
+      render_progress: { phase: 'failed', message: err.message.slice(0, 300) },
+    }).catch((e) =>
       console.error(`Job ${jobId}: also failed to write failure status:`, e.message),
     );
   } finally {

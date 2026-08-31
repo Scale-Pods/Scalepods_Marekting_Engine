@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Clapperboard, Sparkles, RefreshCw, Play, CheckCircle2, XCircle, Plus, Trash2, Download } from 'lucide-react'
 import { useProfile } from '../lib/queries'
+import { supabase } from '../lib/supabase'
 import {
   listCarouselJobs, generateCarouselOutline, updateCarouselOutline, triggerCarouselRender,
-  deleteCarouselJob, type CarouselJob, type CarouselSlide,
+  deleteCarouselJob, describeProgress, overallProgress,
+  type CarouselJob, type CarouselSlide,
 } from '../lib/carousels'
 import { GENERATION_ENABLED } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
@@ -177,22 +179,41 @@ function JobDetail({ job, onChanged }: { job: CarouselJob; onChanged: () => void
             <div className="card p-6 flex flex-col items-center gap-3 text-center">
               <Spinner size={22} />
               <div className="text-sm text-secondary">
-                Rendering — {doneSlides}/{expectedSlides} slides done…
+                {doneSlides}/{expectedSlides} slides done
+              </div>
+              {/* Live phase straight from the worker — updates within ~a second via Realtime, so
+                  a long slide shows real frame-by-frame movement instead of a frozen spinner. */}
+              <div className="text-xs text-sage font-medium tabular-nums">
+                {describeProgress(job.render_progress)}
               </div>
               <div className="w-full max-w-xs h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--fill-tertiary)' }}>
                 <div
                   className="h-full rounded-full transition-all"
-                  style={{ width: `${expectedSlides ? Math.round((doneSlides / expectedSlides) * 100) : 0}%`, background: 'var(--accent-blue)' }}
+                  style={{
+                    width: `${Math.round(Math.max(overallProgress(job.render_progress), expectedSlides ? doneSlides / expectedSlides : 0) * 100)}%`,
+                    background: 'var(--accent-blue)',
+                  }}
                 />
               </div>
-              <div className="text-xs text-muted">Renders run one slide at a time right now — a full carousel can take a while. Feel free to check back later.</div>
+              {job.render_progress?.phase === 'retrying' && (
+                <div className="text-xs text-terracotta">Some frames dropped — retrying automatically.</div>
+              )}
+              <div className="text-xs text-muted">A full carousel takes a few minutes. You can leave this page — it keeps rendering.</div>
             </div>
           )}
 
           {job.status === 'failed' && (
             <Panel className="!p-4 border border-terracotta/30">
               <div className="flex items-center gap-2 text-terracotta text-sm mb-1"><XCircle size={14} /> Render failed</div>
-              <div className="text-xs text-muted">{job.error_detail || 'Unknown error.'}</div>
+              <div className="text-xs text-muted break-words">{job.error_detail || 'Unknown error.'}</div>
+              {doneSlides > 0 && (
+                <div className="text-xs text-secondary mt-2">
+                  {doneSlides} slide{doneSlides === 1 ? '' : 's'} finished before the failure — shown below and still usable.
+                </div>
+              )}
+              <Button variant="ghost" className="!py-1.5 text-xs mt-3" onClick={onApproveAndRender} loading={saving || rendering}>
+                <Play size={13} /> Retry render
+              </Button>
             </Panel>
           )}
 
@@ -234,8 +255,44 @@ export default function CarouselStudio() {
     if (profile) load(profile.id)
   }, [profile, load])
 
-  // Poll while any job is actively rendering — mirrors the same shape used for Content
-  // Factory/Analytics refresh polling elsewhere in this app.
+  // Realtime, not polling. The worker writes render_progress roughly once a second while it
+  // captures frames; Postgres change events push each write straight here, so the UI reflects
+  // backend state within ~a second instead of on an 8s tick. Same mechanism the rest of this
+  // app already uses (see useRealtimeSync) — carousel_jobs was added to the supabase_realtime
+  // publication for this.
+  //
+  // The UPDATE payload is applied directly to local state rather than triggering a refetch:
+  // during a render that's ~1 event/sec, and refetching the whole list each time would be a
+  // needless round trip per frame batch.
+  useEffect(() => {
+    if (!profile) return
+    const channel = supabase
+      .channel('carousel-studio-jobs')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'carousel_jobs', filter: `profile_id=eq.${profile.id}` },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            setJobs((prev) => prev.filter((j) => j.id !== (payload.old as CarouselJob).id))
+            return
+          }
+          const row = payload.new as CarouselJob
+          setJobs((prev) => {
+            const idx = prev.findIndex((j) => j.id === row.id)
+            if (idx === -1) return [row, ...prev]
+            const next = [...prev]
+            next[idx] = row
+            return next
+          })
+        },
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [profile])
+
+  // Safety net only. Realtime above is the real mechanism, but a dropped websocket would
+  // otherwise leave a render looking frozen forever — this re-syncs every 30s while something
+  // is actually rendering, and stops entirely once nothing is.
   useEffect(() => {
     const hasActive = jobs.some((j) => j.status === 'rendering')
     if (!hasActive || !profile) {
@@ -243,7 +300,7 @@ export default function CarouselStudio() {
       return
     }
     if (pollRef.current) return
-    pollRef.current = setInterval(() => load(profile.id), 8000)
+    pollRef.current = setInterval(() => load(profile.id), 30000)
     return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
   }, [jobs, profile, load])
 
@@ -339,7 +396,14 @@ export default function CarouselStudio() {
                       <Trash2 size={12} />
                     </button>
                   </div>
-                  <div className="mt-2"><StatusBadge status={job.status} /></div>
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <StatusBadge status={job.status} />
+                    {job.status === 'rendering' && job.render_progress?.slideTotal && (
+                      <span className="text-[10px] text-muted tabular-nums">
+                        {job.render_progress.slideIndex ?? 0}/{job.render_progress.slideTotal}
+                      </span>
+                    )}
+                  </div>
                 </Panel>
               </div>
             ))}

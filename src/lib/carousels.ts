@@ -23,6 +23,19 @@ export interface CarouselSlide {
 
 export type CarouselJobStatus = 'drafting' | 'draft_ready' | 'rendering' | 'done' | 'failed'
 
+/** Live progress written by the Railway render worker as it works, so the UI can show what's
+ *  actually happening inside a multi-minute render. The worker throttles these writes (~1/sec)
+ *  but always writes immediately on a phase change, so the phase label is never stale. */
+export interface RenderProgress {
+  phase: 'starting' | 'loading' | 'capturing' | 'retrying' | 'encoding' | 'uploading' | 'slide_failed' | 'done' | 'failed'
+  slideIndex?: number
+  slideTotal?: number
+  slideName?: string
+  frame?: number
+  frameTotal?: number
+  message?: string
+}
+
 export interface CarouselJob {
   id: string
   profile_id: string
@@ -32,9 +45,41 @@ export interface CarouselJob {
   status: CarouselJobStatus
   outline_json: CarouselSlide[] | null
   slide_urls: string[]
+  render_progress: RenderProgress | null
   error_detail: string | null
   created_at: string
   updated_at: string
+}
+
+/** Human-readable one-liner for whatever the worker is doing right now. */
+export function describeProgress(p: RenderProgress | null | undefined): string {
+  if (!p) return 'Starting…'
+  const slide = p.slideIndex && p.slideTotal ? `Slide ${p.slideIndex}/${p.slideTotal}` : null
+  switch (p.phase) {
+    case 'starting': return 'Preparing slides…'
+    case 'loading': return `${slide ?? 'Slide'} — loading…`
+    case 'capturing': return `${slide ?? 'Slide'} — capturing frame ${p.frame ?? 0}/${p.frameTotal ?? 0}`
+    case 'retrying': return p.message ?? `${slide ?? 'Slide'} — retrying dropped frames`
+    case 'encoding': return `${slide ?? 'Slide'} — encoding video…`
+    case 'uploading': return `${slide ?? 'Slide'} — uploading…`
+    case 'slide_failed': return `${slide ?? 'Slide'} failed — ${p.message ?? 'unknown error'}`
+    case 'done': return 'Finished'
+    case 'failed': return p.message ?? 'Render failed'
+    default: return 'Working…'
+  }
+}
+
+/** 0..1 across the WHOLE carousel, blending completed slides with progress inside the current
+ *  one — a bar that only moved on slide completion sat still for a minute at a time. */
+export function overallProgress(p: RenderProgress | null | undefined): number {
+  if (!p || !p.slideTotal) return 0
+  const done = Math.max(0, (p.slideIndex ?? 1) - 1)
+  let within = 0
+  if (p.phase === 'capturing' && p.frameTotal) within = (p.frame ?? 0) / p.frameTotal * 0.85
+  else if (p.phase === 'encoding') within = 0.9
+  else if (p.phase === 'uploading') within = 0.97
+  else if (p.phase === 'done') return 1
+  return Math.min(1, (done + within) / p.slideTotal)
 }
 
 export async function listCarouselJobs(profileId: string): Promise<CarouselJob[]> {

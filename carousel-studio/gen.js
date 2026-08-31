@@ -55,6 +55,28 @@ function avatarTag(pose, style, cls) {
   return `<img class="avatar${cls ? ' ' + cls : ''}" style="${style || ''}" src="${REL}assets/pose-${esc(p)}-cutout.png" alt="">`;
 }
 
+// Picks a headline font size that keeps every line on ONE line inside a plate of `contentPx`.
+//
+// Real bug this fixes: a cover headline written as exactly 3 lines ("Don't Rely On / One Person /
+// For Everything") still rendered as FOUR, because at the fixed 76px size the longest line was
+// wider than the plate and auto-wrapped — pushing the subhead down under the avatar's arm.
+// Telling the model "keep lines under N characters" can't be relied on, so the layout adapts
+// instead: measure the longest line and step the size down until it fits.
+//
+// 0.52em average advance width is an empirical fit for Inter Bold at these sizes across the
+// mixed-case copy these headlines actually use — deliberately a little conservative, since
+// being slightly small is invisible but overflowing is not.
+function fitHeadlineSize(headline, maxPx, contentPx) {
+  const longest = String(headline || '')
+    .split('\n')
+    .reduce((max, line) => Math.max(max, line.trim().length), 0);
+  if (!longest) return maxPx;
+  const fitted = Math.floor(contentPx / (longest * 0.52));
+  // Floor at 34px — below that the headline stops reading as a headline, and a headline that
+  // long is a copy problem to fix in the outline, not something to shrink into illegibility.
+  return Math.max(34, Math.min(maxPx, fitted));
+}
+
 // Bootstrap script every slide ends with. Exposes TWO ways to seek the timeline:
 //
 //   1. window.__seekFrame(frame, fps) — used by the persistent-browser renderer, which loads
@@ -139,7 +161,7 @@ function coverTemplate(spec) {
     </div>
     <div class="plate-dark flex-col gap-md" id="plate" style="position:absolute; left:64px; top:150px; width:620px;">
       <div class="eyebrow" id="eyebrow">${esc(eyebrow)}</div>
-      <div class="display" id="headline">${esc(headline).split('\n').join('<br>')}</div>
+      <div class="display" id="headline" style="font-size:${fitHeadlineSize(headline, 76, 508)}px;">${esc(headline).split('\n').join('<br>')}</div>
       ${subhead ? `<div class="body-lg dim" id="subhead">${esc(subhead)}</div>` : ''}
     </div>
     ${avatarTag(pose, 'right: 10px; height: 980px;', 'cover-avatar')}
@@ -259,7 +281,7 @@ function ctaTemplate(spec) {
     <div class="focal-glow" style="--focal-x:70%; --focal-y:55%;"></div>
     <div class="plate-dark flex-col gap-md" id="plate" style="position:absolute; left:64px; top:50%; transform:translateY(-50%); width:600px;">
       ${eyebrow ? `<div class="eyebrow" id="eyebrow">${esc(eyebrow)}</div>` : ''}
-      <div class="display" id="headline" style="font-size:60px;">${esc(headline).split('\n').join('<br>')}</div>
+      <div class="display" id="headline" style="font-size:${fitHeadlineSize(headline, 60, 488)}px;">${esc(headline).split('\n').join('<br>')}</div>
       <div class="cta-pill" id="pill" style="align-self:flex-start;">Comment &ldquo;${esc(keyword)}&rdquo; below&nbsp;👇</div>
     </div>
     ${avatarTag(pose, 'bottom: 0; right: 10px; height: 980px;', 'cta-avatar')}
