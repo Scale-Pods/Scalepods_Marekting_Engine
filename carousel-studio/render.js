@@ -30,7 +30,9 @@ const { execFile } = require('child_process');
 const { startServer } = require('./serve');
 
 const ROOT = __dirname;
-const PORT = 4174; // distinct from the interactive preview server's 4173, so both can run at once
+// NOT a fixed port — see renderCarousel() below. A hardcoded port here caused a real bug: two
+// overlapping /render requests on the long-lived server.js worker both tried to bind the same
+// port, and the second one failed outright with EADDRINUSE instead of queueing or coexisting.
 const CHROME =
   process.env.CHROME_BIN ||
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
@@ -182,9 +184,12 @@ async function renderCarousel({ slug, opts, onSlideDone }) {
   const outDir = path.join(ROOT, 'output', slug);
   fs.mkdirSync(outDir, { recursive: true });
 
-  console.log(`Starting render server on port ${PORT}...`);
-  const server = await startServer(PORT);
-  const baseUrl = `http://localhost:${PORT}/slides/${slug}`;
+  // Port 0 = OS assigns a free ephemeral port. Each renderCarousel() call gets its own —
+  // required for the worker to survive two overlapping /render requests (see the note above).
+  const server = await startServer(0);
+  const port = server.address().port;
+  console.log(`Starting render server on port ${port}...`);
+  const baseUrl = `http://localhost:${port}/slides/${slug}`;
 
   const rendered = [];
   const failed = [];
