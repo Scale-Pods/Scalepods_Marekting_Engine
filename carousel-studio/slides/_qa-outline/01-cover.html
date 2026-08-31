@@ -33,14 +33,18 @@
   </script>
   
 <script>
+  window.__seekFrame = function (frame, fps) {
+    const elapsed = Number(frame) / Number(fps);
+    const p = Math.max(0, Math.min(1, elapsed / tl.duration()));
+    tl.progress(p).pause();
+    document.documentElement.dataset.rendered = 'true';
+  };
+
   const params = new URLSearchParams(location.search);
   const frame = params.get('frame');
   const fps = params.get('fps');
   if (frame !== null && fps !== null) {
-    const elapsed = Number(frame) / Number(fps);
-    const p = Math.max(0, Math.min(1, elapsed / tl.duration()));
-    tl.progress(p).pause();
-    document.documentElement.dataset.rendered = 'true'; // render.sh waits on this
+    window.__seekFrame(frame, fps);
   } else {
     tl.play();
   }

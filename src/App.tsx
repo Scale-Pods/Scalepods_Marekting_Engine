@@ -19,6 +19,7 @@ const IntelligenceReport = lazy(() => import('./pages/IntelligenceReport'))
 const Trends = lazy(() => import('./pages/Trends'))
 const Strategy = lazy(() => import('./pages/Strategy'))
 const ContentFactory = lazy(() => import('./pages/ContentFactory'))
+const CarouselStudio = lazy(() => import('./pages/CarouselStudio'))
 const CreativeReview = lazy(() => import('./pages/CreativeReview'))
 const Calendar = lazy(() => import('./pages/Calendar'))
 const Publishing = lazy(() => import('./pages/Publishing'))
@@ -73,6 +74,7 @@ export default function App() {
               <Route path="/trends" element={<Protected><Trends /></Protected>} />
               <Route path="/strategy" element={<Protected><Strategy /></Protected>} />
               <Route path="/content" element={<Protected><ContentFactory /></Protected>} />
+              <Route path="/carousel-studio" element={<Protected><CarouselStudio /></Protected>} />
               <Route path="/review" element={<Protected><CreativeReview /></Protected>} />
               <Route path="/calendar" element={<Protected><Calendar /></Protected>} />
               <Route path="/publishing" element={<Protected><Publishing /></Protected>} />

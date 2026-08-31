@@ -291,6 +291,28 @@ CPU, not RAM, is the constraint — see the updated Phase 2 resource guidance be
 12. Verify from *outside* Railway: `curl https://<your-app>.up.railway.app/health` from your own
     machine, then the same `/render` smoke test as Phase 0, now against the real deployed URL.
 
+**✅ Phase 2 done (2026-08-31)** — real gap caught via `railway environment config --json`: root
+directory *was* correctly set to `carousel-studio`, but `build.builder` was still `RAILPACK` —
+Railway does not auto-switch to Dockerfile mode just because one exists alongside a
+`package.json` (which `carousel-studio/` also has, left over from the one-time `npm install gsap`
+extraction). That's why the first deploy silently built the wrong thing (Railpack detected Node
++ Vite from the repo root and served it via Caddy) even with the right root directory. Fixed with
+one `railway environment edit --json` patch: `build.builder: DOCKERFILE`,
+`build.dockerfilePath: Dockerfile`, `build.watchPatterns: ["carousel-studio/**"]`, plus wiring
+all 4 shared variables into the service (`${{shared.KEY}}` references — they'd been added as
+project-level Shared Variables but never actually attached to the service, so `railway variables`
+showed none of them). Also caught `CHROME_BIN`'s shared value being the literal text
+`"CHROME_BIN"` (looked like the variable name got typed into the value field), fixed to
+`/usr/bin/chromium`. Verified for real, not just "config looks right": polled
+`railway deployment list` to an actual `SUCCESS` terminal state (not just "queued"), confirmed
+via `railway logs` that the runtime log is genuinely `server.js`'s own startup line ("Carousel
+render worker listening on :8080"), then hit the live public URL directly —
+`GET /health` → `200 ok`, `POST /render` with a wrong secret → `401`, with the right secret but
+an empty body → `400` (correct validation). A full real render wasn't tested against production
+yet — Phase 3 (the `carousel_jobs` table + bucket) doesn't exist yet, so a real `/render` call
+would 500 at the Supabase-write step. That's the next and last real gap before an actual
+production render.
+
 ### Phase 3 — Supabase
 
 13. `carousel_jobs` table + `carousel-media` Storage bucket, exactly as in §3c — apply via the

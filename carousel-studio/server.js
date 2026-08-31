@@ -37,7 +37,10 @@ const WORKER_SECRET = process.env.RENDER_WORKER_SECRET;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const STORAGE_BUCKET = process.env.CAROUSEL_STORAGE_BUCKET || 'carousel-media';
-const CONCURRENCY = Number(process.env.RENDER_CONCURRENCY) || 5;
+// RENDER_CONCURRENCY is obsolete — frames now come from a single persistent browser page
+// rather than N parallel Chrome processes, so there's nothing to tune here. Left unread on
+// purpose: the variable is still set on the deployed Railway service and removing the env var
+// isn't required for correctness.
 
 if (!WORKER_SECRET) console.warn('WARNING: RENDER_WORKER_SECRET is not set — /render is unauthenticated!');
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) console.warn('WARNING: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set — job status/uploads will fail.');
@@ -93,7 +96,7 @@ async function runJob(jobId, outline) {
 
     const { failed } = await renderCarousel({
       slug: jobId,
-      opts: { concurrency: CONCURRENCY, keepFrames: false, only: null },
+      opts: { keepFrames: false, only: null },
       onSlideDone: async (outfile, slide) => {
         const url = await uploadSlide(jobId, slide.file, outfile);
         slideUrls.push(url);

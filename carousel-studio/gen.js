@@ -55,19 +55,33 @@ function avatarTag(pose, style, cls) {
   return `<img class="avatar${cls ? ' ' + cls : ''}" style="${style || ''}" src="${REL}assets/pose-${esc(p)}-cutout.png" alt="">`;
 }
 
-// Bootstrap script every slide ends with — parses ?frame=&fps=, seeks the named
-// timeline (`tl`) deterministically, or autoplays it when previewing live.
+// Bootstrap script every slide ends with. Exposes TWO ways to seek the timeline:
+//
+//   1. window.__seekFrame(frame, fps) — used by the persistent-browser renderer, which loads
+//      the page ONCE per slide and then seeks + screenshots each frame without reloading.
+//      Deliberately a closure over `tl` rather than relying on `window.tl`: a top-level
+//      `const` in a classic script lives in the global lexical environment, not on `window`,
+//      so `window.tl` would be undefined from an injected evaluation.
+//   2. ?frame=N&fps=F in the URL — the original one-page-load-per-frame path. Kept because
+//      it's how a slide is previewed/debugged by hand, and it keeps each frame reproducible
+//      from a plain URL.
+//
+// Both call the same seek logic, so a frame renders identically either way.
 function bootstrapScript() {
   return `
 <script>
+  window.__seekFrame = function (frame, fps) {
+    const elapsed = Number(frame) / Number(fps);
+    const p = Math.max(0, Math.min(1, elapsed / tl.duration()));
+    tl.progress(p).pause();
+    document.documentElement.dataset.rendered = 'true';
+  };
+
   const params = new URLSearchParams(location.search);
   const frame = params.get('frame');
   const fps = params.get('fps');
   if (frame !== null && fps !== null) {
-    const elapsed = Number(frame) / Number(fps);
-    const p = Math.max(0, Math.min(1, elapsed / tl.duration()));
-    tl.progress(p).pause();
-    document.documentElement.dataset.rendered = 'true'; // render.sh waits on this
+    window.__seekFrame(frame, fps);
   } else {
     tl.play();
   }
