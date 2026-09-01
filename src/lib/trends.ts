@@ -54,9 +54,29 @@ export async function listSignals(runId: string): Promise<TrendSignal[]> {
   return data as TrendSignal[]
 }
 
+/** The 5 sources the Apify-backed scan actually supports today — matches trend_signals.source
+ *  values exactly (see SOURCE_COLOR in Trends.tsx). LinkedIn/Facebook are deliberately excluded:
+ *  no cheap keyword-search Apify actor exists for either yet. */
+export const SCAN_PLATFORMS = ['Reddit', 'Instagram', 'YouTube', 'Google Search', 'Google Trends'] as const
+export type ScanPlatform = (typeof SCAN_PLATFORMS)[number]
+
+export interface ScanOptions {
+  /** Which sources to run this scan against. Omitted/empty = all 5 (matches the 24h scheduler's
+   *  plain {profileId} call, and the n8n side defaults the same way). */
+  platforms?: ScanPlatform[]
+  /** Per-platform result count (e.g. {"YouTube": 3}) — how many items to pull FROM that source
+   *  before AI ranks them, not how many signals end up on the page (GPT still filters for
+   *  relevance same as always). Google Trends has no count knob: it's a fixed live leaderboard
+   *  + one growth reading per keyword, not a paged list. */
+  counts?: Partial<Record<ScanPlatform, number>>
+}
+
 /** Fires the Trend Intelligence n8n workflow (M4). Writes a new trend_runs + trend_signals. */
-export async function triggerTrends(profileId: string): Promise<void> {
-  await fireWebhook('sp-trends', { profileId })
+export async function triggerTrends(profileId: string, options?: ScanOptions): Promise<void> {
+  const body: Record<string, unknown> = { profileId }
+  if (options?.platforms?.length) body.platforms = options.platforms
+  if (options?.counts && Object.keys(options.counts).length) body.counts = options.counts
+  await fireWebhook('sp-trends', body)
 }
 
 /** All signals for a profile across EVERY run since `sinceIso` (or all-time if omitted), and

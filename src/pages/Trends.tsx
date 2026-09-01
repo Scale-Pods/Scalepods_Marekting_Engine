@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, PlayCircle, ExternalLink, Calendar, ChevronDown, ChevronUp, Clock, Sparkles } from 'lucide-react'
-import { listRuns, listSignals, listSignalsSince, triggerTrends, type TrendRun, type TrendSignal } from '../lib/trends'
+import {
+  listRuns, listSignals, listSignalsSince, triggerTrends, SCAN_PLATFORMS,
+  type TrendRun, type TrendSignal, type ScanPlatform,
+} from '../lib/trends'
 import { triggerStrategy } from '../lib/strategy'
-import { PageHeader, Badge, Button, EmptyState, Spinner } from '../components/ui'
+import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
 import { useProfile } from '../lib/queries'
 import { useToast, toastMessage } from '../components/Toast'
 
@@ -220,6 +223,16 @@ export default function Trends() {
   const [refreshing, setRefreshing] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Manual-scan config modal: which sources to run, and how many results to pull from each
+  // (Google Trends has no count knob — it's a fixed live leaderboard + one growth reading per
+  // keyword, not a paged list). Defaults to every source, 8 results each, matching what the
+  // scan always did before this was configurable.
+  const [scanModalOpen, setScanModalOpen] = useState(false)
+  const [scanPlatforms, setScanPlatforms] = useState<Set<ScanPlatform>>(new Set(SCAN_PLATFORMS))
+  const [scanCounts, setScanCounts] = useState<Record<ScanPlatform, number>>(
+    () => Object.fromEntries(SCAN_PLATFORMS.map((p) => [p, 8])) as Record<ScanPlatform, number>,
+  )
+
   // Date-range filter: 'latest' is the single-scan view unchanged; the others pool signals
   // across every run in that window, meaningful now that scans run daily via the scheduler.
   const [dateRange, setDateRange] = useState<DateRange>('latest')
@@ -302,10 +315,11 @@ export default function Trends() {
   }, [profile, runs, loadRuns])
 
   async function onManualScan() {
-    if (!profile) return
+    if (!profile || scanPlatforms.size === 0) return
+    setScanModalOpen(false)
     setRefreshing(true)
     const before = runs[0]?.id ?? null
-    await triggerTrends(profile.id)
+    await triggerTrends(profile.id, { platforms: Array.from(scanPlatforms), counts: scanCounts })
     // triggerTrends only fires the webhook — it responds immediately, but the actual scan runs
     // async in n8n and never writes an interim "processing" row (it inserts once, at the end).
     // Poll for a genuinely NEW run rather than any run, since an old completed one would
@@ -366,11 +380,71 @@ export default function Trends() {
         title={`Trend Intelligence — ${profile.business_name}`}
         subtitle="Ranked by relevance, sourced from real Reddit, Instagram, YouTube, Google Search, and Google Trends data. Scans automatically every 24 hours, or run one now."
         actions={
-          <Button variant="ghost" onClick={onManualScan} loading={refreshing || isActive}>
+          <Button variant="ghost" onClick={() => setScanModalOpen(true)} loading={refreshing || isActive}>
             <PlayCircle size={15} /> Run manual scan
           </Button>
         }
       />
+
+      {scanModalOpen && (
+        <Modal title="Run manual scan" onClose={() => setScanModalOpen(false)}>
+          <div className="text-secondary text-sm mb-4">
+            Choose which sources to scan and how many results to pull from each before AI ranks them for relevance.
+          </div>
+          <div className="space-y-2">
+            {SCAN_PLATFORMS.map((p) => {
+              const checked = scanPlatforms.has(p)
+              return (
+                <div key={p} className="panel p-3 flex items-center justify-between gap-3">
+                  <label className="flex items-center gap-2.5 cursor-pointer flex-1">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => setScanPlatforms((s) => {
+                        const next = new Set(s)
+                        if (e.target.checked) next.add(p); else next.delete(p)
+                        return next
+                      })}
+                    />
+                    <span
+                      className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-white"
+                      style={{ background: sourceColor(p), opacity: checked ? 1 : 0.5 }}
+                    >
+                      {p}
+                    </span>
+                  </label>
+                  {p !== 'Google Trends' ? (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-muted">Results</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        className="input !py-1 text-sm text-center"
+                        style={{ width: 60 }}
+                        value={scanCounts[p]}
+                        disabled={!checked}
+                        onChange={(e) => {
+                          const n = Math.max(1, Math.min(20, Number(e.target.value) || 1))
+                          setScanCounts((c) => ({ ...c, [p]: n }))
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted shrink-0">Live leaderboard + growth — no count</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex justify-end gap-2 mt-5">
+            <Button variant="ghost" onClick={() => setScanModalOpen(false)}>Cancel</Button>
+            <Button onClick={onManualScan} loading={refreshing} disabled={scanPlatforms.size === 0}>
+              <PlayCircle size={15} /> Start scan
+            </Button>
+          </div>
+        </Modal>
+      )}
 
       {/* One filter area: date range (with a custom start/end option) — daily auto-scans mean
           there's real history to pool signals from, not just one run at a time. */}
