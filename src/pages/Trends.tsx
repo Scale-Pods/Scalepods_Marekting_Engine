@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { TrendingUp, PlayCircle, ExternalLink, Calendar, ChevronDown, ChevronUp, Clock } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { TrendingUp, PlayCircle, ExternalLink, Calendar, ChevronDown, ChevronUp, Clock, Sparkles } from 'lucide-react'
 import { listRuns, listSignals, listSignalsSince, triggerTrends, type TrendRun, type TrendSignal } from '../lib/trends'
+import { triggerStrategy } from '../lib/strategy'
 import { PageHeader, Badge, Button, EmptyState, Spinner } from '../components/ui'
 import { useProfile } from '../lib/queries'
+import { useToast, toastMessage } from '../components/Toast'
 
 // Real-world brand colors for the platform sources; ScalePods' own accent tokens for the two
 // non-platform categories (SEO Keywords, Competitor campaigns) — no invented colors either way.
@@ -27,7 +30,7 @@ function relevanceColor(score: number) {
   return score >= 70 ? 'var(--accent-green)' : score >= 40 ? 'var(--accent-orange)' : 'var(--text-muted)'
 }
 
-function SignalCard({ sig, businessName, showDate }: { sig: TrendSignal; businessName: string; showDate?: boolean }) {
+function SignalCard({ sig, businessName, showDate, profileId }: { sig: TrendSignal; businessName: string; showDate?: boolean; profileId: string }) {
   const rel = sig.relevance_score ?? 0
   const relColor = relevanceColor(rel)
   // Numeric signals (search-volume/growth %, live trending leaderboards) never carry a URL —
@@ -35,6 +38,24 @@ function SignalCard({ sig, businessName, showDate }: { sig: TrendSignal; busines
   // urlless signal.
   const isKeywordPhrase = !sig.url
   const href = sig.url || (isKeywordPhrase ? `https://www.google.com/search?q=${encodeURIComponent(sig.topic)}` : null)
+
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [generating, setGenerating] = useState(false)
+
+  async function onGenerateStrategy() {
+    setGenerating(true)
+    try {
+      // Anchors a fresh marketing strategy around THIS trend specifically (plus the business's
+      // own real past post performance — see the n8n workflow), rather than the broad
+      // all-trends synthesis "Regenerate all" on the Strategy page produces.
+      await triggerStrategy(profileId, sig.id)
+      navigate('/strategy', { state: { justTriggered: true } })
+    } catch (err) {
+      toast.error(toastMessage(err, 'Failed to start strategy generation'))
+      setGenerating(false)
+    }
+  }
 
   return (
     <div className="card p-4 flex flex-col">
@@ -67,7 +88,7 @@ function SignalCard({ sig, businessName, showDate }: { sig: TrendSignal; busines
         </div>
       )}
 
-      <div className="mt-auto">
+      <div className="mt-auto space-y-1.5">
         {href ? (
           <a
             href={href}
@@ -80,6 +101,16 @@ function SignalCard({ sig, businessName, showDate }: { sig: TrendSignal; busines
         ) : (
           <div className="text-muted text-xs text-center py-2">No source link for this signal</div>
         )}
+        <button
+          type="button"
+          onClick={onGenerateStrategy}
+          disabled={generating}
+          className="btn-ghost w-full !py-2 text-xs justify-center"
+          style={{ borderColor: 'var(--accent-green)', color: 'var(--accent-green)' }}
+          title="Generate a marketing strategy anchored on this trend + your real past post performance"
+        >
+          {generating ? <Spinner size={12} /> : <Sparkles size={12} />} General Strategy
+        </button>
       </div>
     </div>
   )
@@ -88,7 +119,7 @@ function SignalCard({ sig, businessName, showDate }: { sig: TrendSignal; busines
 /** A signal grid with its own platform-filter chips — used both for the main view and for a
  *  History entry expanded inline, so both look and behave identically rather than one being a
  *  cut-down version of the other. */
-function SignalGrid({ signals, businessName, showDate }: { signals: TrendSignal[]; businessName: string; showDate: boolean }) {
+function SignalGrid({ signals, businessName, showDate, profileId }: { signals: TrendSignal[]; businessName: string; showDate: boolean; profileId: string }) {
   const [filter, setFilter] = useState<string | null>(null)
   const sources = useMemo(() => Array.from(new Set(signals.map((s) => s.source))).sort(), [signals])
   const visible = filter ? signals.filter((s) => s.source === filter) : signals
@@ -133,7 +164,7 @@ function SignalGrid({ signals, businessName, showDate }: { signals: TrendSignal[
       ) : (
         <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
           {visible.map((s) => (
-            <SignalCard key={s.id} sig={s} businessName={businessName} showDate={showDate} />
+            <SignalCard key={s.id} sig={s} businessName={businessName} showDate={showDate} profileId={profileId} />
           ))}
         </div>
       )}
@@ -144,7 +175,7 @@ function SignalGrid({ signals, businessName, showDate }: { signals: TrendSignal[
 /** One History row — collapsed shows real counts computed from its own signals (not the
  *  n8n-written sources_completed column, which this pipeline never populated and always read as
  *  "0 sources"); expanded reveals the exact same grid used everywhere else on this page. */
-function HistoryRow({ run, signals, businessName }: { run: TrendRun; signals: TrendSignal[]; businessName: string }) {
+function HistoryRow({ run, signals, businessName, profileId }: { run: TrendRun; signals: TrendSignal[]; businessName: string; profileId: string }) {
   const [open, setOpen] = useState(false)
   const sourceCount = new Set(signals.map((s) => s.source)).size
 
@@ -169,7 +200,7 @@ function HistoryRow({ run, signals, businessName }: { run: TrendRun; signals: Tr
           {signals.length === 0 ? (
             <EmptyState icon={<TrendingUp size={24} />} title="No signals from this run" />
           ) : (
-            <SignalGrid signals={signals} businessName={businessName} showDate={false} />
+            <SignalGrid signals={signals} businessName={businessName} showDate={false} profileId={profileId} />
           )}
         </div>
       )}
@@ -314,17 +345,11 @@ export default function Trends() {
   const isRangeView = dateRange !== 'latest'
   const activeSignals = isRangeView ? aggregateSignals : signals
   const isActive = run?.status === 'processing'
-  const viewingLatest = !!run && run.id === newestId
   // Every OTHER run, newest first, each with its own real signals sliced out of the one all-time
   // fetch above — no per-row query needed.
   const history = runs
     .filter((r) => r.id !== selectedRunId)
     .map((r) => ({ run: r, signals: allSignals.filter((s) => s.run_id === r.id) }))
-
-  function selectRun(id: string) {
-    setSelectedRunId(id)
-    setDateRange('latest')
-  }
 
   const RANGE_OPTIONS: { key: DateRange; label: string }[] = [
     { key: 'latest', label: 'Latest scan' },
@@ -404,7 +429,7 @@ export default function Trends() {
         ) : activeSignals.length === 0 ? (
           <EmptyState icon={<TrendingUp size={28} />} title="No signals in this period" hint="Signals accumulate as scans run — check back later, or widen the range." />
         ) : (
-          <SignalGrid signals={activeSignals} businessName={businessName} showDate />
+          <SignalGrid signals={activeSignals} businessName={businessName} showDate profileId={profile.id} />
         )
       ) : !run ? (
         <EmptyState icon={<TrendingUp size={28} />} title="No trend scan yet" hint="Click Run manual scan to run the first one." />
@@ -415,28 +440,10 @@ export default function Trends() {
         </div>
       ) : (
         <>
-          {run.ai_summary && (
-            <div className="card p-5 mb-6">
-              <div className="flex items-center justify-between mb-1">
-                <div className="text-xs font-medium text-sage uppercase tracking-wide flex items-center gap-2">
-                  Summary
-                  {!viewingLatest && <Badge tone="orange">Viewing older scan</Badge>}
-                </div>
-                <div className="text-muted text-xs">Generated {new Date(run.created_at).toLocaleString()}</div>
-              </div>
-              <div className="text-secondary text-sm">{run.ai_summary}</div>
-              {!viewingLatest && newestId && (
-                <button onClick={() => selectRun(newestId)} className="text-xs text-sage hover:underline mt-2">
-                  ← Back to latest scan
-                </button>
-              )}
-            </div>
-          )}
-
           {signals.length === 0 ? (
             <EmptyState icon={<TrendingUp size={28} />} title="No signals from this scan" />
           ) : (
-            <SignalGrid signals={signals} businessName={businessName} showDate={false} />
+            <SignalGrid signals={signals} businessName={businessName} showDate={false} profileId={profile.id} />
           )}
 
           {history.length > 0 && (
@@ -444,7 +451,7 @@ export default function Trends() {
               <div className="text-sm font-medium text-secondary mb-3 mt-8">History</div>
               <div className="space-y-2">
                 {history.map(({ run: r, signals: sigs }) => (
-                  <HistoryRow key={r.id} run={r} signals={sigs} businessName={businessName} />
+                  <HistoryRow key={r.id} run={r} signals={sigs} businessName={businessName} profileId={profile.id} />
                 ))}
               </div>
             </>

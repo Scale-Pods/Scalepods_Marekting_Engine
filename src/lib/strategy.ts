@@ -21,6 +21,9 @@ export interface MarketingStrategy {
   platform_strategy: unknown
   lead_generation_strategy: unknown
   cta_strategy: unknown
+  /** Set when this strategy was generated via "General Strategy" on a specific trend card,
+   *  rather than the broad "Regenerate all" — null for the latter. */
+  source_signal_id: string | null
   created_at: string
   updated_at: string
 }
@@ -47,9 +50,25 @@ export async function listStrategies(profileId: string): Promise<MarketingStrate
   return data as MarketingStrategy[]
 }
 
-/** Fires the Marketing Strategy n8n workflow (M5). Writes a new marketing_strategies row. */
-export async function triggerStrategy(profileId: string): Promise<void> {
-  await fireWebhook('sp-strategy', { profileId })
+/** Fires the Marketing Strategy n8n workflow (M5). Writes a new marketing_strategies row.
+ *  Pass `signalId` (a trend_signals.id) to anchor the strategy around one specific trend —
+ *  fired from the "General Strategy" button on a Trends signal card — instead of the broad,
+ *  all-trends synthesis the plain "Regenerate all" button on the Strategy page still uses. */
+export async function triggerStrategy(profileId: string, signalId?: string): Promise<void> {
+  await fireWebhook('sp-strategy', signalId ? { profileId, signalId } : { profileId })
+}
+
+/** The one trend signal a strategy was generated around, for a "Generated from" credit on the
+ *  Strategy page — null when the strategy has no source_signal_id (the normal "Regenerate all"
+ *  case) or when that signal has since been deleted. */
+export async function getSourceSignal(signalId: string): Promise<{ id: string; source: string; topic: string } | null> {
+  const { data, error } = await supabase
+    .from('trend_signals')
+    .select('id, source, topic')
+    .eq('id', signalId)
+    .maybeSingle()
+  if (error) throw error
+  return data
 }
 
 export async function approveStrategy(id: string): Promise<void> {

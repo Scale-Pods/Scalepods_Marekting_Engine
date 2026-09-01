@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Target, RefreshCw, CheckCircle2, CalendarDays, Pencil, Check, X,
-  ListChecks, LayoutGrid, Share2, Magnet, MousePointerClick,
+  ListChecks, LayoutGrid, Share2, Magnet, MousePointerClick, Sparkles,
 } from 'lucide-react'
 import {
   getLatestStrategy, triggerStrategy, approveStrategy, updateStrategySection, regenerateStrategySection,
-  type MarketingStrategy, type StrategySection, type CalendarItem,
+  getSourceSignal, type MarketingStrategy, type StrategySection, type CalendarItem,
 } from '../lib/strategy'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
 import { useProfile } from '../lib/queries'
@@ -30,7 +31,16 @@ const PLATFORM_TONE: Record<string, 'green' | 'blue' | 'orange'> = {
 type SectionValue = Record<string, string | string[] | Record<string, string>>
 
 function cloneSection(value: unknown): SectionValue {
-  return JSON.parse(JSON.stringify(value ?? {}))
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return JSON.parse(JSON.stringify(value))
+  }
+  // GPT's free-form output isn't schema-enforced — a section can land as a plain string (or,
+  // in principle, a top-level array) instead of the usual {field: value} object. Without this
+  // guard, Object.entries("some sentence") silently turns each CHARACTER into its own numbered
+  // field ("0": "T", "1": "h", …) — a real bug hit live once the prompt started producing a
+  // narrative campaign_planning string instead of its usual {theme, focus, …} shape.
+  if (value === null || value === undefined) return {}
+  return { summary: typeof value === 'string' ? value : JSON.stringify(value) }
 }
 
 function humanize(key: string) {
@@ -197,7 +207,27 @@ export default function Strategy() {
   const [approving, setApproving] = useState(false)
   const [detailItem, setDetailItem] = useState<CalendarItem | null>(null)
   const [activeTab, setActiveTab] = useState<StrategySection | 'calendar'>('campaign_planning')
+  const [sourceSignal, setSourceSignal] = useState<{ id: string; source: string; topic: string } | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // "Generated from" credit when this strategy came from a trend card's "General Strategy"
+  // button rather than the broad "Regenerate all". The signal may since have been pruned by a
+  // later scan, in which case this just stays null and the credit line doesn't render.
+  useEffect(() => {
+    if (!strategy?.source_signal_id) {
+      setSourceSignal(null)
+      return
+    }
+    let cancelled = false
+    getSourceSignal(strategy.source_signal_id).then((s) => {
+      if (!cancelled) setSourceSignal(s)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [strategy?.source_signal_id])
+
+  const location = useLocation()
 
   const load = useCallback(async (profileId: string) => {
     const s = await getLatestStrategy(profileId)
@@ -205,9 +235,36 @@ export default function Strategy() {
     return s
   }, [])
 
+  // Poll for a genuinely NEW strategy row (a different id than `beforeId`), not just any
+  // strategy — an old completed/approved one would otherwise pass instantly. The n8n workflow
+  // now inserts a 'processing' placeholder immediately, but the webhook itself only fires the
+  // workflow and returns before that insert necessarily lands, so a single load() right after
+  // triggering can still race ahead of it and see the old strategy. Once this loop actually
+  // finds the new row, the isActive-based poller below takes over for the rest of generation.
+  const waitForNewStrategy = useCallback(async (profileId: string, beforeId: string | null) => {
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 3000))
+      const fresh = await load(profileId)
+      if (fresh && fresh.id !== beforeId) break
+    }
+  }, [load])
+
   useEffect(() => {
-    if (profile) load(profile.id)
-  }, [profile, load])
+    if (!profile) return
+    load(profile.id).then((s) => {
+      // Arrived here right after firing a strategy from a trend card's "General Strategy"
+      // button (see Trends.tsx) — the same race as onRegenerate below, just on page load
+      // instead of a button click.
+      if (location.state?.justTriggered) {
+        setRefreshing(true)
+        waitForNewStrategy(profile.id, s?.id ?? null).then(() => setRefreshing(false))
+      }
+    })
+    // Only ever meant to fire once per landing on this page — re-running on every `profile`
+    // identity change (react-query can hand back a new object each fetch) would restart the
+    // wait loop and, worse, replay `justTriggered` handling after it already navigated away.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id])
 
   useEffect(() => {
     if (!profile) return
@@ -229,17 +286,7 @@ export default function Strategy() {
     setRefreshing(true)
     const before = strategy?.id ?? null
     await triggerStrategy(profile.id)
-    // Same shape as onRegenerateSection below: triggerStrategy only fires the webhook and
-    // returns immediately, but the 7-part strategy synthesis happens async in n8n and only
-    // writes the row once, at the end (no interim "processing" row to poll). Checking once
-    // right after triggering almost always ran before that row existed, so the button worked
-    // but the page kept showing "No strategy yet" until a manual reload. Poll for a genuinely
-    // NEW strategy instead of just any strategy (an old completed one would pass instantly).
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 3000))
-      const fresh = await load(profile.id)
-      if (fresh && fresh.id !== before) break
-    }
+    await waitForNewStrategy(profile.id, before)
     setRefreshing(false)
   }
 
@@ -321,8 +368,15 @@ export default function Strategy() {
         <EmptyState title="Strategy generation failed" hint="Click Regenerate all to try again." />
       ) : (
         <>
-          <div className="flex items-center gap-2 mb-6">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <Badge tone={isApproved ? 'green' : 'blue'}>{isApproved ? 'Approved' : 'Awaiting approval'}</Badge>
+            {sourceSignal && (
+              <Badge tone="orange">
+                <Sparkles size={11} /> Generated from: {sourceSignal.source} — {sourceSignal.topic}
+              </Badge>
+            )}
+          </div>
+          <div className="mb-6">
             {strategy.ai_summary && <span className="text-secondary text-sm">{strategy.ai_summary}</span>}
           </div>
 
