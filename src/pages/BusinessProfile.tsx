@@ -8,7 +8,7 @@ import {
 import {
   getProfile, createProfile, updateProfile, triggerAiAnalysis, type BusinessProfileInput, type Competitor,
 } from '../lib/clients'
-import { startCompetitorSearch, getSearchRun, type CompetitorSearchRun } from '../lib/competitors'
+import { startCompetitorSearch, getSearchRun, getLatestSearchRun, getSeenRunId, markRunSeen, type CompetitorSearchRun } from '../lib/competitors'
 import { supabase, sanitizeStorageFilename } from '../lib/supabase'
 import { qk } from '../lib/queries'
 import { PageHeader, Button, Panel, Badge, Spinner } from '../components/ui'
@@ -143,6 +143,23 @@ export default function BusinessProfile() {
     })
   }, [id, isNew])
 
+  // Rehydrate an in-flight or unreviewed-completed AI search on mount. A search takes 1-2
+  // minutes — long enough that a page refresh or just navigating away and back is the norm, not
+  // the exception. Without this, the plain useState aiRun below is wiped on every remount even
+  // though the backend finished the run fine, and results silently "don't show" on the FE with
+  // no way to see them short of clicking Search using AI all over again.
+  useEffect(() => {
+    if (isNew) return
+    getLatestSearchRun(id!).then((run) => {
+      if (!run) return
+      if (run.status === 'pending' || run.status === 'processing') {
+        setAiRun(run)
+      } else if (run.status === 'completed' && getSeenRunId(id!) !== run.id) {
+        setAiRun(run)
+      }
+    })
+  }, [id, isNew])
+
   function set<K extends keyof BusinessProfileInput>(key: K, value: BusinessProfileInput[K]) {
     setForm((f) => ({ ...f, [key]: value }))
   }
@@ -199,6 +216,13 @@ export default function BusinessProfile() {
       .filter((c) => !existingNames.has(c.name.trim().toLowerCase()))
       .map((c) => ({ id: uid(), name: c.name, website: c.website, socials: c.socials, source: 'ai' as const }))
     set('competitor_profiles', [...(form.competitor_profiles || []), ...toAdd])
+    if (!isNew) markRunSeen(id!, aiRun.id)
+    setAiRun(null)
+    setAiSelected(new Set())
+  }
+
+  function dismissAiRun() {
+    if (aiRun && !isNew) markRunSeen(id!, aiRun.id)
     setAiRun(null)
     setAiSelected(new Set())
   }
@@ -535,7 +559,7 @@ export default function BusinessProfile() {
                 </label>
               ))}
               <div className="flex justify-end gap-2 pt-1">
-                <Button type="button" variant="ghost" onClick={() => { setAiRun(null); setAiSelected(new Set()) }}>Dismiss</Button>
+                <Button type="button" variant="ghost" onClick={dismissAiRun}>Dismiss</Button>
                 {aiRun.results.length > 0 && (
                   <Button type="button" onClick={addSelectedCandidates} disabled={aiSelected.size === 0}>
                     <Check size={15} /> Add {aiSelected.size || ''} selected
