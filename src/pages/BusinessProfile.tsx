@@ -124,10 +124,11 @@ export default function BusinessProfile() {
 
   const [form, setForm] = useState<BusinessProfileInput>(EMPTY)
   const [loading, setLoading] = useState(!isNew)
-  const [saving, setSaving] = useState(false)
+  const [savingKind, setSavingKind] = useState<'plain' | 'analysis' | null>(null)
   const [uploading, setUploading] = useState<'asset' | 'logo' | 'cover' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [savedAnalysis, setSavedAnalysis] = useState(false)
 
   const [addingCompetitor, setAddingCompetitor] = useState(false)
   const [editingCompetitorId, setEditingCompetitorId] = useState<string | null>(null)
@@ -297,9 +298,12 @@ export default function BusinessProfile() {
     set('assets', (form.assets || []).filter((a) => a.url !== url))
   }
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setSaving(true)
+  // Shared by both buttons — "Save" and "Save & run analysis" persist the same fields the same
+  // way, they only differ on whether the (credit-costing) AI Business Analysis fires afterward
+  // and whether the page navigates away. Previously there was only the combined action, so
+  // saving anything small (e.g. adding a competitor) meant re-running the full analysis or not
+  // saving at all.
+  async function saveProfile(runAnalysis: boolean) {
     setError(null)
     try {
       // The Trend Intelligence n8n workflow still reads `competitors` as a plain comma-separated
@@ -308,19 +312,39 @@ export default function BusinessProfile() {
       const competitorNames = (form.competitor_profiles || []).map((c) => c.name).join(', ')
       const payload: BusinessProfileInput = { ...form, competitors: competitorNames || form.competitors }
       const profile = isNew ? await createProfile(payload) : await updateProfile(id!, payload)
-      await triggerAiAnalysis(profile.id)
+      if (runAnalysis) await triggerAiAnalysis(profile.id)
       // Otherwise the sidebar switcher and /clients list would keep the previous 5-minute-old
       // profile list until their own staleTime expired — a just-created or just-renamed profile
       // wouldn't show up (or show its old name) until then.
       qc.invalidateQueries({ queryKey: qk.profiles })
       qc.invalidateQueries({ queryKey: qk.navCounts })
       setSaved(true)
-      setTimeout(() => navigate('/intelligence'), 900)
+      setSavedAnalysis(runAnalysis)
+      if (runAnalysis) {
+        setTimeout(() => navigate('/intelligence'), 900)
+      } else if (isNew) {
+        // A brand-new profile has no id in the URL yet — land on the saved record so a plain
+        // Save on a new profile doesn't leave the form looking unsaved.
+        navigate(`/clients/${profile.id}`)
+      } else {
+        setTimeout(() => setSaved(false), 2000)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
     } finally {
-      setSaving(false)
+      setSavingKind(null)
     }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setSavingKind('analysis')
+    await saveProfile(true)
+  }
+
+  async function onSaveOnly() {
+    setSavingKind('plain')
+    await saveProfile(false)
   }
 
   if (loading) {
@@ -727,10 +751,17 @@ export default function BusinessProfile() {
         </Panel>
 
         {error && <div className="text-sm text-[var(--accent-orange)]">{error}</div>}
-        {saved && <div className="text-sm text-sage">Saved — AI Business Analysis started.</div>}
+        {saved && (
+          <div className="text-sm text-sage">
+            {savedAnalysis ? 'Saved — AI Business Analysis started.' : 'Saved.'}
+          </div>
+        )}
 
-        <div className="flex justify-end">
-          <Button type="submit" loading={saving}>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" loading={savingKind === 'plain'} onClick={onSaveOnly} disabled={savingKind !== null}>
+            Save
+          </Button>
+          <Button type="submit" loading={savingKind === 'analysis'} disabled={savingKind !== null}>
             Save &amp; run analysis <Sparkles size={16} />
           </Button>
         </div>
