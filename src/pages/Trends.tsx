@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { TrendingUp, RefreshCw, ExternalLink } from 'lucide-react'
-import { listRuns, listSignals, triggerTrends, type TrendRun, type TrendSignal } from '../lib/trends'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { TrendingUp, PlayCircle, ExternalLink, Calendar, ChevronDown, ChevronUp, Clock } from 'lucide-react'
+import { listRuns, listSignals, listSignalsSince, triggerTrends, type TrendRun, type TrendSignal } from '../lib/trends'
 import { PageHeader, Badge, Button, EmptyState, Spinner } from '../components/ui'
 import { useProfile } from '../lib/queries'
 
@@ -14,6 +14,7 @@ const SOURCE_COLOR: Record<string, string> = {
   YouTube: '#FF0000',
   LinkedIn: '#0A66C2',
   Facebook: '#1877F2',
+  'Google Search': 'var(--accent-blue)',
   'SEO Keywords': 'var(--accent-green)',
   'Competitor campaigns': 'var(--accent-blue)',
 }
@@ -26,21 +27,29 @@ function relevanceColor(score: number) {
   return score >= 70 ? 'var(--accent-green)' : score >= 40 ? 'var(--accent-orange)' : 'var(--text-muted)'
 }
 
-function SignalCard({ sig, businessName }: { sig: TrendSignal; businessName: string }) {
+function SignalCard({ sig, businessName, showDate }: { sig: TrendSignal; businessName: string; showDate?: boolean }) {
   const rel = sig.relevance_score ?? 0
   const relColor = relevanceColor(rel)
-  const isKeywordPhrase = sig.source === 'SEO Keywords' && !sig.url
+  // Numeric signals (search-volume/growth %, live trending leaderboards) never carry a URL —
+  // there's no article or post to link to, only a number. Falls back to a search link for any
+  // urlless signal.
+  const isKeywordPhrase = !sig.url
   const href = sig.url || (isKeywordPhrase ? `https://www.google.com/search?q=${encodeURIComponent(sig.topic)}` : null)
 
   return (
     <div className="card p-4 flex flex-col">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span
           className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-white"
           style={{ background: sourceColor(sig.source) }}
         >
           {sig.source}
         </span>
+        {/* Only shown when multiple days are mixed in one view (a date-range filter or a History
+            entry) — in the single-scan view every card shares the same date, shown once above. */}
+        {showDate && (
+          <span className="text-[11px] text-muted">{new Date(sig.created_at).toLocaleDateString()}</span>
+        )}
         <span
           className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1"
           style={{ color: relColor, border: `1px solid ${relColor}` }}
@@ -76,18 +85,122 @@ function SignalCard({ sig, businessName }: { sig: TrendSignal; businessName: str
   )
 }
 
+/** A signal grid with its own platform-filter chips — used both for the main view and for a
+ *  History entry expanded inline, so both look and behave identically rather than one being a
+ *  cut-down version of the other. */
+function SignalGrid({ signals, businessName, showDate }: { signals: TrendSignal[]; businessName: string; showDate: boolean }) {
+  const [filter, setFilter] = useState<string | null>(null)
+  const sources = useMemo(() => Array.from(new Set(signals.map((s) => s.source))).sort(), [signals])
+  const visible = filter ? signals.filter((s) => s.source === filter) : signals
+
+  return (
+    <>
+      {sources.length > 1 && (
+        <div className="flex gap-2 flex-wrap mb-4">
+          <button
+            onClick={() => setFilter(null)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all"
+            style={{
+              background: !filter ? 'var(--accent-blue)' : 'var(--fill-secondary)',
+              color: !filter ? '#fff' : 'var(--text-primary)',
+              border: `1.5px solid ${!filter ? 'var(--accent-blue)' : 'var(--border-subtle)'}`,
+            }}
+          >
+            All <span className="opacity-80">({signals.length})</span>
+          </button>
+          {sources.map((s) => {
+            const active = filter === s
+            const color = sourceColor(s)
+            return (
+              <button
+                key={s}
+                onClick={() => setFilter(s)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all"
+                style={{
+                  background: active ? color : 'var(--fill-secondary)',
+                  color: active ? '#fff' : 'var(--text-primary)',
+                  border: `1.5px solid ${active ? color : 'var(--border-subtle)'}`,
+                }}
+              >
+                {s} <span className="opacity-80">({signals.filter((x) => x.source === s).length})</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {visible.length === 0 ? (
+        <EmptyState icon={<TrendingUp size={28} />} title="No signals for this source" />
+      ) : (
+        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+          {visible.map((s) => (
+            <SignalCard key={s.id} sig={s} businessName={businessName} showDate={showDate} />
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+/** One History row — collapsed shows real counts computed from its own signals (not the
+ *  n8n-written sources_completed column, which this pipeline never populated and always read as
+ *  "0 sources"); expanded reveals the exact same grid used everywhere else on this page. */
+function HistoryRow({ run, signals, businessName }: { run: TrendRun; signals: TrendSignal[]; businessName: string }) {
+  const [open, setOpen] = useState(false)
+  const sourceCount = new Set(signals.map((s) => s.source)).size
+
+  return (
+    <div className="card !p-0 overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="p-3 flex items-center justify-between w-full text-left hover:bg-[var(--fill-secondary)] transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-secondary">{new Date(run.created_at).toLocaleString()}</span>
+          {run.status === 'failed' && <Badge tone="orange">Failed</Badge>}
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge tone="grey">{signals.length} signal{signals.length === 1 ? '' : 's'} · {sourceCount} source{sourceCount === 1 ? '' : 's'}</Badge>
+          {open ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
+        </div>
+      </button>
+      {open && (
+        <div className="p-4 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+          {run.ai_summary && <div className="text-xs text-secondary mb-4">{run.ai_summary}</div>}
+          {signals.length === 0 ? (
+            <EmptyState icon={<TrendingUp size={24} />} title="No signals from this run" />
+          ) : (
+            <SignalGrid signals={signals} businessName={businessName} showDate={false} />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type DateRange = 'latest' | '7d' | '30d' | 'all' | 'custom'
+
 export default function Trends() {
   const { data: profile } = useProfile()
-  // Every "Refresh trends" click writes a brand-new trend_runs row rather than overwriting the
-  // last one — runs holds the full history (newest first), selectedRunId picks which one's
-  // signals are on screen. That's what lets a fresh run land on top while the previous run
-  // drops into History below it, instead of the old result just vanishing.
+  // Every scan (manual or the daily automated one) writes a brand-new trend_runs row rather than
+  // overwriting the last one — runs holds the full history (newest first).
   const [runs, setRuns] = useState<TrendRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [signals, setSignals] = useState<TrendSignal[]>([])
   const [refreshing, setRefreshing] = useState(false)
-  const [sourceFilter, setSourceFilter] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Date-range filter: 'latest' is the single-scan view unchanged; the others pool signals
+  // across every run in that window, meaningful now that scans run daily via the scheduler.
+  const [dateRange, setDateRange] = useState<DateRange>('latest')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
+  const [aggregateSignals, setAggregateSignals] = useState<TrendSignal[]>([])
+  const [aggregateLoading, setAggregateLoading] = useState(false)
+
+  // All-time signals, fetched once and grouped client-side by run — powers the History
+  // accordion's real per-run counts and its inline grids, independent of the top date filter
+  // (History is a complete browsable archive, not itself filtered by the current range).
+  const [allSignals, setAllSignals] = useState<TrendSignal[]>([])
 
   const loadRuns = useCallback(async (profileId: string) => {
     const list = await listRuns(profileId)
@@ -96,12 +209,14 @@ export default function Trends() {
   }, [])
 
   useEffect(() => {
-    if (profile) loadRuns(profile.id)
+    if (profile) {
+      loadRuns(profile.id)
+      listSignalsSince(profile.id).then(setAllSignals)
+    }
   }, [profile, loadRuns])
 
   // Jump to the newest run whenever it changes (a fresh run just landed) — but leave the
-  // selection alone otherwise, so browsing an older run from History isn't yanked out from
-  // under you by an unrelated poll tick.
+  // selection alone otherwise, so browsing History isn't yanked out from under you by a poll.
   const newestId = runs[0]?.id ?? null
   useEffect(() => {
     if (newestId) setSelectedRunId((cur) => cur ?? newestId)
@@ -115,13 +230,36 @@ export default function Trends() {
     listSignals(selectedRunId).then(setSignals)
   }, [selectedRunId])
 
+  // Fetches once per dateRange/custom-range change. 'latest' needs no fetch — `signals` already
+  // has what it needs.
+  useEffect(() => {
+    if (dateRange === 'latest' || !profile) return
+    if (dateRange === 'custom') {
+      if (!customStart) return
+      const since = new Date(customStart).toISOString()
+      const until = customEnd ? new Date(new Date(customEnd).getTime() + 86_399_000).toISOString() : undefined
+      setAggregateLoading(true)
+      listSignalsSince(profile.id, since, until).then(setAggregateSignals).finally(() => setAggregateLoading(false))
+      return
+    }
+    const since = dateRange === 'all' ? undefined
+      : new Date(Date.now() - (dateRange === '7d' ? 7 : 30) * 86400_000).toISOString()
+    setAggregateLoading(true)
+    listSignalsSince(profile.id, since).then(setAggregateSignals).finally(() => setAggregateLoading(false))
+  }, [dateRange, customStart, customEnd, profile])
+
   const run = runs.find((r) => r.id === selectedRunId) ?? null
 
+  // Poll while a scan is active (manual click, or the daily scheduler firing unattended) — also
+  // refreshes allSignals so History picks up a just-finished run without a manual reload.
   useEffect(() => {
     if (!profile) return
     const isActive = runs[0]?.status === 'processing'
     if (isActive && !pollRef.current) {
-      pollRef.current = setInterval(() => loadRuns(profile.id), 4000)
+      pollRef.current = setInterval(() => {
+        loadRuns(profile.id)
+        listSignalsSince(profile.id).then(setAllSignals)
+      }, 4000)
     } else if (!isActive && pollRef.current) {
       clearInterval(pollRef.current)
       pollRef.current = null
@@ -132,22 +270,21 @@ export default function Trends() {
     }
   }, [profile, runs, loadRuns])
 
-  async function onRefresh() {
+  async function onManualScan() {
     if (!profile) return
     setRefreshing(true)
     const before = runs[0]?.id ?? null
     await triggerTrends(profile.id)
-    // triggerTrends only fires the webhook — it responds immediately, but the actual 8-source
-    // scan + AI ranking happens async in n8n afterward and never writes an interim "processing"
-    // row (it inserts once, at the end). Checking once right after triggering almost always ran
-    // before that row existed, so the button did fire it correctly but the page just kept
-    // showing "No trend scan yet" until you happened to reload. Poll for a genuinely NEW run
-    // (not just any run — an old completed one would otherwise pass instantly) instead.
+    // triggerTrends only fires the webhook — it responds immediately, but the actual scan runs
+    // async in n8n and never writes an interim "processing" row (it inserts once, at the end).
+    // Poll for a genuinely NEW run rather than any run, since an old completed one would
+    // otherwise pass instantly.
     for (let i = 0; i < 20; i++) {
       await new Promise((r) => setTimeout(r, 3000))
       const fresh = await loadRuns(profile.id)
       if (fresh[0] && fresh[0].id !== before) {
         setSelectedRunId(fresh[0].id)
+        listSignalsSince(profile.id).then(setAllSignals)
         break
       }
     }
@@ -171,36 +308,110 @@ export default function Trends() {
     )
   }
 
-  const sources = Array.from(new Set(signals.map((s) => s.source))).sort()
-  const visible = sourceFilter ? signals.filter((s) => s.source === sourceFilter) : signals
+  // Hoisted out of nested closures below so TS keeps the `profile` non-null narrowing from the
+  // early-return guards above.
+  const businessName = profile.business_name || 'this business'
+  const isRangeView = dateRange !== 'latest'
+  const activeSignals = isRangeView ? aggregateSignals : signals
   const isActive = run?.status === 'processing'
-  const history = runs.filter((r) => r.id !== selectedRunId)
   const viewingLatest = !!run && run.id === newestId
+  // Every OTHER run, newest first, each with its own real signals sliced out of the one all-time
+  // fetch above — no per-row query needed.
+  const history = runs
+    .filter((r) => r.id !== selectedRunId)
+    .map((r) => ({ run: r, signals: allSignals.filter((s) => s.run_id === r.id) }))
 
   function selectRun(id: string) {
     setSelectedRunId(id)
-    setSourceFilter(null)
+    setDateRange('latest')
   }
+
+  const RANGE_OPTIONS: { key: DateRange; label: string }[] = [
+    { key: 'latest', label: 'Latest scan' },
+    { key: '7d', label: 'Last 7 days' },
+    { key: '30d', label: 'Last 30 days' },
+    { key: 'all', label: 'All time' },
+    { key: 'custom', label: 'Custom range' },
+  ]
 
   return (
     <div>
       <PageHeader
         accent={<Badge tone="blue"><TrendingUp size={12} /> Trends</Badge>}
         title={`Trend Intelligence — ${profile.business_name}`}
-        subtitle={`8 sources ranked for ${profile.business_name} relevance: Google Trends, Google News, Reddit, Instagram, YouTube, LinkedIn, SEO keywords, Competitor campaigns.`}
+        subtitle="Ranked by relevance, sourced from real Reddit, Instagram, YouTube, Google Search, and Google Trends data. Scans automatically every 24 hours, or run one now."
         actions={
-          <Button variant="ghost" onClick={onRefresh} loading={refreshing || isActive}>
-            <RefreshCw size={15} /> Refresh trends
+          <Button variant="ghost" onClick={onManualScan} loading={refreshing || isActive}>
+            <PlayCircle size={15} /> Run manual scan
           </Button>
         }
       />
 
-      {!run ? (
-        <EmptyState icon={<TrendingUp size={28} />} title="No trend scan yet" hint="Click Refresh trends to run the first scan." />
+      {/* One filter area: date range (with a custom start/end option) — daily auto-scans mean
+          there's real history to pool signals from, not just one run at a time. */}
+      <div className="card p-4 mb-5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Calendar size={14} className="text-muted shrink-0" />
+          {RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setDateRange(opt.key)}
+              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+              style={{
+                background: dateRange === opt.key ? 'var(--accent-green)' : 'var(--fill-secondary)',
+                color: dateRange === opt.key ? 'var(--bg-primary)' : 'var(--text-primary)',
+                border: `1.5px solid ${dateRange === opt.key ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+          <span className="ml-auto flex items-center gap-1.5 text-[11px] text-muted">
+            <Clock size={12} /> Auto-scans every 24h
+          </span>
+        </div>
+        {dateRange === 'custom' && (
+          <div className="flex items-center gap-3 mt-3 pt-3 border-t flex-wrap" style={{ borderColor: 'var(--border-subtle)' }}>
+            <label className="text-xs text-muted flex items-center gap-2">
+              From
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="input !py-1 !px-2 text-xs"
+              />
+            </label>
+            <label className="text-xs text-muted flex items-center gap-2">
+              To
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="input !py-1 !px-2 text-xs"
+              />
+            </label>
+            {!customStart && <span className="text-xs text-muted">Pick a start date to see signals</span>}
+          </div>
+        )}
+      </div>
+
+      {isRangeView ? (
+        aggregateLoading ? (
+          <div className="card p-8 flex flex-col items-center gap-3 text-center">
+            <Spinner size={22} />
+            <div className="text-sm text-secondary">Loading signals from this period…</div>
+          </div>
+        ) : activeSignals.length === 0 ? (
+          <EmptyState icon={<TrendingUp size={28} />} title="No signals in this period" hint="Signals accumulate as scans run — check back later, or widen the range." />
+        ) : (
+          <SignalGrid signals={activeSignals} businessName={businessName} showDate />
+        )
+      ) : !run ? (
+        <EmptyState icon={<TrendingUp size={28} />} title="No trend scan yet" hint="Click Run manual scan to run the first one." />
       ) : isActive ? (
         <div className="card p-8 flex flex-col items-center gap-3 text-center">
           <Spinner size={22} />
-          <div className="text-sm text-secondary">Scanning 8 sources and ranking signals…</div>
+          <div className="text-sm text-secondary">Scanning sources and ranking signals…</div>
         </div>
       ) : (
         <>
@@ -222,75 +433,18 @@ export default function Trends() {
             </div>
           )}
 
-          {sources.length > 0 && (
-            <div className="flex gap-2 flex-wrap mb-5">
-              <button
-                onClick={() => setSourceFilter(null)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-                style={{
-                  background: !sourceFilter ? 'var(--accent-blue)' : 'var(--fill-secondary)',
-                  color: !sourceFilter ? '#fff' : 'var(--text-primary)',
-                  border: `1.5px solid ${!sourceFilter ? 'var(--accent-blue)' : 'var(--border-subtle)'}`,
-                }}
-              >
-                All
-                <span
-                  className="text-[10px] px-1.5 rounded-full"
-                  style={{ background: !sourceFilter ? 'rgba(255,255,255,0.25)' : 'var(--fill-tertiary)' }}
-                >
-                  {signals.length}
-                </span>
-              </button>
-              {sources.map((s) => {
-                const active = sourceFilter === s
-                const color = sourceColor(s)
-                return (
-                  <button
-                    key={s}
-                    onClick={() => setSourceFilter(s)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-                    style={{
-                      background: active ? color : 'var(--fill-secondary)',
-                      color: active ? '#fff' : 'var(--text-primary)',
-                      border: `1.5px solid ${active ? color : 'var(--border-subtle)'}`,
-                    }}
-                  >
-                    {s}
-                    <span
-                      className="text-[10px] px-1.5 rounded-full"
-                      style={{ background: active ? 'rgba(255,255,255,0.25)' : 'var(--fill-tertiary)' }}
-                    >
-                      {signals.filter((x) => x.source === s).length}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {visible.length === 0 ? (
-            <EmptyState icon={<TrendingUp size={28} />} title="No signals for this source" />
+          {signals.length === 0 ? (
+            <EmptyState icon={<TrendingUp size={28} />} title="No signals from this scan" />
           ) : (
-            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-              {visible.map((s) => (
-                <SignalCard key={s.id} sig={s} businessName={profile.business_name || 'this business'} />
-              ))}
-            </div>
+            <SignalGrid signals={signals} businessName={businessName} showDate={false} />
           )}
 
           {history.length > 0 && (
             <>
               <div className="text-sm font-medium text-secondary mb-3 mt-8">History</div>
               <div className="space-y-2">
-                {history.map((r) => (
-                  <button
-                    key={r.id}
-                    onClick={() => selectRun(r.id)}
-                    className="card p-3 flex items-center justify-between hover:border-sage/40 transition-colors w-full text-left"
-                  >
-                    <span className="text-sm text-secondary">{new Date(r.created_at).toLocaleString()}</span>
-                    <Badge tone="grey">{r.sources_completed?.length ?? 0} sources</Badge>
-                  </button>
+                {history.map(({ run: r, signals: sigs }) => (
+                  <HistoryRow key={r.id} run={r} signals={sigs} businessName={businessName} />
                 ))}
               </div>
             </>

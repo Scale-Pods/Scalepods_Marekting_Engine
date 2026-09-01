@@ -58,3 +58,20 @@ export async function listSignals(runId: string): Promise<TrendSignal[]> {
 export async function triggerTrends(profileId: string): Promise<void> {
   await fireWebhook('sp-trends', { profileId })
 }
+
+/** All signals for a profile across EVERY run since `sinceIso` (or all-time if omitted), and
+ *  optionally up to `untilIso` (for a custom start-end range) — the cross-day view. listSignals()
+ *  above stays scoped to one run for the single-scan view; this is what makes "last 7 days" or a
+ *  custom "Aug 1 – Aug 15" range possible now that scans run daily. */
+export async function listSignalsSince(profileId: string, sinceIso?: string, untilIso?: string): Promise<TrendSignal[]> {
+  let query = supabase
+    .from('trend_signals')
+    .select('*')
+    .eq('profile_id', profileId)
+    .order('created_at', { ascending: false })
+  if (sinceIso) query = query.gte('created_at', sinceIso)
+  if (untilIso) query = query.lte('created_at', untilIso)
+  const { data, error } = await query
+  if (error) throw error
+  return data as TrendSignal[]
+}
