@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Building2, Sparkles, UploadCloud, X, Pencil } from 'lucide-react'
 import {
-  getProfile, createProfile, updateProfile, triggerAiAnalysis, type BusinessProfileInput,
+  Building2, Sparkles, UploadCloud, X, Pencil, Plus, Trash2, Globe,
+  Instagram, Facebook, Linkedin, Youtube, Wand2, Check,
+} from 'lucide-react'
+import {
+  getProfile, createProfile, updateProfile, triggerAiAnalysis, type BusinessProfileInput, type Competitor,
 } from '../lib/clients'
+import { startCompetitorSearch, getSearchRun, type CompetitorSearchRun } from '../lib/competitors'
 import { supabase, sanitizeStorageFilename } from '../lib/supabase'
 import { qk } from '../lib/queries'
 import { PageHeader, Button, Panel, Badge, Spinner } from '../components/ui'
@@ -16,10 +20,67 @@ const EMPTY: BusinessProfileInput = {
   products_services: '', target_audience: '', business_goals: '',
   brand_guidelines: '', brand_voice: '',
   target_platforms: ['linkedin', 'instagram'],
-  competitors: '', website_url: '',
+  competitors: '', competitor_profiles: [], website_url: '',
   social_media_urls: {}, assets: [], additional_notes: '',
   phone: '', email: '', address: '', hours: '', service_areas: [],
   fb_page_id: '', logo_url: null, cover_url: null, status: 'active',
+}
+
+function uid(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `c-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+const COMPETITOR_SOCIAL_FIELDS: { key: keyof Competitor['socials']; label: string }[] = [
+  { key: 'instagram', label: 'Instagram URL' },
+  { key: 'facebook', label: 'Facebook URL' },
+  { key: 'linkedin', label: 'LinkedIn URL' },
+  { key: 'youtube', label: 'YouTube URL' },
+]
+
+/** One-at-a-time add/edit form for a structured competitor entry — mirrors the "Social URLs &
+ *  platform IDs" grid pattern already on this page, scoped to a single competitor. */
+function CompetitorForm({ initial, onSave, onCancel }: { initial?: Competitor; onSave: (c: Competitor) => void; onCancel: () => void }) {
+  const [name, setName] = useState(initial?.name ?? '')
+  const [website, setWebsite] = useState(initial?.website ?? '')
+  const [socials, setSocials] = useState<Competitor['socials']>(initial?.socials ?? {})
+
+  return (
+    <div className="panel p-4 space-y-3">
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label className="label">Competitor name</label>
+          <input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="e.g. Acme Agency" />
+        </div>
+        <div>
+          <label className="label">Official website</label>
+          <input className="input mt-1" type="url" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
+        </div>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {COMPETITOR_SOCIAL_FIELDS.map(({ key, label }) => (
+          <div key={key}>
+            <label className="label">{label}</label>
+            <input
+              className="input mt-1"
+              value={socials[key] ?? ''}
+              onChange={(e) => setSocials((s) => ({ ...s, [key]: e.target.value }))}
+              placeholder="https://"
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
+        <Button
+          type="button"
+          onClick={() => name.trim() && onSave({ id: initial?.id ?? uid(), name: name.trim(), website: website.trim() || null, socials, source: initial?.source ?? 'manual' })}
+          disabled={!name.trim()}
+        >
+          Save competitor
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 function TagsEditor({ value, onChange, placeholder }: { value: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
@@ -68,6 +129,12 @@ export default function BusinessProfile() {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
+  const [addingCompetitor, setAddingCompetitor] = useState(false)
+  const [editingCompetitorId, setEditingCompetitorId] = useState<string | null>(null)
+  const [aiRun, setAiRun] = useState<CompetitorSearchRun | null>(null)
+  const [aiSelected, setAiSelected] = useState<Set<number>>(new Set())
+  const [aiError, setAiError] = useState<string | null>(null)
+
   useEffect(() => {
     if (isNew) return
     getProfile(id!).then((p) => {
@@ -87,6 +154,53 @@ export default function BusinessProfile() {
 
   function setSocial(key: string, value: string) {
     set('social_media_urls', { ...(form.social_media_urls || {}), [key]: value })
+  }
+
+  // Poll the AI competitor-search run until it lands on completed/failed. Same fallback-polling
+  // approach as Trends.tsx uses for trend_runs — a plain interval is simpler than wiring another
+  // Realtime channel for a run that only ever takes one shot, not a recurring job.
+  useEffect(() => {
+    if (!aiRun || aiRun.status === 'completed' || aiRun.status === 'failed') return
+    const runId = aiRun.id
+    const t = setInterval(async () => {
+      try {
+        const fresh = await getSearchRun(runId)
+        if (fresh) setAiRun(fresh)
+      } catch {
+        // transient network hiccup — next tick retries
+      }
+    }, 4000)
+    return () => clearInterval(t)
+  }, [aiRun])
+
+  // Pre-check every candidate GPT didn't flag as low-confidence, once a run completes.
+  useEffect(() => {
+    if (aiRun?.status === 'completed') {
+      setAiSelected(new Set(aiRun.results.map((_, i) => i).filter((i) => aiRun.results[i].confidence !== 'low')))
+    }
+  }, [aiRun?.id, aiRun?.status])
+
+  async function onSearchAI() {
+    if (isNew) return
+    setAiError(null)
+    try {
+      const run = await startCompetitorSearch(id!)
+      setAiRun(run)
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'AI search failed to start')
+    }
+  }
+
+  function addSelectedCandidates() {
+    if (!aiRun) return
+    const existingNames = new Set((form.competitor_profiles || []).map((c) => c.name.trim().toLowerCase()))
+    const toAdd: Competitor[] = aiRun.results
+      .filter((_, i) => aiSelected.has(i))
+      .filter((c) => !existingNames.has(c.name.trim().toLowerCase()))
+      .map((c) => ({ id: uid(), name: c.name, website: c.website, socials: c.socials, source: 'ai' as const }))
+    set('competitor_profiles', [...(form.competitor_profiles || []), ...toAdd])
+    setAiRun(null)
+    setAiSelected(new Set())
   }
 
   async function uploadToStorage(file: File, tag: string): Promise<string> {
@@ -164,7 +278,12 @@ export default function BusinessProfile() {
     setSaving(true)
     setError(null)
     try {
-      const profile = isNew ? await createProfile(form) : await updateProfile(id!, form)
+      // The Trend Intelligence n8n workflow still reads `competitors` as a plain comma-separated
+      // name list for its growth-keyword queries — derive it from the structured entries instead
+      // of asking the user to keep two competitor fields in sync.
+      const competitorNames = (form.competitor_profiles || []).map((c) => c.name).join(', ')
+      const payload: BusinessProfileInput = { ...form, competitors: competitorNames || form.competitors }
+      const profile = isNew ? await createProfile(payload) : await updateProfile(id!, payload)
       await triggerAiAnalysis(profile.id)
       // Otherwise the sidebar switcher and /clients list would keep the previous 5-minute-old
       // profile list until their own staleTime expired — a just-created or just-renamed profile
@@ -342,8 +461,150 @@ export default function BusinessProfile() {
         </Panel>
 
         <Panel>
-          <div className="font-medium mb-4">Competitors</div>
-          <textarea className="input" rows={2} value={form.competitors ?? ''} onChange={(e) => set('competitors', e.target.value)} placeholder="Competitor names / URLs, comma-separated" />
+          <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+            <div className="font-medium">Competitors</div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onSearchAI}
+                loading={aiRun?.status === 'pending' || aiRun?.status === 'processing'}
+                disabled={isNew}
+                title={isNew ? 'Save the profile first' : 'Have AI find real competitors from your business info'}
+              >
+                <Wand2 size={15} /> Search using AI
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setAddingCompetitor(true)}>
+                <Plus size={15} /> Add competitor
+              </Button>
+            </div>
+          </div>
+          {isNew && <div className="text-muted text-xs mb-3">Save the profile once, then AI search can look up real competitors for you.</div>}
+
+          {aiError && <div className="text-sm text-[var(--accent-orange)] mb-3">{aiError}</div>}
+
+          {(aiRun?.status === 'pending' || aiRun?.status === 'processing') && (
+            <div className="panel p-3 mb-3 flex items-center gap-2 text-sm text-muted">
+              <Spinner size={14} /> Searching the web for real competitors — this can take a minute…
+            </div>
+          )}
+
+          {aiRun?.status === 'failed' && (
+            <div className="panel p-3 mb-3 text-sm text-[var(--accent-orange)] flex items-center justify-between gap-2 flex-wrap">
+              <span>AI search failed{aiRun.error_message ? `: ${aiRun.error_message}` : '.'}</span>
+              <Button type="button" variant="ghost" onClick={onSearchAI}>Try again</Button>
+            </div>
+          )}
+
+          {aiRun?.status === 'completed' && (
+            <div className="panel p-4 mb-3 space-y-2">
+              <div className="text-sm font-medium mb-1">
+                {aiRun.results.length
+                  ? `Found ${aiRun.results.length} possible competitor${aiRun.results.length === 1 ? '' : 's'} — review and add:`
+                  : 'No confident competitors turned up from the search. Try adding more detail (industry, description) and search again.'}
+              </div>
+              {aiRun.results.map((c, i) => (
+                <label key={`${c.name}-${i}`} className="flex items-start gap-3 p-2 rounded cursor-pointer hover:bg-white/5">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={aiSelected.has(i)}
+                    onChange={(e) => setAiSelected((s) => {
+                      const next = new Set(s)
+                      if (e.target.checked) next.add(i); else next.delete(i)
+                      return next
+                    })}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm">{c.name}</span>
+                      <span className="badge text-[10px] capitalize">{c.confidence} confidence</span>
+                    </div>
+                    <div className="text-xs text-muted flex items-center gap-2.5 flex-wrap mt-0.5">
+                      {c.website && (
+                        <a href={c.website} target="_blank" rel="noreferrer" className="hover:text-sage inline-flex items-center gap-1">
+                          <Globe size={11} />{c.website.replace(/^https?:\/\//, '')}
+                        </a>
+                      )}
+                      {c.socials.instagram && <a href={c.socials.instagram} target="_blank" rel="noreferrer" className="hover:text-sage"><Instagram size={12} /></a>}
+                      {c.socials.facebook && <a href={c.socials.facebook} target="_blank" rel="noreferrer" className="hover:text-sage"><Facebook size={12} /></a>}
+                      {c.socials.linkedin && <a href={c.socials.linkedin} target="_blank" rel="noreferrer" className="hover:text-sage"><Linkedin size={12} /></a>}
+                      {c.socials.youtube && <a href={c.socials.youtube} target="_blank" rel="noreferrer" className="hover:text-sage"><Youtube size={12} /></a>}
+                    </div>
+                  </div>
+                </label>
+              ))}
+              <div className="flex justify-end gap-2 pt-1">
+                <Button type="button" variant="ghost" onClick={() => { setAiRun(null); setAiSelected(new Set()) }}>Dismiss</Button>
+                {aiRun.results.length > 0 && (
+                  <Button type="button" onClick={addSelectedCandidates} disabled={aiSelected.size === 0}>
+                    <Check size={15} /> Add {aiSelected.size || ''} selected
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {(form.competitor_profiles || []).map((c) =>
+              editingCompetitorId === c.id ? (
+                <CompetitorForm
+                  key={c.id}
+                  initial={c}
+                  onSave={(updated) => {
+                    set('competitor_profiles', (form.competitor_profiles || []).map((x) => (x.id === updated.id ? updated : x)))
+                    setEditingCompetitorId(null)
+                  }}
+                  onCancel={() => setEditingCompetitorId(null)}
+                />
+              ) : (
+                <div key={c.id} className="panel p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm">{c.name}</span>
+                      {c.source === 'ai' && <span className="badge text-[10px]">Found by AI</span>}
+                    </div>
+                    <div className="text-xs text-muted flex items-center gap-2.5 flex-wrap mt-0.5">
+                      {c.website && (
+                        <a href={c.website} target="_blank" rel="noreferrer" className="hover:text-sage inline-flex items-center gap-1">
+                          <Globe size={11} />{c.website.replace(/^https?:\/\//, '')}
+                        </a>
+                      )}
+                      {c.socials.instagram && <a href={c.socials.instagram} target="_blank" rel="noreferrer" className="hover:text-sage"><Instagram size={12} /></a>}
+                      {c.socials.facebook && <a href={c.socials.facebook} target="_blank" rel="noreferrer" className="hover:text-sage"><Facebook size={12} /></a>}
+                      {c.socials.linkedin && <a href={c.socials.linkedin} target="_blank" rel="noreferrer" className="hover:text-sage"><Linkedin size={12} /></a>}
+                      {c.socials.youtube && <a href={c.socials.youtube} target="_blank" rel="noreferrer" className="hover:text-sage"><Youtube size={12} /></a>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button type="button" onClick={() => setEditingCompetitorId(c.id)} className="p-1.5 hover:text-sage" title="Edit">
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => set('competitor_profiles', (form.competitor_profiles || []).filter((x) => x.id !== c.id))}
+                      className="p-1.5 hover:text-[var(--accent-orange)]"
+                      title="Remove"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+            {addingCompetitor && (
+              <CompetitorForm
+                onSave={(c) => {
+                  set('competitor_profiles', [...(form.competitor_profiles || []), c])
+                  setAddingCompetitor(false)
+                }}
+                onCancel={() => setAddingCompetitor(false)}
+              />
+            )}
+            {!addingCompetitor && (form.competitor_profiles || []).length === 0 && (
+              <div className="text-muted text-sm">No competitors added yet.</div>
+            )}
+          </div>
         </Panel>
 
         <Panel>

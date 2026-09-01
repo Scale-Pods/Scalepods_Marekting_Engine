@@ -1,5 +1,21 @@
 import { supabase, fireWebhook } from './supabase'
 
+/** One structured competitor entry — replaces the old free-text "Competitors" textarea.
+ *  `source` distinguishes a manually-typed entry from one accepted out of an AI search run
+ *  (competitors.ts), purely for display ("Found by AI" badge); both are edited identically. */
+export interface Competitor {
+  id: string
+  name: string
+  website: string | null
+  socials: {
+    instagram?: string
+    facebook?: string
+    linkedin?: string
+    youtube?: string
+  }
+  source: 'manual' | 'ai'
+}
+
 export interface BusinessProfile {
   id: string
   business_name: string | null
@@ -13,6 +29,7 @@ export interface BusinessProfile {
   brand_voice: string | null
   target_platforms: string[]
   competitors: string | null
+  competitor_profiles: Competitor[]
   website_url: string | null
   social_media_urls: Record<string, string>
   assets: { name: string; url: string }[]
