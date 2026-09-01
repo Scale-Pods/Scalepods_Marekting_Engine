@@ -9,6 +9,26 @@ export interface CalendarItem {
   pillar?: string
 }
 
+/** Real numeric/enum signals computed in n8n code (never GPT-authored) from actual post
+ *  performance + ai_insights, then wrapped in GPT-written prose. See the note on
+ *  `pillar_balance` below for why this is a separate concept from `content_pillars`. */
+export interface HeaderInsights {
+  best_lever: { title: string; evidence: string; recommendation: string } | null
+  weakest_pillar: { pillar: 'HR' | 'Sales' | 'Ops' | 'Marketing'; actual_pct: number; recommended_pct: number; note: string } | null
+  channel_mismatch: { stated_primary: string; actual_leader: string; stated_pct: number; actual_pct: number; note: string } | null
+}
+
+/** Quantitative pillar split — deliberately distinct from `content_pillars` (the free-form
+ *  narrative section: "why HR matters, example angles for Sales"). `recommended` is GPT's
+ *  suggested %-split; `actual` is spliced straight from the latest `ai_insights.pillar_mix`
+ *  real published-content counts, never trusted from GPT's own output. */
+export interface PillarBalance {
+  recommended: { hr: number; sales: number; ops: number; marketing: number }
+  actual: { hr: number; sales: number; ops: number; marketing: number; unclassified: number }
+  source_posts_analyzed: number
+  notes?: Partial<Record<'hr' | 'sales' | 'ops' | 'marketing', string>>
+}
+
 export interface MarketingStrategy {
   id: string
   profile_id: string
@@ -21,6 +41,10 @@ export interface MarketingStrategy {
   platform_strategy: unknown
   lead_generation_strategy: unknown
   cta_strategy: unknown
+  /** Null on any strategy generated before this redesign shipped — every renderer for these
+   *  two must handle null gracefully. */
+  header_insights: HeaderInsights | null
+  pillar_balance: PillarBalance | null
   /** Set when this strategy was generated via "General Strategy" on a specific trend card,
    *  rather than the broad "Regenerate all" — null for the latter. */
   source_signal_id: string | null
