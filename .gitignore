@@ -22,3 +22,7 @@ tsconfig.node.tsbuildinfo
 # same as vendor/fonts/. Source (gen.js, render.sh, slide templates, base.css) also tracked.
 carousel-studio/output/*
 !carousel-studio/output/.gitkeep
+
+# Unrelated local scratch project (user confirmed, not part of this app) — kept out of git
+# entirely rather than deleted, since it isn't mine to remove.
+trend-scraper/
