@@ -384,7 +384,7 @@ export default function CreatePostModal({
   }
 
   return (
-    <Modal title="Create post" onClose={onClose} size="xl">
+    <Modal title="Publish Now" onClose={onClose} size="xl">
       {/* Horizontal layout — form on the left, live "how it'll look" preview pinned on the
           right, same split used by the post-preview modals elsewhere in the app. Stacks to a
           single column on narrow screens. */}

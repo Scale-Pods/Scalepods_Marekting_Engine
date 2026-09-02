@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check, Filter, Megaphone, Plus } from 'lucide-react'
+import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check, Filter, Megaphone, Plus, Wand2 } from 'lucide-react'
 import { getLatestStrategy, type MarketingStrategy } from '../lib/strategy'
 import { useProfile, useLatestRun, useRunItems } from '../lib/queries'
 import {
@@ -171,15 +171,20 @@ export default function ContentFactory() {
           accent={<Badge><Sparkles size={12} /> Content Factory</Badge>}
           title="Content Factory"
           actions={
-            <Button variant="ghost" onClick={() => setComposerOpen(true)}>
-              <Plus size={15} /> Create post
-            </Button>
+            <div className="flex items-center gap-2">
+              <Link to="/studio" className="btn-ghost">
+                <Wand2 size={15} /> Create Post
+              </Link>
+              <Button variant="ghost" onClick={() => setComposerOpen(true)}>
+                <Plus size={15} /> Publish Now
+              </Button>
+            </div>
           }
         />
         <EmptyState
           icon={<Sparkles size={28} />}
           title="Approve a strategy first"
-          hint="The Content Factory reads the approved calendar. Go to Strategy and approve one before generating content — or create a post manually with the button above."
+          hint="The Content Factory reads the approved calendar. Go to Strategy and approve one before generating content — or build a single post in the AI Studio."
         />
         <div className="flex justify-center mt-4">
           <Link to="/strategy" className="btn-primary">Go to Strategy</Link>
@@ -243,8 +248,11 @@ export default function ContentFactory() {
             <Button variant="ghost" onClick={onGenerate} loading={generating} disabled={!GENERATION_ENABLED}>
               <RefreshCw size={15} /> {run ? 'Regenerate' : 'Generate content'}
             </Button>
+            <Link to="/studio" className="btn-ghost">
+              <Wand2 size={15} /> Create Post
+            </Link>
             <Button variant="ghost" onClick={() => setComposerOpen(true)}>
-              <Plus size={15} /> Create post
+              <Plus size={15} /> Publish Now
             </Button>
           </div>
         }

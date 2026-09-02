@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Wand2 } from 'lucide-react'
 import { useProfile, useCalendarItems, useScheduledPosts } from '../lib/queries'
 import type { ContentItem, ContentStatus } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
@@ -198,9 +198,14 @@ export default function Calendar() {
         title={`Calendar — ${profile.business_name}`}
         subtitle="Every post with a target date — draft, ready, scheduled, or published. Click a day to add one, click a post to view or schedule it."
         actions={
-          <Button onClick={() => openCreate()}>
-            <Plus size={15} /> Create post
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link to="/studio" className="btn-ghost">
+              <Wand2 size={15} /> Create Post
+            </Link>
+            <Button onClick={() => openCreate()}>
+              <Plus size={15} /> Publish Now
+            </Button>
+          </div>
         }
       />
 
