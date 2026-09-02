@@ -13,9 +13,9 @@ import { toggleTheme, getCurrentTheme, type Theme, type Role, ROLE_ACCENT } from
 
 type NavItem = { to: string; label: string; icon: ReactNode; roles: Role[] }
 
-// Grouped the same way as the "Marketing engine" / "Insight" section split — Analytics,
-// Intelligence, and Settings read/interpret data the engine produces rather than driving the
-// pipeline itself.
+// Grouped by pipeline stage: Marketing Engine (plan) -> Content Generation (make) ->
+// Publishing Engine (ship) -> Insight (Analytics/Intelligence/Settings read/interpret data the
+// engine produces rather than driving the pipeline itself).
 const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
   {
     section: 'Marketing Engine',
@@ -24,9 +24,19 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
       { to: '/clients', label: 'Business', icon: <Building2 size={18} />, roles: ['admin'] },
       { to: '/trends', label: 'Trends', icon: <TrendingUp size={18} />, roles: ['admin', 'client'] },
       { to: '/strategy', label: 'Strategy', icon: <Target size={18} />, roles: ['admin', 'client'] },
+    ],
+  },
+  {
+    section: 'Content Generation',
+    items: [
       { to: '/content', label: 'Content Factory', icon: <Sparkles size={18} />, roles: ['admin'] },
       { to: '/carousel-studio', label: 'Carousel Studio', icon: <Clapperboard size={18} />, roles: ['admin'] },
       { to: '/review', label: 'Creative Review', icon: <CheckSquare size={18} />, roles: ['admin', 'client', 'designer'] },
+    ],
+  },
+  {
+    section: 'Publishing Engine',
+    items: [
       { to: '/calendar', label: 'Calendar', icon: <CalendarDays size={18} />, roles: ['admin', 'client'] },
       { to: '/publishing', label: 'Publishing', icon: <Send size={18} />, roles: ['admin'] },
       { to: '/blog', label: 'Blog', icon: <Newspaper size={18} />, roles: ['admin', 'client'] },
