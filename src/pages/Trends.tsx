@@ -7,6 +7,7 @@ import {
 } from '../lib/trends'
 import { triggerStrategy } from '../lib/strategy'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
+import { QuickPostModal } from '../components/trends/QuickPostModal'
 import { useProfile } from '../lib/queries'
 import { useToast, toastMessage } from '../components/Toast'
 
@@ -45,6 +46,7 @@ function SignalCard({ sig, businessName, showDate, profileId }: { sig: TrendSign
   const navigate = useNavigate()
   const toast = useToast()
   const [generating, setGenerating] = useState(false)
+  const [quickPostOpen, setQuickPostOpen] = useState(false)
 
   async function onGenerateStrategy() {
     setGenerating(true)
@@ -116,14 +118,22 @@ function SignalCard({ sig, businessName, showDate, profileId }: { sig: TrendSign
         </button>
         <button
           type="button"
-          onClick={() => navigate('/studio', { state: { signalId: sig.id, topic: sig.topic } })}
+          onClick={() => setQuickPostOpen(true)}
           className="btn-ghost w-full !py-2 text-xs justify-center"
           style={{ borderColor: 'var(--accent-blue)', color: 'var(--accent-blue)' }}
-          title="Build a post from this trend in the AI Studio — pick a look, review the prompt, choose from several options"
+          title="Generate a single ready-to-review post (image + copy) from this trend"
         >
-          <Wand2 size={12} /> Create Post
+          <Wand2 size={12} /> Quick Post
         </button>
       </div>
+      {quickPostOpen && (
+        <QuickPostModal
+          profileId={profileId}
+          signalId={sig.id}
+          topic={sig.topic}
+          onClose={() => setQuickPostOpen(false)}
+        />
+      )}
     </div>
   )
 }

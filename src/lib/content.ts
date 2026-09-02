@@ -101,9 +101,10 @@ export interface ContentItemMetadata {
    *  rather than composed and published through this app. Purely a UI marker — the comment
    *  automation lookup itself doesn't care how the row got here. */
   external_post?: boolean
-  /** The trend_signals.id this post was built from, when it came from a trend rather than the
-   *  calendar — mirrors marketing_strategies.source_signal_id so the source can be credited in
-   *  the UI. Written by the AI Studio (studio_jobs carries the same field). */
+  /** Set on an item created by the "Quick Post" flow (Trends -> a trend card -> pick a
+   *  platform) — the trend_signals.id it was anchored on. Lets the FE credit the source signal
+   *  (mirrors marketing_strategies.source_signal_id) and lets the polling query in
+   *  getLatestItemForSignal find the right row without racing a concurrent bulk generation run. */
   source_signal_id?: string
   source_topic?: string
   source_platform?: string
@@ -227,6 +228,39 @@ export async function triggerContentGeneration(profileId: string): Promise<void>
 export async function triggerCarousel(itemId: string): Promise<void> {
   if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
   await fireWebhook('sp-carousel', { itemId })
+}
+
+/**
+ * Fires the Quick Post workflow (M6b) — a single ad-hoc content item anchored on one trend
+ * signal, bypassing the strategy/calendar model entirely. AI writes hook/body/hashtags/CTA and
+ * generates an image, landing as a normal `content_items` row (status 'generating' -> 'ready',
+ * same as the bulk pipeline) that shows up in Creative Review once done. Instagram/LinkedIn and
+ * static image/carousel only — matches the app-wide manual-video-only rule.
+ */
+export async function triggerQuickPost(
+  profileId: string,
+  signalId: string,
+  platform: 'instagram' | 'linkedin',
+  contentType: 'static_image' | 'carousel',
+): Promise<void> {
+  if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
+  await fireWebhook('sp-quick-post', { profileId, signalId, platform, contentType })
+}
+
+/** Polls for the Quick Post item anchored on `signalId` — scoped to this signal (via
+ *  metadata->>source_signal_id) so it can't pick up an unrelated item from a concurrent bulk
+ *  Content Text Engine run. Used by QuickPostModal's post-trigger poll loop. */
+export async function getLatestItemForSignal(profileId: string, signalId: string): Promise<ContentItem | null> {
+  const { data, error } = await supabase
+    .from('content_items')
+    .select('*')
+    .eq('profile_id', profileId)
+    .eq('metadata->>source_signal_id', signalId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data as ContentItem | null
 }
 
 /** Every item with a target date, any status — powers Calendar's month grid (planned, ready,

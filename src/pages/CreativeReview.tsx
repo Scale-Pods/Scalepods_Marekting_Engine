@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
-  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon, Filter, Clock, Plus, Check, Wand2,
+  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon, Filter, Clock, Plus, Check,
 } from 'lucide-react'
 import { useProfile, useReviewItems } from '../lib/queries'
 import {
@@ -384,11 +383,8 @@ export default function CreativeReview() {
                 <CheckCircle2 size={15} /> Approve {selected.size} selected
               </Button>
             )}
-            <Link to="/studio" className="btn-ghost">
-              <Wand2 size={15} /> Create Post
-            </Link>
             <Button variant="ghost" onClick={() => setComposerOpen(true)}>
-              <Plus size={15} /> Publish Now
+              <Plus size={15} /> Create post
             </Button>
           </div>
         }
