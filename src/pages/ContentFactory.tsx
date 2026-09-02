@@ -193,6 +193,11 @@ export default function ContentFactory() {
 
   const textDone = run ? items.length >= run.total_items : false
   const pendingCount = run ? Math.max(run.total_items - items.length, 0) : 0
+  // n8n marks a run 'completed' once it has attempted every calendar item, whether or not each
+  // one actually produced a content_items row (a GPT-4o error on one item just skips it rather
+  // than failing the whole batch). If that landed us short of total_items, this run is done —
+  // just not fully — and showing an endless "Writing copy" spinner would be actively misleading.
+  const runStoppedEarly = !!run && !textDone && run.status === 'completed'
   // Content-type options are scoped to whichever platform is currently selected, so the
   // dropdown never offers a type that platform doesn't actually have (e.g. no "linkedin
   // article" while "Instagram" is selected).
@@ -247,6 +252,22 @@ export default function ContentFactory() {
 
       {!run ? (
         <EmptyState icon={<Sparkles size={28} />} title="No content yet" hint="Click Generate content to turn the approved calendar into ready-to-review posts." />
+      ) : runStoppedEarly ? (
+        // The Text Engine has finished attempting every calendar item (content_runs.status
+        // flips to 'completed' once it does — see Finalize Content Run in that n8n workflow)
+        // but wrote fewer than total_items rows, e.g. GPT-4o erroring on some items. Without
+        // this branch the page below showed an indefinite "Writing copy…" spinner forever —
+        // a real run from 2026-07-23 sat stuck at 5/10 for 5+ weeks with no way to tell it
+        // had actually stopped, not just slow.
+        <div className="card p-8 flex flex-col items-center gap-3 text-center">
+          <XCircle size={22} style={{ color: 'var(--accent-orange)' }} />
+          <div className="text-sm text-secondary">
+            Generation stopped early — only {items.length} of {run.total_items} posts were written.
+          </div>
+          <Button variant="ghost" onClick={onGenerate} loading={generating}>
+            <RefreshCw size={15} /> Regenerate
+          </Button>
+        </div>
       ) : !textDone ? (
         <div className="card p-8 flex flex-col items-center gap-3 text-center">
           <Spinner size={22} />
