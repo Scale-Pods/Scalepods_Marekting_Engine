@@ -9,7 +9,7 @@ import { listSignalsSince, type TrendSignal } from '../lib/trends'
 import {
   generateStudioBrief, triggerStudioGenerate, updateStudioDraft, listStudioJobs, getStudioJob,
   selectStudioVariant, markStudioJobUsed, deleteStudioJob,
-  IMAGE_MODELS, getModel, HIGGSFIELD_ENABLED,
+  IMAGE_MODELS, getModel, HIGGSFIELD_ENABLED, estimateStudioCost,
   type StudioJob, type StudioSourceKind, type ImageModelId, type StudioCopy,
 } from '../lib/studio'
 import {
@@ -47,6 +47,21 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
     >
       {children}
     </button>
+  )
+}
+
+/** Live "this is what clicking Generate will cost" line — shown both at the setup stage (so a
+ *  variant-count/model choice is priced before the brief is even written) and, more importantly,
+ *  right next to the actual Generate button, since that's the step that spends real money. */
+function CostEstimate({ model, ratio, variantCount }: { model: ReturnType<typeof getModel>; ratio: AspectRatio; variantCount: number }) {
+  const { usd, note } = estimateStudioCost(model, ratio, variantCount)
+  if (usd == null) {
+    return note ? <span className="text-muted text-[11px]">{note}</span> : null
+  }
+  return (
+    <span className="text-[11px] font-semibold" style={{ color: 'var(--accent-orange)' }}>
+      ≈ ${usd.toFixed(3)} for {variantCount} {variantCount === 1 ? 'image' : 'images'}
+    </span>
   )
 }
 
@@ -179,6 +194,7 @@ export default function AIStudio() {
         // rather than drifting inside an n8n node — see studioStyles.ts.
         styleLabel: activeStyle.label,
         styleDirection: styleDirection(activeStyle),
+        styleRendersText: Boolean(activeStyle.rendersText),
       })
       setJob(created)
       setDraftCopy(created.copy_json ?? {})
@@ -449,6 +465,9 @@ export default function AIStudio() {
                     >
                       <div className="text-xs font-semibold">{m.label}</div>
                       <div className="text-muted text-[11px] leading-snug mt-0.5">{m.blurb}</div>
+                      <div className="text-[10.5px] font-semibold mt-1" style={{ color: 'var(--accent-green)' }}>
+                        {m.pricePerImage != null ? `~$${m.pricePerImage.toFixed(3)} / image` : m.priceNote}
+                      </div>
                     </button>
                   )
                 })}
@@ -461,7 +480,10 @@ export default function AIStudio() {
             </div>
 
             <div>
-              <div className="label mb-2">How many options</div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="label !mb-0">How many options</div>
+                <CostEstimate model={activeModel} ratio={ratio} variantCount={variantCount} />
+              </div>
               <div className="flex gap-2">
                 {[1, 2, 3, 4].filter((n) => n <= (activeModel?.maxVariants ?? 4)).map((n) => (
                   <Chip key={n} active={variantCount === n} onClick={() => setVariantCount(n)}>{n}</Chip>
@@ -572,7 +594,8 @@ export default function AIStudio() {
               The subject was written by AI from your source; the look comes from the style you picked. Edit either half before generating — nothing has been spent yet.
             </p>
             <textarea className="input" rows={5} value={draftPrompt} onChange={(e) => setDraftPrompt(e.target.value)} />
-            <div className="flex justify-end mt-3">
+            <div className="flex items-center justify-end gap-3 mt-3">
+              <CostEstimate model={activeModel} ratio={ratio} variantCount={variantCount} />
               <Button onClick={onGenerate} loading={generating || isGenerating} disabled={!draftPrompt.trim()}>
                 <Wand2 size={15} /> Generate {variantCount} {variantCount === 1 ? 'image' : 'images'}
               </Button>

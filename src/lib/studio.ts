@@ -43,6 +43,17 @@ export interface ImageModel {
   /** False until the provider's credential is bound in n8n; the UI shows it greyed with a note
    *  rather than hiding it, so it's obvious what unlocks once the key lands. */
   available: boolean
+  /**
+   * USD per single image at a square ratio, medium quality — shown on the model card and used
+   * for the live cost estimate near Generate. `null` for models billed in the provider's own
+   * credits rather than USD (every Higgsfield model: their pricing is a credit balance on
+   * cloud.higgsfield.ai, not a published per-image dollar rate) — the UI shows `priceNote`
+   * instead of a dollar figure for those.
+   */
+  pricePerImage: number | null
+  /** Shown instead of a dollar figure when pricePerImage is null, or alongside it as a caveat
+   *  (e.g. "varies with size/quality"). */
+  priceNote?: string
 }
 
 /** Flip to true the moment the Higgsfield credential is bound in n8n (see the Studio plan —
@@ -62,6 +73,11 @@ export const IMAGE_MODELS: ImageModel[] = [
     // gpt-image-1 takes pixel sizes, not ratio strings — mapped in the workflow.
     aspectRatios: ['1:1', '4:5', '16:9'],
     available: true,
+    // OpenAI's published rate for medium-quality 1024x1024 (its default for this size). A
+    // non-square ratio renders more pixels (1024x1536/1536x1024) and OpenAI charges more for
+    // that — see estimateStudioCost, which applies the ~1.5x published for those sizes.
+    pricePerImage: 0.042,
+    priceNote: 'OpenAI medium quality — taller/wider ratios cost more',
   },
   {
     id: 'higgsfield-soul',
@@ -73,6 +89,11 @@ export const IMAGE_MODELS: ImageModel[] = [
     maxVariants: 4,
     aspectRatios: ['1:1', '4:5', '9:16', '16:9', '4:3', '3:2'],
     available: HIGGSFIELD_ENABLED,
+    // Higgsfield bills from a credit balance on cloud.higgsfield.ai, not a published per-image
+    // USD rate — don't fabricate a dollar figure. Once the credential is bound, replace this
+    // with the real cost read from that account.
+    pricePerImage: null,
+    priceNote: 'Billed in Higgsfield credits, not USD',
   },
   {
     id: 'higgsfield-soul-reference',
@@ -84,6 +105,11 @@ export const IMAGE_MODELS: ImageModel[] = [
     maxVariants: 4,
     aspectRatios: ['1:1', '4:5', '9:16', '16:9', '4:3', '3:2'],
     available: HIGGSFIELD_ENABLED,
+    // Higgsfield bills from a credit balance on cloud.higgsfield.ai, not a published per-image
+    // USD rate — don't fabricate a dollar figure. Once the credential is bound, replace this
+    // with the real cost read from that account.
+    pricePerImage: null,
+    priceNote: 'Billed in Higgsfield credits, not USD',
   },
   {
     id: 'higgsfield-soul-character',
@@ -95,6 +121,11 @@ export const IMAGE_MODELS: ImageModel[] = [
     maxVariants: 4,
     aspectRatios: ['1:1', '4:5', '9:16', '16:9', '4:3', '3:2'],
     available: HIGGSFIELD_ENABLED,
+    // Higgsfield bills from a credit balance on cloud.higgsfield.ai, not a published per-image
+    // USD rate — don't fabricate a dollar figure. Once the credential is bound, replace this
+    // with the real cost read from that account.
+    pricePerImage: null,
+    priceNote: 'Billed in Higgsfield credits, not USD',
   },
   {
     id: 'higgsfield-popcorn',
@@ -106,6 +137,11 @@ export const IMAGE_MODELS: ImageModel[] = [
     maxVariants: 8,
     aspectRatios: ['1:1', '4:5', '9:16', '16:9', '4:3', '3:2'],
     available: HIGGSFIELD_ENABLED,
+    // Higgsfield bills from a credit balance on cloud.higgsfield.ai, not a published per-image
+    // USD rate — don't fabricate a dollar figure. Once the credential is bound, replace this
+    // with the real cost read from that account.
+    pricePerImage: null,
+    priceNote: 'Billed in Higgsfield credits, not USD',
   },
   {
     id: 'flux-pro-kontext',
@@ -117,12 +153,35 @@ export const IMAGE_MODELS: ImageModel[] = [
     maxVariants: 1,
     aspectRatios: ['1:1', '4:5', '9:16', '16:9', '4:3', '3:2'],
     available: HIGGSFIELD_ENABLED,
+    // Higgsfield bills from a credit balance on cloud.higgsfield.ai, not a published per-image
+    // USD rate — don't fabricate a dollar figure. Once the credential is bound, replace this
+    // with the real cost read from that account.
+    pricePerImage: null,
+    priceNote: 'Billed in Higgsfield credits, not USD',
   },
 ]
 
 export function getModel(id: string | null | undefined): ImageModel | null {
   if (!id) return null
   return IMAGE_MODELS.find((m) => m.id === id) ?? null
+}
+
+/**
+ * Live cost estimate shown next to the Generate button, so a variant count or model switch is
+ * priced before it's clicked rather than after. `usd` is null when the model's price isn't in
+ * USD (Higgsfield) — render `note` instead of a dollar figure in that case.
+ */
+export function estimateStudioCost(
+  model: ImageModel | null,
+  ratio: AspectRatio,
+  variantCount: number,
+): { usd: number | null; note?: string } {
+  if (!model) return { usd: null }
+  if (model.pricePerImage == null) return { usd: null, note: model.priceNote }
+  // A non-1:1 ratio renders more pixels than the base square price accounts for — OpenAI's own
+  // tiered pricing charges roughly 1.5x for its 1024x1536/1536x1024 sizes over 1024x1024.
+  const perImage = ratio === '1:1' ? model.pricePerImage : model.pricePerImage * 1.5
+  return { usd: perImage * Math.max(1, variantCount) }
 }
 
 // --- Job -----------------------------------------------------------------
@@ -207,6 +266,11 @@ export async function generateStudioBrief(params: {
    *  a diff when it changes. */
   styleLabel: string
   styleDirection: string
+  /** True for the styles whose artwork IS lettering (poster, quote card). The workflow then
+   *  names the exact words to set — the hook it just wrote — instead of leaving the model to
+   *  invent gibberish or, worse, obeying a blanket "no text" rule and returning a wordless
+   *  poster. See StudioStyle.rendersText. */
+  styleRendersText: boolean
 }): Promise<StudioJob> {
   if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
   const res = await fireWebhook('sp-studio-brief', {
@@ -219,6 +283,7 @@ export async function generateStudioBrief(params: {
     styleId: params.styleId,
     styleLabel: params.styleLabel,
     styleDirection: params.styleDirection,
+    styleRendersText: params.styleRendersText,
     model: params.model,
     referenceImageUrl: params.referenceImageUrl ?? null,
     characterId: params.characterId ?? null,

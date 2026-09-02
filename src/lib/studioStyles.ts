@@ -24,8 +24,22 @@ export interface StudioStyle {
   avoid: string
   /** Ratio this treatment is composed for, used to preselect the ratio picker. */
   defaultRatio: AspectRatio
-  /** Sample image generated through this very pipeline (see scripts note in the Studio page) —
-   *  null until the thumbnail has been generated and uploaded to the `brand` bucket. */
+  /**
+   * This treatment is *made of* type — the words are the artwork, not a caption bolted on.
+   * The brief workflow reacts to this by naming the exact words to set (the hook it just wrote)
+   * and dropping the blanket "no text" rule for this style only.
+   *
+   * The first version of this file got these two styles wrong: "Bold typographic poster" and
+   * "Minimal quote card" both listed `text` under `avoid`, which is self-defeating — it asked
+   * for a poster with no writing on it, and the model duly returned wordless flat illustration.
+   */
+  rendersText?: boolean
+  /**
+   * A real sample of what this style produces, generated once through this exact pipeline and
+   * parked in the `content-media` bucket. Deliberately not a stock image: a tile has to promise
+   * the look the model will actually deliver, and a borrowed photo would both misrepresent that
+   * and drag someone else's licence into the product.
+   */
   thumbnail: string | null
   /** Native Higgsfield Soul style preset, when one matches this treatment better than prompt
    *  text alone. Populated once the Higgsfield credential exists and styles can be enumerated. */
@@ -66,7 +80,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Editorial photography, full-frame camera, 35mm lens, shallow depth of field, natural window light with soft falloff, muted desaturated grade, real materials and real textures, generous negative space in the upper third. ${BRAND_PALETTE}`,
     avoid: 'illustration, cartoon, 3D render, clip-art, stock-photo smiling, text, logos, watermarks',
     defaultRatio: '4:5',
-    thumbnail: null,
+    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/bd371372-3f9f-48fc-bcca-92201bc63c79/1788354104767-0.png',
   },
   {
     id: 'cinematic-portrait',
@@ -75,25 +89,26 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Cinematic portrait, 85mm lens, tight key light with deep falloff into shadow, teal-and-warm colour grade, film grain, subject off-centre with clean space beside them. ${BRAND_PALETTE}`,
     avoid: 'flat lighting, illustration, cartoon, clip-art, text, logos, distorted hands or faces',
     defaultRatio: '4:5',
-    thumbnail: null,
+    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/d381b607-7778-4635-8601-2176c9e274b2/1788354099846-0.png',
   },
   {
     id: 'typographic-poster',
     label: 'Bold typographic poster',
     bestFor: 'One sharp statement that must be read fast',
-    promptFragment: `Swiss-style graphic poster composition, heavy geometric sans-serif forms, extreme scale contrast, strict grid, large flat colour fields, generous margins, print-quality flatness. ${BRAND_PALETTE}`,
-    avoid: 'photography, 3D, gradients, drop shadows, decorative script, clutter',
+    promptFragment: `A Swiss-style typographic poster where the lettering IS the artwork and fills most of the frame. Set the words in a heavy geometric sans-serif, tight tracking, ranged left on a strict grid, broken across two or three lines with extreme scale contrast between the key word and the rest. Flat colour fields, generous margins, print-quality flatness, no imagery behind the type beyond a simple shape or rule. ${BRAND_PALETTE}`,
+    avoid: 'photography, 3D, gradients, drop shadows, decorative or script fonts, extra words beyond the ones specified, gibberish lettering, clutter',
     defaultRatio: '1:1',
-    thumbnail: null,
+    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/a3b7f2bf-6a16-4f4c-b8cf-6f40b52f5374/1788354093661-0.png',
+    rendersText: true,
   },
   {
     id: 'data-card',
     label: 'Data card',
     bestFor: 'Leading with a real metric',
-    promptFragment: `Clean data-visualisation card, one dominant figure, thin precise chart geometry, generous whitespace, subtle 1px rules, dashboard-grade restraint, flat vector rendering. ${BRAND_PALETTE}`,
-    avoid: 'photography, 3D, skeuomorphism, fake dense dashboards, unreadable micro-labels, clip-art',
+    promptFragment: `Clean data-visualisation card built around ONE very large numeral, with thin precise chart geometry supporting it, generous whitespace, subtle 1px rules, dashboard-grade restraint, flat vector rendering. The single figure is the hero; everything else is quiet. ${BRAND_PALETTE}`,
+    avoid: 'photography, 3D, skeuomorphism, dense fake dashboards, small unreadable labels, paragraphs of text, gibberish lettering, clip-art',
     defaultRatio: '1:1',
-    thumbnail: null,
+    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/5b176b8b-c64f-4bef-beda-5813cc9026b6/1788354071295-0.png',
   },
   {
     id: 'isometric-3d',
@@ -102,7 +117,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Isometric 3D render, soft studio lighting, matte clay materials with a single glossy accent, shallow ambient occlusion, objects arranged on a clean plane, generous space above. ${BRAND_PALETTE}`,
     avoid: 'photorealism, harsh specular highlights, cluttered scene, text, logos',
     defaultRatio: '1:1',
-    thumbnail: null,
+    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/f0c1195b-1161-404d-b6c3-53bc482fe1f7/1788354092538-0.png',
   },
   {
     id: 'neon-tech',
@@ -111,7 +126,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Dark technical composition, volumetric glow, thin luminous line-work over deep navy, controlled bloom, crisp high-contrast edges, one focal light source. ${BRAND_PALETTE}`,
     avoid: 'washed-out haze, fog covering the frame, low contrast, cartoon figures, clip-art, text',
     defaultRatio: '1:1',
-    thumbnail: null,
+    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/2f6022b4-ac84-42ec-bf0a-a18bf5074da6/1788354077089-0.png',
   },
   {
     id: 'paper-collage',
@@ -120,7 +135,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Cut-paper collage, layered matte stock with visible torn edges and real drop shadows, tactile grain, analogue imperfection, bold simple shapes. ${BRAND_PALETTE}`,
     avoid: 'digital gradients, glossy 3D, photography, text, busy layering',
     defaultRatio: '1:1',
-    thumbnail: null,
+    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/7efcb0ec-b770-4ea7-a91f-423bdafffff2/1788354941769-0.png',
   },
   {
     id: 'ui-mockup',
@@ -138,7 +153,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Hand-drawn explanatory diagram, confident marker strokes, boxes and arrows, deliberate imperfection, plenty of breathing room, two-colour discipline. ${BRAND_PALETTE}`,
     avoid: 'childish doodles, cartoon characters, stick figures, clip-art, dense text, photography',
     defaultRatio: '16:9',
-    thumbnail: null,
+    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/319abebc-c89f-423f-90b0-9d9c999e3d13/1788354098000-0.png',
   },
   {
     id: 'gradient-mesh',
@@ -156,7 +171,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Split composition, hard vertical divide, visually distinct treatment either side — cluttered and desaturated on the left, ordered and accented on the right, symmetrical framing. ${BRAND_PALETTE}`,
     avoid: 'text labels, arrows, clip-art, cartoon figures, uneven or tilted divide',
     defaultRatio: '1:1',
-    thumbnail: null,
+    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/1fdeff34-d3a0-48cf-bcdc-9f8c49a3c93f/1788354771490-0.png',
   },
   {
     id: 'flat-vector',
@@ -174,7 +189,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Extreme macro photography, razor-thin depth of field, dramatic raking light, rich material detail filling the frame, abstract and unplaceable. ${BRAND_PALETTE}`,
     avoid: 'recognisable objects, people, illustration, 3D render, text',
     defaultRatio: '1:1',
-    thumbnail: null,
+    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/f279bb64-fa89-4f3f-8d73-8da3ca21c356/1788354276900-0.png',
   },
   {
     id: 'risograph',
@@ -189,10 +204,11 @@ export const STUDIO_STYLES: StudioStyle[] = [
     id: 'quote-card',
     label: 'Minimal quote card',
     bestFor: 'A line worth framing',
-    promptFragment: `Extremely minimal composition, vast empty field, one small precise graphic element positioned off-centre, generous margins, gallery-like restraint, flat matte finish. ${BRAND_PALETTE}`,
-    avoid: 'busy detail, photography, 3D, multiple focal points, text',
+    promptFragment: `An extremely minimal quote card: the words set small-to-medium in a refined sans-serif, centred in a vast empty field with gallery-like margins, one thin rule or small graphic mark as the only other element. Restraint is the whole point — the emptiness around the words is the design. Flat matte finish. ${BRAND_PALETTE}`,
+    avoid: 'busy detail, photography, 3D, multiple focal points, decorative script, extra words beyond the ones specified, gibberish lettering',
     defaultRatio: '1:1',
     thumbnail: null,
+    rendersText: true,
   },
 ]
 
