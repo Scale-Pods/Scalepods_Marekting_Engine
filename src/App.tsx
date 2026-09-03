@@ -28,6 +28,7 @@ const Analytics = lazy(() => import('./pages/Analytics'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Blog = lazy(() => import('./pages/Blog'))
 const BlogPostEditor = lazy(() => import('./pages/BlogPostEditor'))
+const UserManual = lazy(() => import('./pages/UserManual'))
 
 function FullScreenLoader() {
   return (
@@ -85,6 +86,7 @@ export default function App() {
               <Route path="/blog/:id" element={<Protected><BlogPostEditor /></Protected>} />
               <Route path="/analytics" element={<Protected><Analytics /></Protected>} />
               <Route path="/settings" element={<Protected><Settings /></Protected>} />
+              <Route path="/manual" element={<Protected><UserManual /></Protected>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

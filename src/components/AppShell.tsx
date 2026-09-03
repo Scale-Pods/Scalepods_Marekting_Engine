@@ -3,7 +3,7 @@ import { NavLink, Link, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target,
   CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
-  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2,
+  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
@@ -57,6 +57,9 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
       { to: '/analytics', label: 'Analytics', icon: <BarChart3 size={18} />, roles: ['admin', 'client'] },
       { to: '/intelligence', label: 'Intelligence', icon: <BrainCircuit size={18} />, roles: ['admin', 'client'] },
       { to: '/settings', label: 'Settings', icon: <Settings size={18} />, roles: ['admin'] },
+      // Every role, unlike the rest of this section — a designer or client landing here for the
+      // first time needs the manual more than an admin does.
+      { to: '/manual', label: 'User Manual', icon: <BookOpen size={18} />, roles: ['admin', 'client', 'designer'] },
     ],
   },
 ]
