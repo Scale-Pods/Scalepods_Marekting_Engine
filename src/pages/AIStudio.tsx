@@ -76,6 +76,24 @@ function CostEstimate({ model, ratio, variantCount }: { model: ReturnType<typeof
   )
 }
 
+/** What a past job actually cost — same `estimateStudioCost` math the setup screen shows before
+ *  Generate is even clickable, but run against what was actually fired: the real image count
+ *  once there's a result, not just the requested count, so a job that failed partway or a
+ *  Gemini job (capped to 1 regardless of what was requested) shows the real number. `null` before
+ *  anything's actually been generated — nothing's been spent yet at that point. */
+function jobCostEstimate(j: StudioJob): number | null {
+  if (j.status === 'drafting' || j.status === 'draft_ready') return null
+  const model = getModel(j.model)
+  if (!model) return null
+  const count = j.image_urls.length > 0 ? j.image_urls.length : j.variant_count
+  return estimateStudioCost(model, (j.aspect_ratio as AspectRatio) ?? '1:1', count).usd
+}
+
+/** "3 Sep, 2:41 PM" — compact enough for a grid tile, still unambiguous about date vs. time. */
+function formatJobDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+}
+
 export default function AIStudio() {
   const { data: profile, isLoading: profileLoading } = useProfile()
   const toast = useToast()
@@ -592,6 +610,8 @@ export default function AIStudio() {
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
                 {jobs.slice(0, 12).map((j) => {
                   const thumb = j.selected_image_url || j.image_urls?.[0] || null
+                  const jModel = getModel(j.model)
+                  const jCost = jobCostEstimate(j)
                   return (
                     <div
                       key={j.id}
@@ -608,8 +628,12 @@ export default function AIStudio() {
                         </div>
                         <div className="px-2.5 py-2">
                           <div className="text-xs font-medium truncate">{j.topic || 'Untitled'}</div>
-                          <div className="mt-1">
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                             <Badge tone={j.status === 'done' ? 'green' : j.status === 'failed' ? 'orange' : 'grey'}>{j.status.replace(/_/g, ' ')}</Badge>
+                          </div>
+                          <div className="text-muted text-[10px] mt-1 truncate">{formatJobDate(j.created_at)}</div>
+                          <div className="text-muted text-[10px] truncate" title={jModel?.label ?? j.model}>
+                            {jModel?.label ?? j.model}{jCost != null ? ` · ${formatUsdInr(jCost)} (est.)` : ''}
                           </div>
                         </div>
                       </button>
@@ -860,6 +884,8 @@ function RecentJobModal({
   }
 
   const hasCopy = current.status === 'draft_ready' || current.status === 'generating' || current.status === 'done' || current.status === 'failed'
+  const activeModel = getModel(current.model)
+  const cost = jobCostEstimate(current)
 
   return (
     <>
@@ -872,6 +898,26 @@ function RecentJobModal({
             <Badge tone={current.status === 'done' ? 'green' : current.status === 'failed' ? 'orange' : 'grey'}>
               {current.status.replace(/_/g, ' ')}
             </Badge>
+          </div>
+
+          {/* Timestamp, model, and what it actually cost — the info the grid tile only has room
+              to abbreviate. */}
+          <div
+            className="grid gap-x-4 gap-y-1.5 text-xs px-3 py-2.5 rounded-lg"
+            style={{ gridTemplateColumns: 'auto 1fr', background: 'var(--fill-tertiary)', border: '1px solid var(--border-subtle)' }}
+          >
+            <span className="text-muted">Created</span>
+            <span title={new Date(current.created_at).toString()}>{formatJobDate(current.created_at)}</span>
+            <span className="text-muted">Model</span>
+            <span>{activeModel?.label ?? current.model}</span>
+            <span className="text-muted">Options</span>
+            <span>
+              {current.image_urls.length > 0 ? `${current.image_urls.length} generated` : `${current.variant_count} requested`}
+            </span>
+            <span className="text-muted">Spent (est.)</span>
+            <span title="Providers bill by tokens/compute, not a flat per-image rate — this is an estimate, not a guaranteed cost.">
+              {cost != null ? formatUsdInr(cost) : 'Not generated yet'}
+            </span>
           </div>
 
           {hasCopy && (
