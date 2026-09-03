@@ -401,7 +401,14 @@ export async function createManualItem(input: {
   /** Per-post comment-to-DM automation (Instagram only). Only written when actually enabled, so a
    *  normal post's metadata looks exactly as it always has. */
   commentAutomation?: CommentAutomation | null
+  /** Override for callers that DO have a draft needing human review before it's publishable —
+   *  currently AI Studio, whose GPT-written copy + generated image should land in Creative
+   *  Review like any other AI draft, not skip straight to "approved." Defaults to 'approved'
+   *  (the original composer behavior: the user already finished the post by hand, nothing to
+   *  review). `approved_at` is only set when the status actually is 'approved'. */
+  status?: 'ready' | 'approved'
 }): Promise<ContentItem> {
+  const status = input.status ?? 'approved'
   const { data, error } = await supabase
     .from('content_items')
     .insert({
@@ -410,8 +417,8 @@ export async function createManualItem(input: {
       strategy_id: null,
       calendar_index: null,
       content_type: input.contentType,
-      status: 'approved',
-      approved_at: new Date().toISOString(),
+      status,
+      approved_at: status === 'approved' ? new Date().toISOString() : null,
       platform: input.platform,
       scheduled_date: input.scheduledDate,
       title: input.title,

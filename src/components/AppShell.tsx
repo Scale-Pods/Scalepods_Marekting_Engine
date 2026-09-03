@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Link, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target, Sparkles,
+  LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target,
   CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
   PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2,
 } from 'lucide-react'
@@ -30,7 +30,8 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
     section: 'Content Generation',
     items: [
       { to: '/studio', label: 'AI Studio', icon: <Wand2 size={18} />, roles: ['admin'] },
-      { to: '/content', label: 'Content Factory', icon: <Sparkles size={18} />, roles: ['admin'] },
+      // Content Factory hidden from nav 2026-09-03 — superseded by AI Studio for now. Route and
+      // page are untouched, just not linked from the sidebar; see the "Content Factory" memory.
       { to: '/carousel-studio', label: 'Carousel Studio', icon: <Clapperboard size={18} />, roles: ['admin'] },
       { to: '/review', label: 'Creative Review', icon: <CheckSquare size={18} />, roles: ['admin', 'client', 'designer'] },
     ],
