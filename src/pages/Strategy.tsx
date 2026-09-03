@@ -2,18 +2,23 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Target, RefreshCw, CheckCircle2, CalendarDays, ListChecks, LayoutGrid, Magnet, MousePointerClick, Sparkles,
+  TrendingUp,
 } from 'lucide-react'
 import {
   getLatestStrategy, triggerStrategy, approveStrategy, updateStrategySection, regenerateStrategySection,
-  getSourceSignal, type MarketingStrategy, type StrategySection, type CalendarItem,
+  getSourceSignal, listStrategyGenerations, type MarketingStrategy, type StrategySection, type CalendarItem,
+  type StrategyGeneration,
 } from '../lib/strategy'
-import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
+import { PageHeader, Badge, Button, EmptyState, Spinner, Modal, Panel } from '../components/ui'
 import { SectionEditor } from '../components/strategy/SectionEditor'
 import { InsightHeaderStrip } from '../components/strategy/InsightHeaderStrip'
 import { PillarBalanceChart } from '../components/strategy/PillarBalanceChart'
 import { PlatformCards } from '../components/strategy/PlatformCards'
 import { StrategyCalendarView } from '../components/strategy/StrategyCalendarView'
+import { StrategyGenerationModal } from '../components/strategy/StrategyGenerationModal'
 import { useProfile } from '../lib/queries'
+
+const GEN_SCOPE_LABEL: Record<string, string> = { day: 'Day', week: 'Week', month: 'Month' }
 
 // platform_strategy now renders via PlatformCards below the tabs, not as one of these tabs.
 const COMPONENTS: { key: StrategySection; label: string; icon: typeof Target; color: string }[] = [
@@ -38,6 +43,18 @@ export default function Strategy() {
   const [activeTab, setActiveTab] = useState<StrategySection | 'calendar'>('campaign_planning')
   const [sourceSignal, setSourceSignal] = useState<{ id: string; source: string; topic: string } | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Scoped, trend-anchored generations from the Trends page — always separate from `strategy`
+  // above, never overwrite it. Loaded alongside the main strategy; "Recent" below renders them.
+  const [generations, setGenerations] = useState<StrategyGeneration[]>([])
+  const [openGeneration, setOpenGeneration] = useState<StrategyGeneration | null>(null)
+  const genPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const loadGenerations = useCallback(async (profileId: string) => {
+    const list = await listStrategyGenerations(profileId)
+    setGenerations(list)
+    return list
+  }, [])
 
   // "Generated from" credit when this strategy came from a trend card's "General Strategy"
   // button rather than the broad "Regenerate all". The signal may since have been pruned by a
@@ -89,11 +106,49 @@ export default function Strategy() {
         waitForNewStrategy(profile.id, s?.id ?? null).then(() => setRefreshing(false))
       }
     })
+    loadGenerations(profile.id).then((list) => {
+      // Same race, but for a scoped generation fired from Trends.tsx's "Generate Strategy" bar:
+      // the webhook returns before the placeholder row necessarily exists, so poll for a
+      // genuinely new row rather than trusting the first load.
+      if (location.state?.justTriggeredGeneration) {
+        const beforeId = list[0]?.id ?? null
+        let tries = 0
+        const poll = setInterval(() => {
+          tries += 1
+          loadGenerations(profile.id).then((fresh) => {
+            const found = fresh.find((g) => g.id !== beforeId)
+            if (found && (found.status !== 'processing' || tries >= 20)) {
+              clearInterval(poll)
+              setOpenGeneration(found)
+            } else if (tries >= 20) {
+              clearInterval(poll)
+            }
+          })
+        }, 3000)
+      }
+    })
     // Only ever meant to fire once per landing on this page — re-running on every `profile`
     // identity change (react-query can hand back a new object each fetch) would restart the
     // wait loop and, worse, replay `justTriggered` handling after it already navigated away.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id])
+
+  // Keep the Recent grid's status badges live while any generation is still processing —
+  // separate from the auto-open poll above, which only cares about the just-triggered one.
+  useEffect(() => {
+    if (!profile) return
+    const anyProcessing = generations.some((g) => g.status === 'processing')
+    if (anyProcessing && !genPollRef.current) {
+      genPollRef.current = setInterval(() => loadGenerations(profile.id), 4000)
+    } else if (!anyProcessing && genPollRef.current) {
+      clearInterval(genPollRef.current)
+      genPollRef.current = null
+    }
+    return () => {
+      if (genPollRef.current) clearInterval(genPollRef.current)
+      genPollRef.current = null
+    }
+  }, [profile, generations, loadGenerations])
 
   useEffect(() => {
     if (!profile) return
@@ -258,6 +313,46 @@ export default function Strategy() {
             })()
           )}
         </>
+      )}
+
+      {/* Scoped, trend-anchored generations from the Trends page — always separate from the
+          strategy above, per the user's explicit choice: this list is a browsable archive, not
+          a way to change what's currently active. */}
+      {generations.length > 0 && (
+        <Panel className="mt-6">
+          <div className="label mb-3">Recent</div>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+            {generations.slice(0, 12).map((g) => {
+              const topics = g.source_signals_snapshot.map((s) => s.topic).join(', ')
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => setOpenGeneration(g)}
+                  className="text-left rounded-lg p-3"
+                  style={{ border: '1px solid var(--border-subtle)', background: 'var(--fill-tertiary)' }}
+                >
+                  <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                    <Badge tone="blue">{GEN_SCOPE_LABEL[g.scope] ?? g.scope}</Badge>
+                    {g.platform && <Badge tone="green">{g.platform}</Badge>}
+                    {g.content_type && <Badge tone="orange">{g.content_type.replace(/_/g, ' ')}</Badge>}
+                    <Badge tone={g.status === 'completed' ? 'green' : g.status === 'failed' ? 'orange' : 'grey'}>{g.status}</Badge>
+                  </div>
+                  <div className="text-xs font-medium leading-snug mb-1.5 line-clamp-2">
+                    {topics || 'Generated strategy'}
+                  </div>
+                  <div className="text-muted text-[10.5px] flex items-center gap-1">
+                    <TrendingUp size={10} /> {new Date(g.created_at).toLocaleString()}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </Panel>
+      )}
+
+      {openGeneration && (
+        <StrategyGenerationModal generation={openGeneration} onClose={() => setOpenGeneration(null)} />
       )}
 
       {detailItem && (

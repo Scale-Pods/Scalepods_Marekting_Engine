@@ -114,3 +114,85 @@ export async function updateStrategySection(id: string, section: StrategySection
 export async function regenerateStrategySection(strategyId: string, profileId: string, section: StrategySection): Promise<void> {
   await fireWebhook('sp-strategy-section-regenerate', { strategyId, profileId, section })
 }
+
+// --- Scoped, trend-anchored generations (M5c) ------------------------------
+//
+// A completely separate artifact from `marketing_strategies` above — picking trends on the
+// Trends page and generating never touches the current active strategy (getLatestStrategy always
+// stays whatever it was). Each one is a standalone saved record, shown in Strategy.tsx's "Recent"
+// section, keyed to whichever trend(s) it was anchored on.
+
+export type GenerationScope = 'day' | 'week' | 'month'
+
+export interface SourceSignalSnapshot {
+  id: string
+  source: string
+  topic: string
+}
+
+export interface StrategyGeneration {
+  id: string
+  profile_id: string
+  status: 'processing' | 'completed' | 'failed'
+  source_signal_ids: string[]
+  /** Durable snapshot of the trend(s) this was generated from, taken at generation time — still
+   *  renders correctly even if the original trend_signals row is later pruned by a newer scan. */
+  source_signals_snapshot: SourceSignalSnapshot[]
+  scope: GenerationScope
+  /** Empty string = "any relevant platform", not a specific one. */
+  platform: string
+  /** Empty string = "AI decides the mix", not one pinned content type. */
+  content_type: string
+  ai_summary: string | null
+  campaign_planning: unknown
+  weekly_content_strategy: unknown
+  content_pillars: unknown
+  content_calendar: CalendarItem[]
+  platform_strategy: unknown
+  lead_generation_strategy: unknown
+  cta_strategy: unknown
+  header_insights: HeaderInsights | null
+  pillar_balance: PillarBalance | null
+  error_detail: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Fires the scoped Strategy Generation n8n workflow (M5c, sp-strategy-generate) — writes a new
+ *  standalone `strategy_generations` row, never `marketing_strategies`. `platform`/`contentType`
+ *  omitted or empty means "any". */
+export async function triggerStrategyGeneration(
+  profileId: string,
+  signalIds: string[],
+  scope: GenerationScope,
+  platform?: string | null,
+  contentType?: string | null,
+): Promise<void> {
+  await fireWebhook('sp-strategy-generate', {
+    profileId,
+    signalIds,
+    scope,
+    platform: platform || null,
+    contentType: contentType || null,
+  })
+}
+
+export async function listStrategyGenerations(profileId: string): Promise<StrategyGeneration[]> {
+  const { data, error } = await supabase
+    .from('strategy_generations')
+    .select('*')
+    .eq('profile_id', profileId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data as StrategyGeneration[]
+}
+
+export async function getStrategyGeneration(id: string): Promise<StrategyGeneration | null> {
+  const { data, error } = await supabase
+    .from('strategy_generations')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  return data as StrategyGeneration | null
+}

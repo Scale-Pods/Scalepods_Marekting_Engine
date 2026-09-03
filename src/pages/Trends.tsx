@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { TrendingUp, PlayCircle, ExternalLink, Calendar, ChevronDown, ChevronUp, Clock, Sparkles, Wand2 } from 'lucide-react'
+import { TrendingUp, PlayCircle, ExternalLink, Calendar, ChevronDown, ChevronUp, Clock, Wand2, Check, X, Target, ArrowRight } from 'lucide-react'
 import {
   listRuns, listSignals, listSignalsSince, triggerTrends, SCAN_PLATFORMS,
   type TrendRun, type TrendSignal, type ScanPlatform,
 } from '../lib/trends'
-import { triggerStrategy } from '../lib/strategy'
+import { triggerStrategyGeneration, type GenerationScope } from '../lib/strategy'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
 import { useProfile } from '../lib/queries'
 import { useToast, toastMessage } from '../components/Toast'
@@ -33,7 +33,15 @@ function relevanceColor(score: number) {
   return score >= 70 ? 'var(--accent-green)' : score >= 40 ? 'var(--accent-orange)' : 'var(--text-muted)'
 }
 
-function SignalCard({ sig, businessName, showDate, profileId }: { sig: TrendSignal; businessName: string; showDate?: boolean; profileId: string }) {
+function SignalCard({
+  sig, businessName, showDate, selected, onToggleSelect,
+}: {
+  sig: TrendSignal
+  businessName: string
+  showDate?: boolean
+  selected: boolean
+  onToggleSelect: () => void
+}) {
   const rel = sig.relevance_score ?? 0
   const relColor = relevanceColor(rel)
   // Numeric signals (search-volume/growth %, live trending leaderboards) never carry a URL —
@@ -43,26 +51,24 @@ function SignalCard({ sig, businessName, showDate, profileId }: { sig: TrendSign
   const href = sig.url || (isKeywordPhrase ? `https://www.google.com/search?q=${encodeURIComponent(sig.topic)}` : null)
 
   const navigate = useNavigate()
-  const toast = useToast()
-  const [generating, setGenerating] = useState(false)
-
-  async function onGenerateStrategy() {
-    setGenerating(true)
-    try {
-      // Anchors a fresh marketing strategy around THIS trend specifically (plus the business's
-      // own real past post performance — see the n8n workflow), rather than the broad
-      // all-trends synthesis "Regenerate all" on the Strategy page produces.
-      await triggerStrategy(profileId, sig.id)
-      navigate('/strategy', { state: { justTriggered: true } })
-    } catch (err) {
-      toast.error(toastMessage(err, 'Failed to start strategy generation'))
-      setGenerating(false)
-    }
-  }
 
   return (
-    <div className="card p-4 flex flex-col">
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
+    <div className="card p-4 flex flex-col relative" style={selected ? { border: '1.5px solid var(--accent-green)' } : undefined}>
+      {/* Picking a trend here just adds it to the page-level selection (persists across the date
+          filter, the source filter, and History) — "General Strategy" used to fire instantly per
+          card; that's now the "Generate Strategy" bar at the bottom, after picking scope/platform/
+          content type, so it never silently replaces the current active strategy. */}
+      <button
+        type="button"
+        onClick={onToggleSelect}
+        className="absolute top-3 right-3 h-6 w-6 rounded-full flex items-center justify-center transition-colors z-10"
+        style={{ background: selected ? 'var(--accent-green)' : 'var(--fill-tertiary)', color: selected ? 'var(--bg-primary)' : 'var(--text-muted)', border: `1px solid ${selected ? 'var(--accent-green)' : 'var(--border-subtle)'}` }}
+        title={selected ? 'Remove from selection' : 'Select this trend'}
+      >
+        <Check size={13} />
+      </button>
+
+      <div className="flex items-center gap-2 mb-3 flex-wrap pr-8">
         <span
           className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-white"
           style={{ background: sourceColor(sig.source) }}
@@ -75,7 +81,7 @@ function SignalCard({ sig, businessName, showDate, profileId }: { sig: TrendSign
           <span className="text-[11px] text-muted">{new Date(sig.created_at).toLocaleDateString()}</span>
         )}
         <span
-          className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1"
+          className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1"
           style={{ color: relColor, border: `1px solid ${relColor}` }}
           title={`AI relevance score (0-100) — how relevant this trend is to ${businessName}`}
         >
@@ -106,16 +112,6 @@ function SignalCard({ sig, businessName, showDate, profileId }: { sig: TrendSign
         )}
         <button
           type="button"
-          onClick={onGenerateStrategy}
-          disabled={generating}
-          className="btn-ghost w-full !py-2 text-xs justify-center"
-          style={{ borderColor: 'var(--accent-green)', color: 'var(--accent-green)' }}
-          title="Generate a marketing strategy anchored on this trend + your real past post performance"
-        >
-          {generating ? <Spinner size={12} /> : <Sparkles size={12} />} General Strategy
-        </button>
-        <button
-          type="button"
           onClick={() => navigate('/studio', { state: { signalId: sig.id, topic: sig.topic } })}
           className="btn-ghost w-full !py-2 text-xs justify-center"
           style={{ borderColor: 'var(--accent-blue)', color: 'var(--accent-blue)' }}
@@ -136,7 +132,15 @@ const PAGE_SIZE = 20
 /** A signal grid with its own platform-filter chips — used both for the main view and for a
  *  History entry expanded inline, so both look and behave identically rather than one being a
  *  cut-down version of the other. */
-function SignalGrid({ signals, businessName, showDate, profileId }: { signals: TrendSignal[]; businessName: string; showDate: boolean; profileId: string }) {
+function SignalGrid({
+  signals, businessName, showDate, selectedIds, onToggleSelect,
+}: {
+  signals: TrendSignal[]
+  businessName: string
+  showDate: boolean
+  selectedIds: Set<string>
+  onToggleSelect: (sig: TrendSignal) => void
+}) {
   const [filter, setFilter] = useState<string | null>(null)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const sources = useMemo(() => Array.from(new Set(signals.map((s) => s.source))).sort(), [signals])
@@ -190,7 +194,14 @@ function SignalGrid({ signals, businessName, showDate, profileId }: { signals: T
         <>
           <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
             {shown.map((s) => (
-              <SignalCard key={s.id} sig={s} businessName={businessName} showDate={showDate} profileId={profileId} />
+              <SignalCard
+                key={s.id}
+                sig={s}
+                businessName={businessName}
+                showDate={showDate}
+                selected={selectedIds.has(s.id)}
+                onToggleSelect={() => onToggleSelect(s)}
+              />
             ))}
           </div>
           {visible.length > shown.length && (
@@ -214,7 +225,15 @@ function SignalGrid({ signals, businessName, showDate, profileId }: { signals: T
 /** One History row — collapsed shows real counts computed from its own signals (not the
  *  n8n-written sources_completed column, which this pipeline never populated and always read as
  *  "0 sources"); expanded reveals the exact same grid used everywhere else on this page. */
-function HistoryRow({ run, signals, businessName, profileId }: { run: TrendRun; signals: TrendSignal[]; businessName: string; profileId: string }) {
+function HistoryRow({
+  run, signals, businessName, selectedIds, onToggleSelect,
+}: {
+  run: TrendRun
+  signals: TrendSignal[]
+  businessName: string
+  selectedIds: Set<string>
+  onToggleSelect: (sig: TrendSignal) => void
+}) {
   const [open, setOpen] = useState(false)
   const sourceCount = new Set(signals.map((s) => s.source)).size
 
@@ -239,7 +258,7 @@ function HistoryRow({ run, signals, businessName, profileId }: { run: TrendRun; 
           {signals.length === 0 ? (
             <EmptyState icon={<TrendingUp size={24} />} title="No signals from this run" />
           ) : (
-            <SignalGrid signals={signals} businessName={businessName} showDate={false} profileId={profileId} />
+            <SignalGrid signals={signals} businessName={businessName} showDate={false} selectedIds={selectedIds} onToggleSelect={onToggleSelect} />
           )}
         </div>
       )}
@@ -281,6 +300,23 @@ export default function Trends() {
   // accordion's real per-run counts and its inline grids, independent of the top date filter
   // (History is a complete browsable archive, not itself filtered by the current range).
   const [allSignals, setAllSignals] = useState<TrendSignal[]>([])
+
+  // Multi-select for "Generate Strategy" — deliberately page-level, not reset by the date-range
+  // filter, the source filter, or opening/closing a History row, so trends picked from different
+  // views/times combine into one selection ("choose past or current ones at a time"). Keyed by
+  // signal id; the full {source, topic} is kept alongside so the modal can show real chips
+  // without a re-fetch even for a signal picked from a view that's no longer showing.
+  const [selected, setSelected] = useState<Map<string, { source: string; topic: string }>>(new Map())
+  const [generateModalOpen, setGenerateModalOpen] = useState(false)
+
+  function onToggleSelect(sig: TrendSignal) {
+    setSelected((prev) => {
+      const next = new Map(prev)
+      if (next.has(sig.id)) next.delete(sig.id)
+      else next.set(sig.id, { source: sig.source, topic: sig.topic })
+      return next
+    })
+  }
 
   const loadRuns = useCallback(async (profileId: string) => {
     const list = await listRuns(profileId)
@@ -539,7 +575,7 @@ export default function Trends() {
         ) : activeSignals.length === 0 ? (
           <EmptyState icon={<TrendingUp size={28} />} title="No signals in this period" hint="Signals accumulate as scans run — check back later, or widen the range." />
         ) : (
-          <SignalGrid signals={activeSignals} businessName={businessName} showDate profileId={profile.id} />
+          <SignalGrid signals={activeSignals} businessName={businessName} showDate selectedIds={new Set(selected.keys())} onToggleSelect={onToggleSelect} />
         )
       ) : !run ? (
         <EmptyState icon={<TrendingUp size={28} />} title="No trend scan yet" hint="Click Run manual scan to run the first one." />
@@ -553,7 +589,7 @@ export default function Trends() {
           {signals.length === 0 ? (
             <EmptyState icon={<TrendingUp size={28} />} title="No signals from this scan" />
           ) : (
-            <SignalGrid signals={signals} businessName={businessName} showDate={false} profileId={profile.id} />
+            <SignalGrid signals={signals} businessName={businessName} showDate={false} selectedIds={new Set(selected.keys())} onToggleSelect={onToggleSelect} />
           )}
 
           {history.length > 0 && (
@@ -561,13 +597,182 @@ export default function Trends() {
               <div className="text-sm font-medium text-secondary mb-3 mt-8">History</div>
               <div className="space-y-2">
                 {history.map(({ run: r, signals: sigs }) => (
-                  <HistoryRow key={r.id} run={r} signals={sigs} businessName={businessName} profileId={profile.id} />
+                  <HistoryRow key={r.id} run={r} signals={sigs} businessName={businessName} selectedIds={new Set(selected.keys())} onToggleSelect={onToggleSelect} />
                 ))}
               </div>
             </>
           )}
         </>
       )}
+
+      {/* Fixed bar, not part of page flow — appears the moment anything is picked, survives
+          scrolling/filter changes so the selection is never out of reach. */}
+      {selected.size > 0 && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-center gap-3 px-4 py-3"
+          style={{ background: 'var(--bg-card)', borderTop: '1px solid var(--border-subtle)' }}
+        >
+          <span className="text-sm font-medium">{selected.size} trend{selected.size === 1 ? '' : 's'} selected</span>
+          <button type="button" onClick={() => setSelected(new Map())} className="btn-ghost !py-1.5 !px-3 text-xs">
+            <X size={13} /> Clear
+          </button>
+          <Button onClick={() => setGenerateModalOpen(true)}>
+            <Target size={15} /> Generate Strategy <ArrowRight size={15} />
+          </Button>
+        </div>
+      )}
+
+      {generateModalOpen && profile && (
+        <GenerateStrategyModal
+          profileId={profile.id}
+          selected={selected}
+          onRemove={(id) => setSelected((prev) => { const next = new Map(prev); next.delete(id); return next })}
+          onClose={() => setGenerateModalOpen(false)}
+          onGenerated={() => {
+            setGenerateModalOpen(false)
+            setSelected(new Map())
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+// Opened from the fixed selection bar once at least one trend is picked. Scope/platform/content
+// type are all optional narrowing — the n8n workflow treats an unset platform/content_type as
+// "any" and 'month' is the default scope (same calendar length "Regenerate all" already produces).
+const SCOPE_OPTIONS: { value: GenerationScope; label: string; hint: string }[] = [
+  { value: 'month', label: 'Month', hint: 'Full calendar, 12-16 posts across 4 weeks' },
+  { value: 'week', label: 'Week', hint: '3-7 posts across the next 7 days' },
+  { value: 'day', label: 'Day', hint: 'Just one post' },
+]
+const GEN_PLATFORMS = [
+  { value: '', label: 'Any' },
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'youtube', label: 'YouTube' },
+]
+const GEN_CONTENT_TYPES = [
+  { value: '', label: 'Any' },
+  { value: 'static_image', label: 'Static image' },
+  { value: 'carousel', label: 'Carousel' },
+  { value: 'social_caption', label: 'Caption' },
+  { value: 'linkedin_article', label: 'LinkedIn article' },
+  { value: 'story', label: 'Story' },
+  { value: 'ugc_video', label: 'Video' },
+]
+
+function GenerateStrategyModal({
+  profileId, selected, onRemove, onClose, onGenerated,
+}: {
+  profileId: string
+  selected: Map<string, { source: string; topic: string }>
+  onRemove: (id: string) => void
+  onClose: () => void
+  onGenerated: () => void
+}) {
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [scope, setScope] = useState<GenerationScope>('month')
+  const [platform, setPlatform] = useState('')
+  const [contentType, setContentType] = useState('')
+  const [generating, setGenerating] = useState(false)
+
+  async function onGenerate() {
+    if (selected.size === 0) return
+    setGenerating(true)
+    try {
+      await triggerStrategyGeneration(profileId, Array.from(selected.keys()), scope, platform, contentType)
+      toast.info('Generating — this shows up under Recent on the Strategy page in a moment.')
+      onGenerated()
+      navigate('/strategy', { state: { justTriggeredGeneration: true } })
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not start generation'))
+      setGenerating(false)
+    }
+  }
+
+  return (
+    <Modal title="Generate Strategy" onClose={onClose}>
+      <div className="space-y-4">
+        <div>
+          <div className="label mb-2">From these trends</div>
+          <div className="flex gap-1.5 flex-wrap">
+            {Array.from(selected.entries()).map(([id, s]) => (
+              <span key={id} className="flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full" style={{ background: 'var(--fill-tertiary)', border: '1px solid var(--border-subtle)' }}>
+                {s.topic.slice(0, 40)}
+                <button type="button" onClick={() => onRemove(id)} className="text-muted hover:text-terracotta" aria-label={`Remove ${s.topic}`}>
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="label mb-2">Scope</div>
+          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+            {SCOPE_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setScope(o.value)}
+                className="text-left px-3 py-2 rounded-lg transition-all"
+                style={{ border: `1.5px solid ${scope === o.value ? 'var(--accent-green)' : 'var(--border-subtle)'}`, background: scope === o.value ? 'var(--fill-secondary)' : 'var(--fill-tertiary)' }}
+              >
+                <div className="text-xs font-semibold">{o.label}</div>
+                <div className="text-muted text-[10.5px] leading-snug mt-0.5">{o.hint}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="label mb-2">Platform</div>
+          <div className="flex gap-2 flex-wrap">
+            {GEN_PLATFORMS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setPlatform(o.value)}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                style={{ background: platform === o.value ? 'var(--accent-blue)' : 'var(--fill-secondary)', color: platform === o.value ? '#fff' : 'var(--text-primary)', border: `1.5px solid ${platform === o.value ? 'var(--accent-blue)' : 'var(--border-subtle)'}` }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="label mb-2">Content type</div>
+          <div className="flex gap-2 flex-wrap">
+            {GEN_CONTENT_TYPES.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setContentType(o.value)}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                style={{ background: contentType === o.value ? 'var(--accent-orange)' : 'var(--fill-secondary)', color: contentType === o.value ? '#fff' : 'var(--text-primary)', border: `1.5px solid ${contentType === o.value ? 'var(--accent-orange)' : 'var(--border-subtle)'}` }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <p className="text-muted text-[10.5px]">
+          This is always a separate, standalone generation — it never replaces the current strategy on the Strategy page.
+        </p>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose} disabled={generating}>Cancel</Button>
+          <Button onClick={onGenerate} loading={generating} disabled={selected.size === 0}>
+            <Target size={15} /> Generate
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
