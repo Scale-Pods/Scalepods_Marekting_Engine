@@ -13,14 +13,21 @@ import { toggleTheme, getCurrentTheme, type Theme, type Role, ROLE_ACCENT } from
 
 type NavItem = { to: string; label: string; icon: ReactNode; roles: Role[] }
 
-// Grouped by pipeline stage: Marketing Engine (plan) -> Content Generation (make) ->
+// Grouped by pipeline stage: Marketing Strategy (plan) -> Content Generation (make) ->
 // Publishing Engine (ship) -> Insight (Analytics/Intelligence/Settings read/interpret data the
-// engine produces rather than driving the pipeline itself).
+// engine produces rather than driving the pipeline itself). Dashboard sits above every group,
+// ungrouped (empty `section` skips the header render below) — it's the one screen that isn't
+// part of any single pipeline stage.
 const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
   {
-    section: 'Marketing Engine',
+    section: '',
     items: [
       { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={18} />, roles: ['admin', 'client', 'designer'] },
+    ],
+  },
+  {
+    section: 'Marketing Strategy',
+    items: [
       { to: '/clients', label: 'Business', icon: <Building2 size={18} />, roles: ['admin'] },
       { to: '/trends', label: 'Trends', icon: <TrendingUp size={18} />, roles: ['admin', 'client'] },
       { to: '/strategy', label: 'Strategy', icon: <Target size={18} />, roles: ['admin', 'client'] },
@@ -177,8 +184,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
             const items = group.items.filter((n) => n.roles.includes(role))
             if (items.length === 0) return null
             return (
-              <div key={group.section}>
-                {expanded && (
+              <div key={group.section || 'ungrouped'}>
+                {expanded && group.section && (
                   <div className="text-muted text-[10px] font-semibold uppercase tracking-wide px-3 mb-1.5 whitespace-nowrap">
                     {group.section}
                   </div>
