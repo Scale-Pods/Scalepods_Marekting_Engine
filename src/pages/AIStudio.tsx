@@ -135,14 +135,19 @@ export default function AIStudio() {
   const activeModel = getModel(model)
   const activeStyle = getStyle(styleId)
 
-  // Trends arriving from the Trends page's "Create with AI" button — deep-linked rather than
-  // running a separate one-shot generator, so there's exactly one generation engine.
+  // Deep-linked here rather than running a separate one-shot generator, so there's exactly one
+  // generation engine — from Trends' "Create Post" (a specific trend) or from a Recent strategy
+  // generation's calendar item (a specific planned post, see StrategyGenerationModal).
   useEffect(() => {
-    const state = location.state as { signalId?: string; topic?: string } | null
+    const state = location.state as { signalId?: string; topic?: string; platform?: string } | null
     if (state?.signalId) {
       setSourceKind('trend')
       setSignalId(state.signalId)
       if (state.topic) setTopic(state.topic)
+    } else if (state?.topic) {
+      setSourceKind('topic')
+      setTopic(state.topic)
+      if (state.platform) setPlatform(state.platform)
     }
   }, [location.state])
 

@@ -1,9 +1,14 @@
 import { useState } from 'react'
-import { Sparkles, AlertTriangle } from 'lucide-react'
-import { Badge, Modal, Spinner } from '../ui'
+import { useNavigate } from 'react-router-dom'
+import { Sparkles, AlertTriangle, Wand2 } from 'lucide-react'
+import { Badge, Button, Modal, Spinner } from '../ui'
 import { PlatformBadge } from '../mediaUi'
 import { StrategyCalendarView } from './StrategyCalendarView'
 import type { StrategyGeneration, CalendarItem } from '../../lib/strategy'
+
+// AI Studio only generates images for these three — a calendar item planned for YouTube still
+// forwards, just without a platform preselected (video generation stays manual project-wide).
+const STUDIO_SUPPORTED_PLATFORMS = new Set(['instagram', 'linkedin', 'facebook'])
 
 const SCOPE_LABEL: Record<string, string> = { day: 'Single post', week: 'One week', month: 'Full month' }
 const PLATFORM_TONE: Record<string, 'green' | 'blue' | 'orange'> = {
@@ -55,7 +60,22 @@ function ReadOnlySection({ label, value }: { label: string; value: unknown }) {
 
 export function StrategyGenerationModal({ generation, onClose }: { generation: StrategyGeneration; onClose: () => void }) {
   const [detailItem, setDetailItem] = useState<CalendarItem | null>(null)
+  const navigate = useNavigate()
   const topics = generation.source_signals_snapshot.map((s) => s.topic).join(', ') || 'Generated strategy'
+
+  // Same deep-link pattern Trends.tsx's "Create Post" already uses (navigate to /studio with
+  // state AI Studio's own mount effect reads) — one calendar item maps cleanly to one AI Studio
+  // brief, the same granularity as picking a single trend, unlike the whole generation which can
+  // span a week or month of posts.
+  function onCreatePost(item: CalendarItem) {
+    onClose()
+    navigate('/studio', {
+      state: {
+        topic: item.hook ? `${item.title}: ${item.hook}` : item.title,
+        platform: STUDIO_SUPPORTED_PLATFORMS.has(item.platform?.toLowerCase()) ? item.platform.toLowerCase() : undefined,
+      },
+    })
+  }
 
   return (
     <>
@@ -135,6 +155,11 @@ export function StrategyGenerationModal({ generation, onClose }: { generation: S
                 <div className="text-sm text-secondary">{detailItem.hook}</div>
               </div>
             )}
+            <div className="flex justify-end pt-1">
+              <Button onClick={() => onCreatePost(detailItem)}>
+                <Wand2 size={15} /> Create Post
+              </Button>
+            </div>
           </div>
         </Modal>
       )}
