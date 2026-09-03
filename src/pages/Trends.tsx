@@ -128,13 +128,26 @@ function SignalCard({ sig, businessName, showDate, profileId }: { sig: TrendSign
   )
 }
 
+// How many cards render before a "Load more" click — the daily scheduler now genuinely fires
+// every night (see the trend-intelligence memory), so date-range views (7d/30d/all) only grow
+// from here; without a cap this grid would render every signal ever collected in one page.
+const PAGE_SIZE = 20
+
 /** A signal grid with its own platform-filter chips — used both for the main view and for a
  *  History entry expanded inline, so both look and behave identically rather than one being a
  *  cut-down version of the other. */
 function SignalGrid({ signals, businessName, showDate, profileId }: { signals: TrendSignal[]; businessName: string; showDate: boolean; profileId: string }) {
   const [filter, setFilter] = useState<string | null>(null)
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const sources = useMemo(() => Array.from(new Set(signals.map((s) => s.source))).sort(), [signals])
   const visible = filter ? signals.filter((s) => s.source === filter) : signals
+
+  // Back to the first page whenever the underlying set changes — a new source filter, a
+  // different date range, or a different scan selected — so "Load more" always starts fresh
+  // rather than showing a stale page position against a different list.
+  useEffect(() => setVisibleCount(PAGE_SIZE), [filter, signals])
+
+  const shown = visible.slice(0, visibleCount)
 
   return (
     <>
@@ -174,11 +187,25 @@ function SignalGrid({ signals, businessName, showDate, profileId }: { signals: T
       {visible.length === 0 ? (
         <EmptyState icon={<TrendingUp size={28} />} title="No signals for this source" />
       ) : (
-        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-          {visible.map((s) => (
-            <SignalCard key={s.id} sig={s} businessName={businessName} showDate={showDate} profileId={profileId} />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+            {shown.map((s) => (
+              <SignalCard key={s.id} sig={s} businessName={businessName} showDate={showDate} profileId={profileId} />
+            ))}
+          </div>
+          {visible.length > shown.length && (
+            <div className="flex flex-col items-center gap-2 mt-5">
+              <span className="text-muted text-xs">Showing {shown.length} of {visible.length}</span>
+              <button
+                type="button"
+                onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                className="btn-ghost !py-2 !px-4 text-xs"
+              >
+                Load {Math.min(PAGE_SIZE, visible.length - shown.length)} more
+              </button>
+            </div>
+          )}
+        </>
       )}
     </>
   )
