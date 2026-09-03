@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
-  Target, RefreshCw, CheckCircle2, CalendarDays, ListChecks, LayoutGrid, Magnet, MousePointerClick, Sparkles,
-  TrendingUp,
+  Target, CheckCircle2, CalendarDays, ListChecks, LayoutGrid, Magnet, MousePointerClick, Sparkles,
+  TrendingUp, ArrowRight,
 } from 'lucide-react'
 import {
-  getLatestStrategy, triggerStrategy, approveStrategy, updateStrategySection, regenerateStrategySection,
+  getLatestStrategy, approveStrategy, updateStrategySection, regenerateStrategySection,
   getSourceSignal, listStrategyGenerations, type MarketingStrategy, type StrategySection, type CalendarItem,
   type StrategyGeneration,
 } from '../lib/strategy'
@@ -16,6 +16,7 @@ import { PillarBalanceChart } from '../components/strategy/PillarBalanceChart'
 import { PlatformCards } from '../components/strategy/PlatformCards'
 import { StrategyCalendarView } from '../components/strategy/StrategyCalendarView'
 import { StrategyGenerationModal } from '../components/strategy/StrategyGenerationModal'
+import { GenerateStrategyModal } from '../components/strategy/GenerateStrategyModal'
 import { useProfile } from '../lib/queries'
 
 const GEN_SCOPE_LABEL: Record<string, string> = { day: 'Day', week: 'Week', month: 'Month' }
@@ -37,8 +38,8 @@ const PLATFORM_TONE: Record<string, 'green' | 'blue' | 'orange'> = {
 export default function Strategy() {
   const { data: profile } = useProfile()
   const [strategy, setStrategy] = useState<MarketingStrategy | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
   const [approving, setApproving] = useState(false)
+  const [generateModalOpen, setGenerateModalOpen] = useState(false)
   const [detailItem, setDetailItem] = useState<CalendarItem | null>(null)
   const [activeTab, setActiveTab] = useState<StrategySection | 'calendar'>('campaign_planning')
   const [sourceSignal, setSourceSignal] = useState<{ id: string; source: string; topic: string } | null>(null)
@@ -81,31 +82,9 @@ export default function Strategy() {
     return s
   }, [])
 
-  // Poll for a genuinely NEW strategy row (a different id than `beforeId`), not just any
-  // strategy — an old completed/approved one would otherwise pass instantly. The n8n workflow
-  // inserts a 'processing' placeholder immediately, but the webhook itself only fires the
-  // workflow and returns before that insert necessarily lands, so a single load() right after
-  // triggering can still race ahead of it and see the old strategy. Once this loop actually
-  // finds the new row, the isActive-based poller below takes over for the rest of generation.
-  const waitForNewStrategy = useCallback(async (profileId: string, beforeId: string | null) => {
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 3000))
-      const fresh = await load(profileId)
-      if (fresh && fresh.id !== beforeId) break
-    }
-  }, [load])
-
   useEffect(() => {
     if (!profile) return
-    load(profile.id).then((s) => {
-      // Arrived here right after firing a strategy from a trend card's "General Strategy"
-      // button (see Trends.tsx) — the same race as onRegenerate below, just on page load
-      // instead of a button click.
-      if (location.state?.justTriggered) {
-        setRefreshing(true)
-        waitForNewStrategy(profile.id, s?.id ?? null).then(() => setRefreshing(false))
-      }
-    })
+    load(profile.id)
     loadGenerations(profile.id).then((list) => {
       // Same race, but for a scoped generation fired from Trends.tsx's "Generate Strategy" bar:
       // the webhook returns before the placeholder row necessarily exists, so poll for a
@@ -128,8 +107,8 @@ export default function Strategy() {
       }
     })
     // Only ever meant to fire once per landing on this page — re-running on every `profile`
-    // identity change (react-query can hand back a new object each fetch) would restart the
-    // wait loop and, worse, replay `justTriggered` handling after it already navigated away.
+    // identity change (react-query can hand back a new object each fetch) would replay
+    // `justTriggeredGeneration` handling after it already navigated away.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id])
 
@@ -164,15 +143,6 @@ export default function Strategy() {
       pollRef.current = null
     }
   }, [profile, strategy?.status, load])
-
-  async function onRegenerate() {
-    if (!profile) return
-    setRefreshing(true)
-    const before = strategy?.id ?? null
-    await triggerStrategy(profile.id)
-    await waitForNewStrategy(profile.id, before)
-    setRefreshing(false)
-  }
 
   async function onApprove() {
     if (!strategy) return
@@ -229,8 +199,8 @@ export default function Strategy() {
         subtitle="Generated from the BI report + trend signals + your real past post performance. Edit any section manually, regenerate it with AI, or approve before content generation can begin."
         actions={
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={onRegenerate} loading={refreshing || isActive}>
-              <RefreshCw size={15} /> Regenerate all
+            <Button variant="ghost" onClick={() => setGenerateModalOpen(true)}>
+              <Target size={15} /> Generate Strategy <ArrowRight size={15} />
             </Button>
             {strategy && strategy.status === 'completed' && (
               <Button onClick={onApprove} loading={approving}>
@@ -242,14 +212,14 @@ export default function Strategy() {
       />
 
       {!strategy ? (
-        <EmptyState icon={<Target size={28} />} title="No strategy yet" hint="Click Regenerate all to generate the first strategy from the BI report + trends." />
+        <EmptyState icon={<Target size={28} />} title="No active strategy" hint="This page shows the plan you're actively working from. Use Generate Strategy above to build a scoped plan anchored on your trends — it lands under Recent below." />
       ) : isActive ? (
         <div className="card p-8 flex flex-col items-center gap-3 text-center">
           <Spinner size={22} />
           <div className="text-sm text-secondary">Building campaign plan, calendar, and platform strategy…</div>
         </div>
       ) : strategy.status === 'failed' ? (
-        <EmptyState title="Strategy generation failed" hint="Click Regenerate all to try again." />
+        <EmptyState title="Strategy generation failed" hint="This was the active strategy's last generation attempt — it did not complete." />
       ) : (
         <>
           <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -353,6 +323,15 @@ export default function Strategy() {
 
       {openGeneration && (
         <StrategyGenerationModal generation={openGeneration} onClose={() => setOpenGeneration(null)} />
+      )}
+
+      {generateModalOpen && profile && (
+        <GenerateStrategyModal
+          profileId={profile.id}
+          allowPicker
+          onClose={() => setGenerateModalOpen(false)}
+          onGenerated={() => setGenerateModalOpen(false)}
+        />
       )}
 
       {detailItem && (

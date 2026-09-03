@@ -2,32 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, PlayCircle, ExternalLink, Calendar, ChevronDown, ChevronUp, Clock, Wand2, Check, X, Target, ArrowRight } from 'lucide-react'
 import {
-  listRuns, listSignals, listSignalsSince, triggerTrends, SCAN_PLATFORMS,
+  listRuns, listSignals, listSignalsSince, triggerTrends, sourceColor, SCAN_PLATFORMS,
   type TrendRun, type TrendSignal, type ScanPlatform,
 } from '../lib/trends'
-import { triggerStrategyGeneration, type GenerationScope } from '../lib/strategy'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
+import { GenerateStrategyModal } from '../components/strategy/GenerateStrategyModal'
 import { useProfile } from '../lib/queries'
-import { useToast, toastMessage } from '../components/Toast'
-
-// Real-world brand colors for the platform sources; ScalePods' own accent tokens for the two
-// non-platform categories (SEO Keywords, Competitor campaigns) — no invented colors either way.
-const SOURCE_COLOR: Record<string, string> = {
-  'Google Trends': '#4285F4',
-  'Google News': '#EA4335',
-  Reddit: '#FF4500',
-  Instagram: '#E1306C',
-  YouTube: '#FF0000',
-  LinkedIn: '#0A66C2',
-  Facebook: '#1877F2',
-  'Google Search': 'var(--accent-blue)',
-  'SEO Keywords': 'var(--accent-green)',
-  'Competitor campaigns': 'var(--accent-blue)',
-}
-
-function sourceColor(source: string) {
-  return SOURCE_COLOR[source] ?? 'var(--fill-tertiary)'
-}
 
 function relevanceColor(score: number) {
   return score >= 70 ? 'var(--accent-green)' : score >= 40 ? 'var(--accent-orange)' : 'var(--text-muted)'
@@ -625,8 +605,7 @@ export default function Trends() {
       {generateModalOpen && profile && (
         <GenerateStrategyModal
           profileId={profile.id}
-          selected={selected}
-          onRemove={(id) => setSelected((prev) => { const next = new Map(prev); next.delete(id); return next })}
+          initialSelected={selected}
           onClose={() => setGenerateModalOpen(false)}
           onGenerated={() => {
             setGenerateModalOpen(false)
@@ -635,144 +614,5 @@ export default function Trends() {
         />
       )}
     </div>
-  )
-}
-
-// Opened from the fixed selection bar once at least one trend is picked. Scope/platform/content
-// type are all optional narrowing — the n8n workflow treats an unset platform/content_type as
-// "any" and 'month' is the default scope (same calendar length "Regenerate all" already produces).
-const SCOPE_OPTIONS: { value: GenerationScope; label: string; hint: string }[] = [
-  { value: 'month', label: 'Month', hint: 'Full calendar, 12-16 posts across 4 weeks' },
-  { value: 'week', label: 'Week', hint: '3-7 posts across the next 7 days' },
-  { value: 'day', label: 'Day', hint: 'Just one post' },
-]
-const GEN_PLATFORMS = [
-  { value: '', label: 'Any' },
-  { value: 'instagram', label: 'Instagram' },
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'facebook', label: 'Facebook' },
-  { value: 'youtube', label: 'YouTube' },
-]
-const GEN_CONTENT_TYPES = [
-  { value: '', label: 'Any' },
-  { value: 'static_image', label: 'Static image' },
-  { value: 'carousel', label: 'Carousel' },
-  { value: 'social_caption', label: 'Caption' },
-  { value: 'linkedin_article', label: 'LinkedIn article' },
-  { value: 'story', label: 'Story' },
-  { value: 'ugc_video', label: 'Video' },
-]
-
-function GenerateStrategyModal({
-  profileId, selected, onRemove, onClose, onGenerated,
-}: {
-  profileId: string
-  selected: Map<string, { source: string; topic: string }>
-  onRemove: (id: string) => void
-  onClose: () => void
-  onGenerated: () => void
-}) {
-  const navigate = useNavigate()
-  const toast = useToast()
-  const [scope, setScope] = useState<GenerationScope>('month')
-  const [platform, setPlatform] = useState('')
-  const [contentType, setContentType] = useState('')
-  const [generating, setGenerating] = useState(false)
-
-  async function onGenerate() {
-    if (selected.size === 0) return
-    setGenerating(true)
-    try {
-      await triggerStrategyGeneration(profileId, Array.from(selected.keys()), scope, platform, contentType)
-      toast.info('Generating — this shows up under Recent on the Strategy page in a moment.')
-      onGenerated()
-      navigate('/strategy', { state: { justTriggeredGeneration: true } })
-    } catch (err) {
-      toast.error(toastMessage(err, 'Could not start generation'))
-      setGenerating(false)
-    }
-  }
-
-  return (
-    <Modal title="Generate Strategy" onClose={onClose}>
-      <div className="space-y-4">
-        <div>
-          <div className="label mb-2">From these trends</div>
-          <div className="flex gap-1.5 flex-wrap">
-            {Array.from(selected.entries()).map(([id, s]) => (
-              <span key={id} className="flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full" style={{ background: 'var(--fill-tertiary)', border: '1px solid var(--border-subtle)' }}>
-                {s.topic.slice(0, 40)}
-                <button type="button" onClick={() => onRemove(id)} className="text-muted hover:text-terracotta" aria-label={`Remove ${s.topic}`}>
-                  <X size={11} />
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div className="label mb-2">Scope</div>
-          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-            {SCOPE_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => setScope(o.value)}
-                className="text-left px-3 py-2 rounded-lg transition-all"
-                style={{ border: `1.5px solid ${scope === o.value ? 'var(--accent-green)' : 'var(--border-subtle)'}`, background: scope === o.value ? 'var(--fill-secondary)' : 'var(--fill-tertiary)' }}
-              >
-                <div className="text-xs font-semibold">{o.label}</div>
-                <div className="text-muted text-[10.5px] leading-snug mt-0.5">{o.hint}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div className="label mb-2">Platform</div>
-          <div className="flex gap-2 flex-wrap">
-            {GEN_PLATFORMS.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => setPlatform(o.value)}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-                style={{ background: platform === o.value ? 'var(--accent-blue)' : 'var(--fill-secondary)', color: platform === o.value ? '#fff' : 'var(--text-primary)', border: `1.5px solid ${platform === o.value ? 'var(--accent-blue)' : 'var(--border-subtle)'}` }}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div className="label mb-2">Content type</div>
-          <div className="flex gap-2 flex-wrap">
-            {GEN_CONTENT_TYPES.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => setContentType(o.value)}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-                style={{ background: contentType === o.value ? 'var(--accent-orange)' : 'var(--fill-secondary)', color: contentType === o.value ? '#fff' : 'var(--text-primary)', border: `1.5px solid ${contentType === o.value ? 'var(--accent-orange)' : 'var(--border-subtle)'}` }}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <p className="text-muted text-[10.5px]">
-          This is always a separate, standalone generation — it never replaces the current strategy on the Strategy page.
-        </p>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" onClick={onClose} disabled={generating}>Cancel</Button>
-          <Button onClick={onGenerate} loading={generating} disabled={selected.size === 0}>
-            <Target size={15} /> Generate
-          </Button>
-        </div>
-      </div>
-    </Modal>
   )
 }

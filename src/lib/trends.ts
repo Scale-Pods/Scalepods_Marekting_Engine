@@ -22,6 +22,27 @@ export interface TrendSignal {
   created_at: string
 }
 
+// Real-world brand colors for the platform sources; ScalePods' own accent tokens for the two
+// non-platform categories (SEO Keywords, Competitor campaigns) — no invented colors either way.
+// Lives here (not Trends.tsx) so GenerateStrategyModal's own trend picker can use the exact same
+// source badge color without importing across a page boundary.
+const SOURCE_COLOR: Record<string, string> = {
+  'Google Trends': '#4285F4',
+  'Google News': '#EA4335',
+  Reddit: '#FF4500',
+  Instagram: '#E1306C',
+  YouTube: '#FF0000',
+  LinkedIn: '#0A66C2',
+  Facebook: '#1877F2',
+  'Google Search': 'var(--accent-blue)',
+  'SEO Keywords': 'var(--accent-green)',
+  'Competitor campaigns': 'var(--accent-blue)',
+}
+
+export function sourceColor(source: string): string {
+  return SOURCE_COLOR[source] ?? 'var(--fill-tertiary)'
+}
+
 export async function getLatestRun(profileId: string): Promise<TrendRun | null> {
   const { data, error } = await supabase
     .from('trend_runs')
