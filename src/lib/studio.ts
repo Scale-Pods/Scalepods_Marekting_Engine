@@ -62,10 +62,11 @@ export interface ImageModel {
  *  Nothing else needs to change: the workflow branches already exist. */
 export const HIGGSFIELD_ENABLED = false
 
-/** Flip to true once the Google AI Studio credential is bound in n8n (Header Auth,
- *  `x-goog-api-key: <key>`) and the Studio Generate workflow's google branch has been verified
- *  against one real call. */
-export const GOOGLE_ENABLED = false
+/** Credential bound and the google branch verified against 2 real calls (2026-09-03): fixed a
+ *  missing aspect-ratio param (defaulted to 16:9-ish regardless of what was requested) and a
+ *  hardcoded image/png that didn't match the real returned bytes (JPEG) — see
+ *  ScalePods · Studio Generate's Normalize Google Response / Split Variants nodes. */
+export const GOOGLE_ENABLED = true
 
 export const IMAGE_MODELS: ImageModel[] = [
   {

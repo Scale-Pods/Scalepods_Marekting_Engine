@@ -59,8 +59,12 @@ function CostEstimate({ model, ratio, variantCount }: { model: ReturnType<typeof
     return note ? <span className="text-muted text-[11px]">{note}</span> : null
   }
   return (
-    <span className="text-[11px] font-semibold" style={{ color: 'var(--accent-orange)' }}>
-      ≈ ${usd.toFixed(3)} for {variantCount} {variantCount === 1 ? 'image' : 'images'}
+    <span
+      className="text-[11px] font-semibold"
+      style={{ color: 'var(--accent-orange)' }}
+      title="Providers bill by tokens/compute, not a flat per-image rate — this is an estimate, not a guaranteed cost."
+    >
+      ≈ ${usd.toFixed(3)} for {variantCount} {variantCount === 1 ? 'image' : 'images'} (est.)
     </span>
   )
 }
@@ -465,13 +469,26 @@ export default function AIStudio() {
                     >
                       <div className="text-xs font-semibold">{m.label}</div>
                       <div className="text-muted text-[11px] leading-snug mt-0.5">{m.blurb}</div>
-                      <div className="text-[10.5px] font-semibold mt-1" style={{ color: 'var(--accent-green)' }}>
-                        {m.pricePerImage != null ? `~$${m.pricePerImage.toFixed(3)} / image` : m.priceNote}
+                      <div
+                        className="text-[10.5px] font-semibold mt-1"
+                        style={{ color: 'var(--accent-green)' }}
+                        title={m.priceNote}
+                      >
+                        {m.pricePerImage != null ? `~$${m.pricePerImage.toFixed(3)} / image (est.)` : m.priceNote}
                       </div>
                     </button>
                   )
                 })}
               </div>
+              {IMAGE_MODELS.some((m) => m.pricePerImage != null) && (
+                // Every provider here bills by tokens/compute under the hood, not a flat
+                // per-image rate — OpenAI's own price already varies by ratio, and a live test
+                // showed Gemini's real output differs from what its docs describe. Said once,
+                // here, rather than repeated per model card.
+                <p className="text-muted text-[10.5px] mt-2">
+                  Prices are estimates, not a guaranteed rate — check your provider's real invoice for exact cost.
+                </p>
+              )}
               {!HIGGSFIELD_ENABLED && (
                 <p className="text-muted text-xs mt-2">
                   Higgsfield models unlock once its API key is added — create one at cloud.higgsfield.ai (it issues a Key ID + Secret) and send both over.
