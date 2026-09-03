@@ -9,7 +9,7 @@ import { listSignalsSince, type TrendSignal } from '../lib/trends'
 import {
   generateStudioBrief, triggerStudioGenerate, updateStudioDraft, listStudioJobs, getStudioJob,
   selectStudioVariant, markStudioJobUsed, deleteStudioJob,
-  IMAGE_MODELS, getModel, HIGGSFIELD_ENABLED, estimateStudioCost,
+  IMAGE_MODELS, getModel, estimateStudioCost, formatUsdInr,
   type StudioJob, type StudioSourceKind, type ImageModelId, type StudioCopy,
 } from '../lib/studio'
 import {
@@ -54,17 +54,15 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
  *  variant-count/model choice is priced before the brief is even written) and, more importantly,
  *  right next to the actual Generate button, since that's the step that spends real money. */
 function CostEstimate({ model, ratio, variantCount }: { model: ReturnType<typeof getModel>; ratio: AspectRatio; variantCount: number }) {
-  const { usd, note } = estimateStudioCost(model, ratio, variantCount)
-  if (usd == null) {
-    return note ? <span className="text-muted text-[11px]">{note}</span> : null
-  }
+  const { usd } = estimateStudioCost(model, ratio, variantCount)
+  if (usd == null) return null
   return (
     <span
       className="text-[11px] font-semibold"
       style={{ color: 'var(--accent-orange)' }}
       title="Providers bill by tokens/compute, not a flat per-image rate — this is an estimate, not a guaranteed cost."
     >
-      ≈ ${usd.toFixed(3)} for {variantCount} {variantCount === 1 ? 'image' : 'images'} (est.)
+      ≈ {formatUsdInr(usd)} for {variantCount} {variantCount === 1 ? 'image' : 'images'} (est.)
     </span>
   )
 }
@@ -465,7 +463,7 @@ export default function AIStudio() {
                         background: active ? 'var(--fill-secondary)' : 'var(--fill-tertiary)',
                         opacity: m.available ? 1 : 0.45,
                       }}
-                      title={m.available ? m.blurb : 'Needs the Higgsfield API key'}
+                      title={m.available ? m.blurb : 'Not yet verified against a real generation'}
                     >
                       <div className="text-xs font-semibold">{m.label}</div>
                       <div className="text-muted text-[11px] leading-snug mt-0.5">{m.blurb}</div>
@@ -474,24 +472,22 @@ export default function AIStudio() {
                         style={{ color: 'var(--accent-green)' }}
                         title={m.priceNote}
                       >
-                        {m.pricePerImage != null ? `~$${m.pricePerImage.toFixed(3)} / image (est.)` : m.priceNote}
+                        {`~${formatUsdInr(m.pricePerImage)} / image (est.)`}
                       </div>
                     </button>
                   )
                 })}
               </div>
-              {IMAGE_MODELS.some((m) => m.pricePerImage != null) && (
-                // Every provider here bills by tokens/compute under the hood, not a flat
-                // per-image rate — OpenAI's own price already varies by ratio, and a live test
-                // showed Gemini's real output differs from what its docs describe. Said once,
-                // here, rather than repeated per model card.
-                <p className="text-muted text-[10.5px] mt-2">
-                  Prices are estimates, not a guaranteed rate — check your provider's real invoice for exact cost.
-                </p>
-              )}
-              {!HIGGSFIELD_ENABLED && (
+              {/* Every provider here bills by tokens/compute under the hood, not a flat
+                  per-image rate — OpenAI's own price already varies by ratio, and a live test
+                  showed Gemini's real output differs from what its docs describe. Said once,
+                  here, rather than repeated per model card. */}
+              <p className="text-muted text-[10.5px] mt-2">
+                Prices are estimates, not a guaranteed rate — check your provider's real invoice for exact cost.
+              </p>
+              {IMAGE_MODELS.some((m) => !m.available) && (
                 <p className="text-muted text-xs mt-2">
-                  Higgsfield models unlock once its API key is added — create one at cloud.higgsfield.ai (it issues a Key ID + Secret) and send both over.
+                  Greyed-out models are wired in but not yet verified against a real generation — they'll light up once tested.
                 </p>
               )}
             </div>

@@ -13,62 +13,73 @@ import type { AspectRatio } from './studioStyles'
 
 // --- Model registry -------------------------------------------------------
 // The single seam for adding providers. The UI enables/disables controls off these capability
-// flags, and the n8n `sp-studio-generate` workflow switches on `id`. Adding a model later is one
-// entry here plus one Switch branch there — no schema change, no page rewrite.
+// flags. Both branches in the n8n `sp-studio-generate` workflow take the model id verbatim (the
+// OpenAI branch as the `model` field, the Google branch as the URL path segment before
+// `:generateContent`), so `id` here MUST be the literal, real API model string for that
+// provider — never an invented internal name. Adding a model later is one entry here, no
+// workflow change, as long as it's a sibling model on an already-wired provider.
 //
-// Every Higgsfield entry below is transcribed from their live OpenAPI spec (docs.higgsfield.ai/
-// docs/openapi.json), so the param names and allowed values are real, not guessed.
+// Higgsfield was removed 2026-09-03 at the user's request (no credential was ever bound for it).
 
 export type ImageModelId =
+  | 'gpt-image-1-mini'
   | 'gpt-image-1'
-  | 'gemini-flash-image'
-  | 'higgsfield-soul'
-  | 'higgsfield-soul-reference'
-  | 'higgsfield-soul-character'
-  | 'higgsfield-popcorn'
-  | 'flux-pro-kontext'
+  | 'gpt-image-1.5'
+  | 'gpt-image-2'
+  | 'gemini-2.5-flash-image'
+  | 'gemini-3.1-flash-lite-image'
+  | 'gemini-3.1-flash-image'
+  | 'gemini-3-pro-image'
 
 export interface ImageModel {
   id: ImageModelId
   label: string
-  provider: 'openai' | 'google' | 'higgsfield'
+  provider: 'openai' | 'google'
   blurb: string
-  /** Accepts a reference image to steer style/content. */
+  /** Accepts a reference image to steer style/content. None of the models below support this —
+   *  kept on the type since AIStudio.tsx's reference-image uploader already reads it, in case a
+   *  future OpenAI/Google model (or Higgsfield, if it comes back) does. */
   supportsReference: boolean
-  /** Accepts a saved Higgsfield character (custom_reference_id). */
   supportsCharacter: boolean
   /** Most variants this model will return in one call. */
   maxVariants: number
   /** Ratios this model actually accepts — the picker only offers these. */
   aspectRatios: AspectRatio[]
-  /** False until the provider's credential is bound in n8n; the UI shows it greyed with a note
-   *  rather than hiding it, so it's obvious what unlocks once the key lands. */
+  /** True once the model itself is confirmed to exist and be current on the provider's own
+   *  official docs (not a live-fire test — the user explicitly chose "trust the docs" over
+   *  spending money to test-fire every sibling model on an already-proven provider/endpoint).
+   *  A model still failing for some other reason (quota, a param it doesn't like) surfaces
+   *  through the existing Mark Image Failed path with the real API error, same as any model. */
   available: boolean
   /**
-   * USD per single image at a square ratio, medium quality — shown on the model card and used
-   * for the live cost estimate near Generate. `null` for models billed in the provider's own
-   * credits rather than USD (every Higgsfield model: their pricing is a credit balance on
-   * cloud.higgsfield.ai, not a published per-image dollar rate) — the UI shows `priceNote`
-   * instead of a dollar figure for those.
+   * USD per single image at a square ratio, medium quality. gpt-image-1's own $0.042 figure
+   * (proven live) implies ~1056 output tokens for one medium 1024x1024 image; every other
+   * OpenAI price below is that same token count times that model's own official per-1M-output-
+   * token rate (developers.openai.com/api/docs/pricing, checked 2026-09-03) — so the relative
+   * ordering between models is trustworthy even though the absolute figure is an estimate.
+   * Every Google figure is Google's own stated per-image equivalent (ai.google.dev/gemini-api/
+   * docs/pricing, same date) — not derived, quoted directly. Both providers actually bill by
+   * tokens/compute, not a flat per-image rate, so the FE always labels this "(est.)".
    */
-  pricePerImage: number | null
-  /** Shown instead of a dollar figure when pricePerImage is null, or alongside it as a caveat
-   *  (e.g. "varies with size/quality"). */
+  pricePerImage: number
+  /** Shown as the model card's hover tooltip — source/caveat for the price estimate. */
   priceNote?: string
 }
 
-/** Flip to true the moment the Higgsfield credential is bound in n8n (see the Studio plan —
- *  credentials come from cloud.higgsfield.ai and are sent as `Key <KEY_ID>:<KEY_SECRET>`).
- *  Nothing else needs to change: the workflow branches already exist. */
-export const HIGGSFIELD_ENABLED = false
-
-/** Credential bound and the google branch verified against 2 real calls (2026-09-03): fixed a
- *  missing aspect-ratio param (defaulted to 16:9-ish regardless of what was requested) and a
- *  hardcoded image/png that didn't match the real returned bytes (JPEG) — see
- *  ScalePods · Studio Generate's Normalize Google Response / Split Variants nodes. */
-export const GOOGLE_ENABLED = true
-
 export const IMAGE_MODELS: ImageModel[] = [
+  {
+    id: 'gpt-image-1-mini',
+    label: 'OpenAI · gpt-image-1-mini',
+    provider: 'openai',
+    blurb: 'Cheapest OpenAI option. Good for quick drafts.',
+    supportsReference: false,
+    supportsCharacter: false,
+    maxVariants: 4,
+    aspectRatios: ['1:1', '4:5', '16:9'],
+    available: true,
+    pricePerImage: 0.0084,
+    priceNote: 'Estimate from OpenAI\'s official $8/1M-output-token rate',
+  },
   {
     id: 'gpt-image-1',
     label: 'OpenAI · gpt-image-1',
@@ -84,10 +95,49 @@ export const IMAGE_MODELS: ImageModel[] = [
     // non-square ratio renders more pixels (1024x1536/1536x1024) and OpenAI charges more for
     // that — see estimateStudioCost, which applies the ~1.5x published for those sizes.
     pricePerImage: 0.042,
-    priceNote: 'OpenAI medium quality — taller/wider ratios cost more',
+    priceNote: 'OpenAI medium quality — taller/wider ratios cost more. Verified live 2026-09-02.',
   },
   {
-    id: 'gemini-flash-image',
+    id: 'gpt-image-1.5',
+    label: 'OpenAI · gpt-image-1.5',
+    provider: 'openai',
+    blurb: 'Between gpt-image-1 and the newest gpt-image-2.',
+    supportsReference: false,
+    supportsCharacter: false,
+    maxVariants: 4,
+    aspectRatios: ['1:1', '4:5', '16:9'],
+    available: true,
+    pricePerImage: 0.0338,
+    priceNote: 'Estimate from OpenAI\'s official $32/1M-output-token rate',
+  },
+  {
+    id: 'gpt-image-2',
+    label: 'OpenAI · gpt-image-2',
+    provider: 'openai',
+    blurb: "OpenAI's newest image model — cheaper per token than gpt-image-1 despite being newer.",
+    supportsReference: false,
+    supportsCharacter: false,
+    maxVariants: 4,
+    aspectRatios: ['1:1', '4:5', '16:9'],
+    available: true,
+    pricePerImage: 0.0317,
+    priceNote: 'Estimate from OpenAI\'s official $30/1M-output-token rate',
+  },
+  {
+    id: 'gemini-2.5-flash-image',
+    label: 'Google · Gemini 2.5 Flash Image',
+    provider: 'google',
+    blurb: '"Nano Banana" — the original. Google now recommends the Lite successor instead.',
+    supportsReference: false,
+    supportsCharacter: false,
+    maxVariants: 1,
+    aspectRatios: ['1:1', '4:5', '16:9'],
+    available: true,
+    pricePerImage: 0.039,
+    priceNote: "Google's own stated per-image rate",
+  },
+  {
+    id: 'gemini-3.1-flash-lite-image',
     label: 'Google · Gemini Flash Image',
     provider: 'google',
     blurb: 'Fast, cheap, strong prompt following ("Nano Banana 2 Lite").',
@@ -95,97 +145,38 @@ export const IMAGE_MODELS: ImageModel[] = [
     supportsCharacter: false,
     // Gemini's generateContent returns exactly one image per call, unlike gpt-image-1's `n`
     // param — capped to 1 rather than faking multi-variant support with N sequential calls, so
-    // the on-screen cost never implies a batch discount that doesn't exist. AIStudio.tsx's
-    // variant-count picker already bounds itself to maxVariants, so this alone is the whole fix.
+    // the on-screen cost never implies a batch discount that doesn't exist.
     maxVariants: 1,
     aspectRatios: ['1:1', '4:5', '16:9'],
-    available: GOOGLE_ENABLED,
-    // Google's published rate for gemini-3.1-flash-lite-image ("Nano Banana 2 Lite") — the
-    // cheapest model in the Gemini image family, and Google's own current recommendation over
-    // the older 2.5 Flash Image. Confirm against a real invoice once billed; Google's per-image
-    // figures are derived from per-token pricing, not a flat published rate.
+    available: true,
     pricePerImage: 0.034,
-    priceNote: 'Nano Banana 2 Lite — approximate, confirm against your first real invoice',
+    priceNote: "Nano Banana 2 Lite — Google's own stated rate, verified live 2026-09-03",
   },
   {
-    id: 'higgsfield-soul',
-    label: 'Higgsfield · Soul',
-    provider: 'higgsfield',
-    blurb: 'Best photographic and editorial quality. Up to 4K.',
-    supportsReference: false,
-    supportsCharacter: false,
-    maxVariants: 4,
-    aspectRatios: ['1:1', '4:5', '9:16', '16:9', '4:3', '3:2'],
-    available: HIGGSFIELD_ENABLED,
-    // Higgsfield bills from a credit balance on cloud.higgsfield.ai, not a published per-image
-    // USD rate — don't fabricate a dollar figure. Once the credential is bound, replace this
-    // with the real cost read from that account.
-    pricePerImage: null,
-    priceNote: 'Billed in Higgsfield credits, not USD',
-  },
-  {
-    id: 'higgsfield-soul-reference',
-    label: 'Higgsfield · Soul (reference)',
-    provider: 'higgsfield',
-    blurb: 'Matches the look of an image you attach.',
-    supportsReference: true,
-    supportsCharacter: false,
-    maxVariants: 4,
-    aspectRatios: ['1:1', '4:5', '9:16', '16:9', '4:3', '3:2'],
-    available: HIGGSFIELD_ENABLED,
-    // Higgsfield bills from a credit balance on cloud.higgsfield.ai, not a published per-image
-    // USD rate — don't fabricate a dollar figure. Once the credential is bound, replace this
-    // with the real cost read from that account.
-    pricePerImage: null,
-    priceNote: 'Billed in Higgsfield credits, not USD',
-  },
-  {
-    id: 'higgsfield-soul-character',
-    label: 'Higgsfield · Soul (character)',
-    provider: 'higgsfield',
-    blurb: 'Keeps a saved person consistent across posts.',
-    supportsReference: true,
-    supportsCharacter: true,
-    maxVariants: 4,
-    aspectRatios: ['1:1', '4:5', '9:16', '16:9', '4:3', '3:2'],
-    available: HIGGSFIELD_ENABLED,
-    // Higgsfield bills from a credit balance on cloud.higgsfield.ai, not a published per-image
-    // USD rate — don't fabricate a dollar figure. Once the credential is bound, replace this
-    // with the real cost read from that account.
-    pricePerImage: null,
-    priceNote: 'Billed in Higgsfield credits, not USD',
-  },
-  {
-    id: 'higgsfield-popcorn',
-    label: 'Higgsfield · Popcorn',
-    provider: 'higgsfield',
-    blurb: 'Blends up to 8 reference images. Good for moodboards.',
-    supportsReference: true,
-    supportsCharacter: false,
-    maxVariants: 8,
-    aspectRatios: ['1:1', '4:5', '9:16', '16:9', '4:3', '3:2'],
-    available: HIGGSFIELD_ENABLED,
-    // Higgsfield bills from a credit balance on cloud.higgsfield.ai, not a published per-image
-    // USD rate — don't fabricate a dollar figure. Once the credential is bound, replace this
-    // with the real cost read from that account.
-    pricePerImage: null,
-    priceNote: 'Billed in Higgsfield credits, not USD',
-  },
-  {
-    id: 'flux-pro-kontext',
-    label: 'Flux Pro · Kontext Max',
-    provider: 'higgsfield',
-    blurb: 'Sharp typography and graphic composition.',
+    id: 'gemini-3.1-flash-image',
+    label: 'Google · Gemini 3.1 Flash Image',
+    provider: 'google',
+    blurb: '"Nano Banana 2" — newer and pricier than the Lite version above.',
     supportsReference: false,
     supportsCharacter: false,
     maxVariants: 1,
-    aspectRatios: ['1:1', '4:5', '9:16', '16:9', '4:3', '3:2'],
-    available: HIGGSFIELD_ENABLED,
-    // Higgsfield bills from a credit balance on cloud.higgsfield.ai, not a published per-image
-    // USD rate — don't fabricate a dollar figure. Once the credential is bound, replace this
-    // with the real cost read from that account.
-    pricePerImage: null,
-    priceNote: 'Billed in Higgsfield credits, not USD',
+    aspectRatios: ['1:1', '4:5', '16:9'],
+    available: true,
+    pricePerImage: 0.067,
+    priceNote: "Google's own stated per-image rate",
+  },
+  {
+    id: 'gemini-3-pro-image',
+    label: 'Google · Gemini 3 Pro Image',
+    provider: 'google',
+    blurb: '"Nano Banana Pro" — best quality in the family, up to 4K.',
+    supportsReference: false,
+    supportsCharacter: false,
+    maxVariants: 1,
+    aspectRatios: ['1:1', '4:5', '16:9'],
+    available: true,
+    pricePerImage: 0.134,
+    priceNote: "Google's own stated rate at 1K/2K — 4K output costs more (~$0.24)",
   },
 ]
 
@@ -194,22 +185,24 @@ export function getModel(id: string | null | undefined): ImageModel | null {
   return IMAGE_MODELS.find((m) => m.id === id) ?? null
 }
 
-/**
- * Live cost estimate shown next to the Generate button, so a variant count or model switch is
- * priced before it's clicked rather than after. `usd` is null when the model's price isn't in
- * USD (Higgsfield) — render `note` instead of a dollar figure in that case.
- */
-export function estimateStudioCost(
-  model: ImageModel | null,
-  ratio: AspectRatio,
-  variantCount: number,
-): { usd: number | null; note?: string } {
+/** Live cost estimate shown next to the Generate button, so a variant count or model switch is
+ *  priced before it's clicked rather than after. Always an estimate — see ImageModel.pricePerImage. */
+export function estimateStudioCost(model: ImageModel | null, ratio: AspectRatio, variantCount: number): { usd: number | null } {
   if (!model) return { usd: null }
-  if (model.pricePerImage == null) return { usd: null, note: model.priceNote }
   // A non-1:1 ratio renders more pixels than the base square price accounts for — OpenAI's own
   // tiered pricing charges roughly 1.5x for its 1024x1536/1536x1024 sizes over 1024x1024.
   const perImage = ratio === '1:1' ? model.pricePerImage : model.pricePerImage * 1.5
   return { usd: perImage * Math.max(1, variantCount) }
+}
+
+/** Approximate USD→INR rate — fluctuates daily, last checked 2026-09-03 (~₹94.5/$1 per
+ *  live market rates that day). Display convenience only, per the user's request to see both
+ *  currencies; never used for anything that touches real billing. */
+export const USD_TO_INR = 94.5
+
+/** "$0.042 (₹3.97)" — the shared USD+INR format used everywhere the Studio shows a price. */
+export function formatUsdInr(usd: number, decimals = 3): string {
+  return `$${usd.toFixed(decimals)} (₹${(usd * USD_TO_INR).toFixed(2)})`
 }
 
 // --- Job -----------------------------------------------------------------
