@@ -21,6 +21,7 @@ import type { AspectRatio } from './studioStyles'
 
 export type ImageModelId =
   | 'gpt-image-1'
+  | 'gemini-flash-image'
   | 'higgsfield-soul'
   | 'higgsfield-soul-reference'
   | 'higgsfield-soul-character'
@@ -30,7 +31,7 @@ export type ImageModelId =
 export interface ImageModel {
   id: ImageModelId
   label: string
-  provider: 'openai' | 'higgsfield'
+  provider: 'openai' | 'google' | 'higgsfield'
   blurb: string
   /** Accepts a reference image to steer style/content. */
   supportsReference: boolean
@@ -61,6 +62,11 @@ export interface ImageModel {
  *  Nothing else needs to change: the workflow branches already exist. */
 export const HIGGSFIELD_ENABLED = false
 
+/** Flip to true once the Google AI Studio credential is bound in n8n (Header Auth,
+ *  `x-goog-api-key: <key>`) and the Studio Generate workflow's google branch has been verified
+ *  against one real call. */
+export const GOOGLE_ENABLED = false
+
 export const IMAGE_MODELS: ImageModel[] = [
   {
     id: 'gpt-image-1',
@@ -78,6 +84,27 @@ export const IMAGE_MODELS: ImageModel[] = [
     // that — see estimateStudioCost, which applies the ~1.5x published for those sizes.
     pricePerImage: 0.042,
     priceNote: 'OpenAI medium quality — taller/wider ratios cost more',
+  },
+  {
+    id: 'gemini-flash-image',
+    label: 'Google · Gemini Flash Image',
+    provider: 'google',
+    blurb: 'Fast, cheap, strong prompt following ("Nano Banana 2 Lite").',
+    supportsReference: false,
+    supportsCharacter: false,
+    // Gemini's generateContent returns exactly one image per call, unlike gpt-image-1's `n`
+    // param — capped to 1 rather than faking multi-variant support with N sequential calls, so
+    // the on-screen cost never implies a batch discount that doesn't exist. AIStudio.tsx's
+    // variant-count picker already bounds itself to maxVariants, so this alone is the whole fix.
+    maxVariants: 1,
+    aspectRatios: ['1:1', '4:5', '16:9'],
+    available: GOOGLE_ENABLED,
+    // Google's published rate for gemini-3.1-flash-lite-image ("Nano Banana 2 Lite") — the
+    // cheapest model in the Gemini image family, and Google's own current recommendation over
+    // the older 2.5 Flash Image. Confirm against a real invoice once billed; Google's per-image
+    // figures are derived from per-token pricing, not a flat published rate.
+    pricePerImage: 0.034,
+    priceNote: 'Nano Banana 2 Lite — approximate, confirm against your first real invoice',
   },
   {
     id: 'higgsfield-soul',
