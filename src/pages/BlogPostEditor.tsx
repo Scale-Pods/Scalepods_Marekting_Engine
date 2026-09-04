@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { JSONContent } from '@tiptap/react'
-import { Send, FileText, X, ExternalLink, AlertTriangle, Eye, Undo2 } from 'lucide-react'
+import { Send, FileText, X, ExternalLink, AlertTriangle, Eye, Undo2, Plus, Trash2 } from 'lucide-react'
 import { useBlogPost, queryClient, qk } from '../lib/queries'
 import {
   createBlogPost, updateBlogPost, triggerBlogPublish, triggerBlogUnpublish, slugify,
-  BLOG_PUBLISH_ENABLED, BLOG_UNPUBLISH_ENABLED, BLOG_CATEGORY_SUGGESTIONS, type BlogPost,
+  BLOG_PUBLISH_ENABLED, BLOG_UNPUBLISH_ENABLED, BLOG_CATEGORY_SUGGESTIONS, type BlogPost, type BlogFaq,
 } from '../lib/blog'
 import { sectionsToTiptapDoc, tiptapDocToSections } from '../lib/blogSerializer'
 import { PageHeader, Button, Spinner } from '../components/ui'
@@ -13,6 +13,46 @@ import { useToast, toastMessage } from '../components/Toast'
 import AssetUploader from '../components/AssetUploader'
 import RichTextEditor from '../components/blog/RichTextEditor'
 import { BlogPreviewModal } from '../components/blog/BlogPreview'
+
+/** Repeatable Q/A list for the site's real click-to-expand FAQ accordion (BlogFaqAccordion.tsx —
+ *  already lived on the site for legacy static posts, wired up 2026-09-04 to also read a dynamic
+ *  post's `faqs`). Deliberately a plain form list outside Tiptap, same pattern as the CTA fields
+ *  below — FAQs are page-level metadata, not part of the rich body. */
+function FaqEditor({ faqs, onChange }: { faqs: BlogFaq[]; onChange: (faqs: BlogFaq[]) => void }) {
+  function update(i: number, patch: Partial<BlogFaq>) {
+    onChange(faqs.map((f, idx) => (idx === i ? { ...f, ...patch } : f)))
+  }
+  function remove(i: number) {
+    onChange(faqs.filter((_, idx) => idx !== i))
+  }
+  return (
+    <div className="space-y-3">
+      {faqs.map((f, i) => (
+        <div key={i} className="rounded-lg p-3 relative" style={{ border: '1px solid var(--border-subtle)', background: 'var(--fill-tertiary)' }}>
+          <button
+            type="button"
+            onClick={() => remove(i)}
+            className="absolute top-2 right-2 text-muted hover:text-terracotta"
+            aria-label={`Remove FAQ ${i + 1}`}
+          >
+            <Trash2 size={13} />
+          </button>
+          <label className="label">Question</label>
+          <input className="input mt-1 mb-2" value={f.q} onChange={(e) => update(i, { q: e.target.value })} placeholder="What is...?" />
+          <label className="label">Answer</label>
+          <textarea className="input mt-1" rows={2} value={f.a} onChange={(e) => update(i, { a: e.target.value })} />
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...faqs, { q: '', a: '' }])}
+        className="btn-ghost !py-1.5 !px-2.5 text-xs w-full justify-center"
+      >
+        <Plus size={13} /> Add a question
+      </button>
+    </div>
+  )
+}
 
 function BannerSlot({
   label, url, onUploaded, onRemove, storagePrefix,
@@ -66,6 +106,7 @@ export default function BlogPostEditor() {
   const [excerpt, setExcerpt] = useState('')
   const [bannerUrlDark, setBannerUrlDark] = useState<string | null>(null)
   const [bannerUrlLight, setBannerUrlLight] = useState<string | null>(null)
+  const [faqs, setFaqs] = useState<BlogFaq[]>([])
   const [ctaTitle, setCtaTitle] = useState('')
   const [ctaSubtitle, setCtaSubtitle] = useState('')
   const [ctaLabel, setCtaLabel] = useState('')
@@ -94,6 +135,7 @@ export default function BlogPostEditor() {
       setExcerpt(existing.excerpt)
       setBannerUrlDark(existing.banner_url_dark ?? existing.banner_url)
       setBannerUrlLight(existing.banner_url_light)
+      setFaqs(existing.faqs ?? [])
       setCtaTitle(existing.cta_title ?? '')
       setCtaSubtitle(existing.cta_subtitle ?? '')
       setCtaLabel(existing.cta_label ?? '')
@@ -151,6 +193,7 @@ export default function BlogPostEditor() {
         bannerUrlDark,
         bannerUrlLight,
         sections,
+        faqs: faqs.filter((f) => f.q.trim() || f.a.trim()),
         ctaTitle: ctaTitle.trim() || null,
         ctaSubtitle: ctaSubtitle.trim() || null,
         ctaLabel: ctaLabel.trim() || null,
@@ -297,6 +340,15 @@ export default function BlogPostEditor() {
           </div>
 
           <div>
+            <div className="label mb-2">FAQs (optional)</div>
+            <p className="text-muted text-xs mb-2">
+              Renders as a real click-to-expand dropdown below the article body, same as scalepods.co's
+              existing FAQ sections — not the always-open cards a "Cards" block in the body would show.
+            </p>
+            <FaqEditor faqs={faqs} onChange={setFaqs} />
+          </div>
+
+          <div>
             <div className="label mb-2">Bottom CTA card (optional)</div>
             <p className="text-muted text-xs mb-2">
               Leave blank to keep the site's current default text. Same card design either way — logo,
@@ -368,6 +420,7 @@ export default function BlogPostEditor() {
           bannerUrlDark={bannerUrlDark}
           bannerUrlLight={bannerUrlLight}
           sections={tiptapDocToSections(doc).sections}
+          faqs={faqs.filter((f) => f.q.trim() || f.a.trim())}
           ctaTitle={ctaTitle}
           ctaSubtitle={ctaSubtitle}
           ctaLabel={ctaLabel}

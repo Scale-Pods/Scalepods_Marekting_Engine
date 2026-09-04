@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Sun, Moon } from 'lucide-react'
-import type { BlogSection } from '../../lib/blog'
+import { X, Sun, Moon, ChevronDown, ChevronUp } from 'lucide-react'
+import type { BlogFaq, BlogSection } from '../../lib/blog'
 import { resolveTagPrefix } from '../../lib/blogSerializer'
 
 // Faithful visual clone of the live scalepods.co article page (src/app/blog/[slug]/page.tsx +
@@ -98,8 +98,57 @@ const CTA_DEFAULT_TITLE = 'Build a system that works even when your team is offl
 const CTA_DEFAULT_SUBTITLE = 'Smarter workflows. Better conversations.'
 const CTA_DEFAULT_LABEL = 'Get Workflow Audit →'
 
+// Faithful clone of BlogFaqAccordion.tsx (same repo/file the site itself uses, read directly —
+// see docs/blog-module.md) — one open at a time, starts with the first item open, exact same
+// toggle behavior. Rendered by the site as its own block AFTER the article body (and after its
+// CTA card, which lives inside BlogBodyClient) — see [slug]/page.tsx — never inside `sections`.
+function FaqAccordionPreview({ faqs, c }: { faqs: BlogFaq[]; c: SiteColors }) {
+  const [openIndex, setOpenIndex] = useState<number | null>(0)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
+      {faqs.map((item, i) => {
+        const isOpen = openIndex === i
+        return (
+          <div
+            key={i}
+            style={{
+              background: isOpen ? c.bgCardAlt : c.bgCard,
+              border: `1px solid ${isOpen ? c.blueMid : c.border}`,
+              borderRadius: 12,
+              overflow: 'hidden',
+              transition: 'all 0.3s ease',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setOpenIndex(isOpen ? null : i)}
+              style={{
+                width: '100%', background: 'transparent', border: 'none', padding: '20px 24px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer',
+                fontFamily: FONT, fontSize: 15, textAlign: 'left',
+              }}
+            >
+              <span style={{ color: c.textBright, fontWeight: isOpen ? 600 : 500 }}>{item.q}</span>
+              {isOpen ? (
+                <ChevronUp size={20} style={{ opacity: 0.8, flexShrink: 0, color: c.blueMid }} />
+              ) : (
+                <ChevronDown size={20} style={{ opacity: 0.5, color: c.textMuted, flexShrink: 0 }} />
+              )}
+            </button>
+            {isOpen && (
+              <div style={{ padding: '0 24px 24px', color: c.textMuted, fontFamily: FONT, fontSize: 14, lineHeight: 1.7 }}>
+                {item.a}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function BlogPreviewModal({
-  title, category, excerpt, bannerUrlDark, bannerUrlLight, sections,
+  title, category, excerpt, bannerUrlDark, bannerUrlLight, sections, faqs,
   ctaTitle, ctaSubtitle, ctaLabel, ctaUrl, onClose,
 }: {
   title: string
@@ -108,6 +157,7 @@ export function BlogPreviewModal({
   bannerUrlDark: string | null
   bannerUrlLight: string | null
   sections: BlogSection[]
+  faqs: BlogFaq[]
   ctaTitle: string
   ctaSubtitle: string
   ctaLabel: string
@@ -276,6 +326,23 @@ export function BlogPreviewModal({
               <div style={{ marginTop: 10, position: 'relative', fontSize: 11, color: c.textMuted, fontFamily: FONT }}>→ {ctaUrl}</div>
             )}
           </div>
+
+          {/* Real click-to-expand FAQ dropdown — not one of the always-open Cards a section's
+              accordionItems render above. The site renders this as its own block AFTER the
+              article body AND its CTA card (both are inside BlogBodyClient), with its own
+              "Frequently Asked Questions" heading — see FaqAccordionPreview and
+              docs/blog-module.md. Never part of `sections`. */}
+          {faqs.length > 0 && (
+            <div style={{ marginTop: 80 }}>
+              <h2 style={{
+                fontFamily: FONT, fontSize: 28, fontWeight: 700, color: c.textBright,
+                marginBottom: 32, lineHeight: 1.3, letterSpacing: '-0.02em',
+              }}>
+                Frequently Asked Questions
+              </h2>
+              <FaqAccordionPreview faqs={faqs} c={c} />
+            </div>
+          )}
         </div>
       </div>
     </div>,

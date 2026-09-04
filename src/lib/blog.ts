@@ -57,6 +57,17 @@ export interface BlogSection {
   accordionTagPrefix?: string | null
 }
 
+/** One FAQ entry. Mirrors the site's own `FAQItem` (`{q, a}` — see
+ *  scalepods-website-nextjs/src/components/ui/BlogFaqAccordion.tsx) field-for-field, since these
+ *  are handed straight through with no reshaping. Deliberately a top-level BlogPost field, not
+ *  part of a BlogSection — the site renders its FAQ accordion as its own dedicated block AFTER
+ *  the article body (blog/[slug]/page.tsx), with its own "Frequently Asked Questions" heading,
+ *  completely separate from `sections`/BlogBodyClient. */
+export interface BlogFaq {
+  q: string
+  a: string
+}
+
 export interface BlogPost {
   id: string
   title: string
@@ -73,6 +84,12 @@ export interface BlogPost {
   banner_url_dark: string | null
   banner_url_light: string | null
   sections: BlogSection[]
+  /** Real click-to-expand FAQ accordion (BlogFaqAccordion.tsx) — already built and used by the
+   *  site's legacy static posts, wired up 2026-09-04 to also read from a dynamic post's `faqs`
+   *  here. Renders below the article body with an auto "Frequently Asked Questions" heading for
+   *  every dynamic post (the site's per-post keyword-matched headings are untouched, legacy-only).
+   *  `null`/empty means no FAQ block at all — not every post needs one. */
+  faqs: BlogFaq[] | null
   /** Bottom CTA card ("Ready to build your AI workforce? / Deploy Alex, Maya... / Build Your AI
    *  Workforce →"). Not yet read by the live site's WorkflowAuditCTA — it still picks canned
    *  text via keyword-matching the title — see docs/blog-module.md. */
@@ -126,6 +143,7 @@ export async function createBlogPost(input: {
   bannerUrlDark: string | null
   bannerUrlLight: string | null
   sections: BlogSection[]
+  faqs: BlogFaq[]
   ctaTitle: string | null
   ctaSubtitle: string | null
   ctaLabel: string | null
@@ -142,6 +160,7 @@ export async function createBlogPost(input: {
       banner_url_dark: input.bannerUrlDark,
       banner_url_light: input.bannerUrlLight,
       sections: input.sections,
+      faqs: input.faqs.length > 0 ? input.faqs : null,
       cta_title: input.ctaTitle,
       cta_subtitle: input.ctaSubtitle,
       cta_label: input.ctaLabel,
@@ -164,6 +183,7 @@ export async function updateBlogPost(
     bannerUrlDark: string | null
     bannerUrlLight: string | null
     sections: BlogSection[]
+    faqs: BlogFaq[]
     ctaTitle: string | null
     ctaSubtitle: string | null
     ctaLabel: string | null
@@ -187,6 +207,7 @@ export async function updateBlogPost(
       ...(patch.excerpt !== undefined ? { excerpt: patch.excerpt } : {}),
       ...bannerFields,
       ...(patch.sections !== undefined ? { sections: patch.sections } : {}),
+      ...(patch.faqs !== undefined ? { faqs: patch.faqs.length > 0 ? patch.faqs : null } : {}),
       ...(patch.ctaTitle !== undefined ? { cta_title: patch.ctaTitle } : {}),
       ...(patch.ctaSubtitle !== undefined ? { cta_subtitle: patch.ctaSubtitle } : {}),
       ...(patch.ctaLabel !== undefined ? { cta_label: patch.ctaLabel } : {}),
