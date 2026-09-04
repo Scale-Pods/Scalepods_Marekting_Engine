@@ -2,21 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Wand2, Sparkles, RefreshCw, Check, X, ImageIcon, TrendingUp, Target, Type,
-  ArrowRight, Trash2, AlertTriangle, ExternalLink,
+  ArrowRight, Trash2, AlertTriangle, ExternalLink, Layers,
 } from 'lucide-react'
 import { useProfile } from '../lib/queries'
 import { listSignalsSince, type TrendSignal } from '../lib/trends'
 import {
   generateStudioBrief, triggerStudioGenerate, updateStudioDraft, listStudioJobs, getStudioJob,
-  selectStudioVariant, markStudioJobUsed, deleteStudioJob,
-  IMAGE_MODELS, getModel, estimateStudioCost, formatUsdInr,
-  type StudioJob, type StudioSourceKind, type ImageModelId, type StudioCopy,
+  selectStudioVariant, markStudioJobUsed, deleteStudioJob, regenerateStudioSlide,
+  IMAGE_MODELS, getModel, estimateStudioCost, estimateCarouselCost, formatUsdInr,
+  type StudioJob, type StudioSourceKind, type ImageModelId, type StudioCopy, type StudioPostType, type StudioSlide,
 } from '../lib/studio'
 import {
   STUDIO_STYLES, styleDirection, getStyle, ASPECT_RATIOS, RATIO_VALUE, PLATFORM_DEFAULT_RATIO,
   type AspectRatio,
 } from '../lib/studioStyles'
-import { createManualItem, GENERATION_ENABLED } from '../lib/content'
+import { createManualItem, GENERATION_ENABLED, type ContentSlide } from '../lib/content'
 import { stampAndUpload } from '../lib/brandStamp'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
 import { PlatformBadge } from '../components/mediaUi'
@@ -39,6 +39,7 @@ const SOURCES: { value: StudioSourceKind; label: string; icon: typeof TrendingUp
 ]
 
 const STUDIO_PLATFORMS = ['instagram', 'linkedin', 'facebook'] as const
+const SLIDE_COUNTS = [3, 4, 5, 6, 7, 8]
 
 /** Chip row used for platform / ratio / variant count — same pill treatment as the tabs on
  *  Strategy and the view toggle on the content calendar, so the page doesn't invent a new one. */
@@ -61,9 +62,19 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 /** Live "this is what clicking Generate will cost" line — shown both at the setup stage (so a
  *  variant-count/model choice is priced before the brief is even written) and, more importantly,
- *  right next to the actual Generate button, since that's the step that spends real money. */
-function CostEstimate({ model, ratio, variantCount }: { model: ReturnType<typeof getModel>; ratio: AspectRatio; variantCount: number }) {
-  const { usd } = estimateStudioCost(model, ratio, variantCount)
+ *  right next to the actual Generate button, since that's the step that spends real money.
+ *  `carousel` switches the math to estimateCarouselCost (one real image per slide, no variant
+ *  multiplier) and `label` pluralizes correctly ("image"/"images" vs "slide"/"slides"). */
+function CostEstimate({
+  model, ratio, count, label = 'image', carousel = false,
+}: {
+  model: ReturnType<typeof getModel>
+  ratio: AspectRatio
+  count: number
+  label?: string
+  carousel?: boolean
+}) {
+  const { usd } = carousel ? estimateCarouselCost(model, ratio, count) : estimateStudioCost(model, ratio, count)
   if (usd == null) return null
   return (
     <span
@@ -71,27 +82,90 @@ function CostEstimate({ model, ratio, variantCount }: { model: ReturnType<typeof
       style={{ color: 'var(--accent-orange)' }}
       title="Providers bill by tokens/compute, not a flat per-image rate — this is an estimate, not a guaranteed cost."
     >
-      ≈ {formatUsdInr(usd)} for {variantCount} {variantCount === 1 ? 'image' : 'images'} (est.)
+      ≈ {formatUsdInr(usd)} for {count} {count === 1 ? label : `${label}s`} (est.)
     </span>
   )
 }
 
-/** What a past job actually cost — same `estimateStudioCost` math the setup screen shows before
- *  Generate is even clickable, but run against what was actually fired: the real image count
- *  once there's a result, not just the requested count, so a job that failed partway or a
- *  Gemini job (capped to 1 regardless of what was requested) shows the real number. `null` before
- *  anything's actually been generated — nothing's been spent yet at that point. */
+/** What a past job actually cost — same math the setup screen shows before Generate is even
+ *  clickable, but run against what was actually fired: the real image/slide count once there's a
+ *  result, not just the requested count, so a job that failed partway or a Gemini job (capped to
+ *  1 regardless of what was requested) shows the real number. `null` before anything's actually
+ *  been generated — nothing's been spent yet at that point. */
 function jobCostEstimate(j: StudioJob): number | null {
   if (j.status === 'drafting' || j.status === 'draft_ready') return null
   const model = getModel(j.model)
   if (!model) return null
+  const ratio = (j.aspect_ratio as AspectRatio) ?? '1:1'
+  if (j.post_type === 'carousel') {
+    const doneCount = (j.slides_json ?? []).filter((s) => s.status === 'done').length
+    const count = doneCount > 0 ? doneCount : (j.slide_count ?? 0)
+    if (count === 0) return null
+    return estimateCarouselCost(model, ratio, count).usd
+  }
   const count = j.image_urls.length > 0 ? j.image_urls.length : j.variant_count
-  return estimateStudioCost(model, (j.aspect_ratio as AspectRatio) ?? '1:1', count).usd
+  return estimateStudioCost(model, ratio, count).usd
 }
 
 /** "3 Sep, 2:41 PM" — compact enough for a grid tile, still unambiguous about date vs. time. */
 function formatJobDate(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+}
+
+/** Editable list of slide drafts in the review step — one card per slide, title/caption/image
+ *  prompt all editable, same "nothing spent yet" framing as the single-image prompt textarea. */
+function SlideEditor({ slides, onChange }: { slides: StudioSlide[]; onChange: (idx: number, patch: Partial<StudioSlide>) => void }) {
+  return (
+    <div className="space-y-3">
+      {slides.map((s) => (
+        <div key={s.idx} className="rounded-lg p-3" style={{ border: '1px solid var(--border-subtle)', background: 'var(--fill-tertiary)' }}>
+          <div className="text-xs font-semibold mb-2">Slide {s.idx + 1}</div>
+          <label className="label">Title</label>
+          <input className="input mt-1 mb-2" value={s.title} onChange={(e) => onChange(s.idx, { title: e.target.value })} />
+          <label className="label">Caption</label>
+          <input className="input mt-1 mb-2" value={s.caption} onChange={(e) => onChange(s.idx, { caption: e.target.value })} />
+          <label className="label">Image prompt</label>
+          <textarea className="input mt-1" rows={3} value={s.image_prompt} onChange={(e) => onChange(s.idx, { image_prompt: e.target.value })} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Shared "stamp every slide, upload, insert one carousel content_item" — used by both the inline
+ *  flow and the Recent-grid modal so the two don't drift. Mirrors onSendToReview's single-image
+ *  logic, just looped per slide; mediaUrl is set to the first (cover) slide so anything reading
+ *  media_url alone still shows something sensible, per createManualItem's own doc comment. */
+async function sendCarouselToReview(
+  job: StudioJob,
+  profile: { id: string },
+  copy: StudioCopy,
+): Promise<{ item: Awaited<ReturnType<typeof createManualItem>>; allStamped: boolean }> {
+  const slides = job.slides_json ?? []
+  const stampedSlides: ContentSlide[] = []
+  let allStamped = true
+  for (const s of slides) {
+    const { url, stamped } = await stampAndUpload(s.image_url!, `studio/${job.id}/branded-${s.idx}`)
+    if (!stamped) allStamped = false
+    stampedSlides.push({ idx: s.idx, title: s.title, caption: s.caption, url })
+  }
+  const item = await createManualItem({
+    profileId: profile.id,
+    platform: job.platform,
+    contentType: 'carousel',
+    title: (copy.hook || job.topic || '').slice(0, 60) || null,
+    body: [copy.body, copy.cta].filter(Boolean).join('\n\n'),
+    mediaUrl: stampedSlides[0]?.url ?? null,
+    slides: stampedSlides,
+    hashtags: copy.hashtags ?? [],
+    cta: copy.cta ?? '',
+    scheduledDate: null,
+    scheduledTime: null,
+    scheduledAt: null,
+    linkedinAccount: null,
+    status: 'ready',
+  })
+  return { item, allStamped }
 }
 
 export default function AIStudio() {
@@ -111,6 +185,8 @@ export default function AIStudio() {
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null)
   const [characterId, setCharacterId] = useState('')
   const [variantCount, setVariantCount] = useState(2)
+  const [postType, setPostType] = useState<StudioPostType>('single')
+  const [slideCount, setSlideCount] = useState(3)
 
   const [signals, setSignals] = useState<TrendSignal[]>([])
   const [jobs, setJobs] = useState<StudioJob[]>([])
@@ -118,6 +194,9 @@ export default function AIStudio() {
   const [briefing, setBriefing] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [sending, setSending] = useState(false)
+  // Non-null while one carousel slide is being retried — separate from the whole-job `generating`
+  // flag so the rest of the grid stays interactive while just one tile spins.
+  const [regeneratingSlideIdx, setRegeneratingSlideIdx] = useState<number | null>(null)
   // A job opened from the "Recent" grid opens as its own overlay (RecentJobModal below) rather
   // than replacing this page's state the way the in-flow `job` above does — closing it (✕) just
   // removes the overlay, so the setup screen underneath is exactly as the user left it. That's
@@ -130,6 +209,7 @@ export default function AIStudio() {
   // Local edits to the draft, so typing stays responsive and only persists on generate.
   const [draftCopy, setDraftCopy] = useState<StudioCopy>({})
   const [draftPrompt, setDraftPrompt] = useState('')
+  const [draftSlides, setDraftSlides] = useState<StudioSlide[]>([])
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeModel = getModel(model)
@@ -185,18 +265,23 @@ export default function AIStudio() {
 
   // Poll while the image models are working.
   //
-  // Deliberately driven by the local `generating` flag as well as the row's status, not by the
-  // status alone: the webhook returns before n8n's "Mark Generating" PATCH lands, so a poller
-  // that waited for status==='generating' would look once, still see 'draft_ready', and never
-  // start — leaving the page frozen on the draft even after the images arrived. (Verified: the
-  // first live run did exactly that.) Terminal statuses clear the flag and stop the loop.
+  // Deliberately driven by the local `generating` flag (and, for a single carousel slide retry,
+  // `regeneratingSlideIdx`) as well as the row's status, not by the status alone: the webhook
+  // returns before n8n's "Mark Generating"/"Mark Slide Generating" PATCH lands, so a poller that
+  // waited for status==='generating' would look once, still see the old status, and never start —
+  // leaving the page frozen even after the images arrived. (Verified: the first live run did
+  // exactly that.) Terminal statuses clear the flag and stop the loop.
   useEffect(() => {
     const jobId = job?.id
-    const isActive = generating || job?.status === 'generating'
+    const isActive = generating || job?.status === 'generating' || regeneratingSlideIdx !== null
     if (isActive && jobId && !pollRef.current) {
       pollRef.current = setInterval(() => {
         refreshJob(jobId).then((fresh) => {
           if (fresh && (fresh.status === 'done' || fresh.status === 'failed')) setGenerating(false)
+          if (fresh && regeneratingSlideIdx !== null) {
+            const slide = fresh.slides_json?.find((s) => s.idx === regeneratingSlideIdx)
+            if (slide && slide.status !== 'generating') setRegeneratingSlideIdx(null)
+          }
         })
       }, 3000)
     } else if (!isActive && pollRef.current) {
@@ -207,7 +292,7 @@ export default function AIStudio() {
       if (pollRef.current) clearInterval(pollRef.current)
       pollRef.current = null
     }
-  }, [generating, job?.id, job?.status, refreshJob])
+  }, [generating, job?.id, job?.status, refreshJob, regeneratingSlideIdx])
 
   const selectedSignal = signals.find((s) => s.id === signalId) ?? null
   const effectiveTopic = sourceKind === 'trend' ? (selectedSignal?.topic ?? '') : topic
@@ -237,10 +322,13 @@ export default function AIStudio() {
         styleLabel: activeStyle.label,
         styleDirection: styleDirection(activeStyle),
         styleRendersText: Boolean(activeStyle.rendersText),
+        postType,
+        slideCount,
       })
       setJob(created)
       setDraftCopy(created.copy_json ?? {})
       setDraftPrompt(created.image_prompt ?? '')
+      setDraftSlides(created.slides_json ?? [])
       setJobs((prev) => [created, ...prev])
     } catch (err) {
       toast.error(toastMessage(err, 'Could not write the brief'))
@@ -249,24 +337,49 @@ export default function AIStudio() {
     }
   }
 
+  function updateSlideDraft(idx: number, patch: Partial<StudioSlide>) {
+    setDraftSlides((prev) => prev.map((s) => (s.idx === idx ? { ...s, ...patch } : s)))
+  }
+
   async function onGenerate() {
     if (!job) return
     setGenerating(true)
     try {
       // Persist whatever was edited in the review step first — the whole point of that step is
       // that the prompt actually sent is the one on screen.
-      await updateStudioDraft(job.id, {
-        copy_json: draftCopy,
-        image_prompt: draftPrompt,
-        aspect_ratio: ratio,
-        model,
-        variant_count: variantCount,
-      })
+      if (job.post_type === 'carousel') {
+        await updateStudioDraft(job.id, {
+          copy_json: draftCopy,
+          slides_json: draftSlides,
+          aspect_ratio: ratio,
+          model,
+        })
+      } else {
+        await updateStudioDraft(job.id, {
+          copy_json: draftCopy,
+          image_prompt: draftPrompt,
+          aspect_ratio: ratio,
+          model,
+          variant_count: variantCount,
+        })
+      }
       await triggerStudioGenerate(job.id)
       await refreshJob(job.id)
     } catch (err) {
       toast.error(toastMessage(err, 'Could not start generation'))
       setGenerating(false)
+    }
+  }
+
+  async function onRegenerateSlide(idx: number) {
+    if (!job) return
+    setRegeneratingSlideIdx(idx)
+    try {
+      await regenerateStudioSlide(job.id, idx)
+      await refreshJob(job.id)
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not regenerate this slide'))
+      setRegeneratingSlideIdx(null)
     }
   }
 
@@ -277,9 +390,18 @@ export default function AIStudio() {
   }
 
   async function onSendToReview() {
-    if (!job || !profile || !job.selected_image_url) return
+    if (!job || !profile) return
     setSending(true)
     try {
+      if (job.post_type === 'carousel') {
+        const { item, allStamped } = await sendCarouselToReview(job, profile, draftCopy)
+        await markStudioJobUsed(job.id, item.id)
+        setJob({ ...job, content_item_id: item.id })
+        toast.info(allStamped ? 'Sent to Creative Review, brand-stamped.' : 'Sent to Creative Review (logo could not be loaded on at least one slide).')
+        navigate('/review')
+        return
+      }
+      if (!job.selected_image_url) return
       // Stamp in the browser before handing off. The brand-overlay edge function is a
       // pass-through on this Supabase tier, so this is the only place the logo actually gets
       // applied to a generated image.
@@ -340,6 +462,9 @@ export default function AIStudio() {
   const isGenerating = generating || job?.status === 'generating'
   const isDone = job?.status === 'done' && !generating
   const isFailed = job?.status === 'failed' && !generating
+  const isCarousel = job?.post_type === 'carousel'
+  const carouselSlides = job?.slides_json ?? []
+  const carouselReady = carouselSlides.length > 0 && carouselSlides.every((s) => s.status === 'done' && s.image_url)
 
   return (
     <div>
@@ -470,6 +595,24 @@ export default function AIStudio() {
           {/* --- Output settings -------------------------------------------- */}
           <Panel className="space-y-4">
             <div>
+              <div className="label mb-2">Post type</div>
+              <div className="flex gap-2">
+                <Chip active={postType === 'single'} onClick={() => setPostType('single')}>
+                  <span className="flex items-center gap-1.5"><ImageIcon size={13} /> Single image</span>
+                </Chip>
+                <Chip active={postType === 'carousel'} onClick={() => setPostType('carousel')}>
+                  <span className="flex items-center gap-1.5"><Layers size={13} /> Carousel</span>
+                </Chip>
+              </div>
+              {postType === 'carousel' && (
+                <p className="text-muted text-xs mt-2">
+                  Each slide gets its own real image — one shot per slide, no picking between variants. A bad slide can be
+                  regenerated on its own after.
+                </p>
+              )}
+            </div>
+
+            <div>
               <div className="label mb-2">Platform</div>
               <div className="flex gap-2 flex-wrap">
                 {STUDIO_PLATFORMS.map((p) => (
@@ -553,13 +696,21 @@ export default function AIStudio() {
 
             <div>
               <div className="flex items-center justify-between mb-2">
-                <div className="label !mb-0">How many options</div>
-                <CostEstimate model={activeModel} ratio={ratio} variantCount={variantCount} />
+                <div className="label !mb-0">{postType === 'carousel' ? 'How many slides' : 'How many options'}</div>
+                {postType === 'carousel' ? (
+                  <CostEstimate model={activeModel} ratio={ratio} count={slideCount} label="slide" carousel />
+                ) : (
+                  <CostEstimate model={activeModel} ratio={ratio} count={variantCount} />
+                )}
               </div>
-              <div className="flex gap-2">
-                {[1, 2, 3, 4].filter((n) => n <= (activeModel?.maxVariants ?? 4)).map((n) => (
-                  <Chip key={n} active={variantCount === n} onClick={() => setVariantCount(n)}>{n}</Chip>
-                ))}
+              <div className="flex gap-2 flex-wrap">
+                {postType === 'carousel'
+                  ? SLIDE_COUNTS.map((n) => (
+                    <Chip key={n} active={slideCount === n} onClick={() => setSlideCount(n)}>{n}</Chip>
+                  ))
+                  : [1, 2, 3, 4].filter((n) => n <= (activeModel?.maxVariants ?? 4)).map((n) => (
+                    <Chip key={n} active={variantCount === n} onClick={() => setVariantCount(n)}>{n}</Chip>
+                  ))}
               </div>
             </div>
 
@@ -614,7 +765,7 @@ export default function AIStudio() {
               <div className="label mb-3">Recent</div>
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
                 {jobs.slice(0, 12).map((j) => {
-                  const thumb = j.selected_image_url || j.image_urls?.[0] || null
+                  const thumb = j.selected_image_url || j.image_urls?.[0] || j.slides_json?.[0]?.image_url || null
                   const jModel = getModel(j.model)
                   const jCost = jobCostEstimate(j)
                   return (
@@ -635,6 +786,7 @@ export default function AIStudio() {
                           <div className="text-xs font-medium truncate">{j.topic || 'Untitled'}</div>
                           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                             <Badge tone={j.status === 'done' ? 'green' : j.status === 'failed' ? 'orange' : 'grey'}>{j.status.replace(/_/g, ' ')}</Badge>
+                            {j.post_type === 'carousel' && <Badge tone="grey"><Layers size={9} /> Carousel</Badge>}
                           </div>
                           <div className="text-muted text-[10px] mt-1 truncate">{formatJobDate(j.created_at)}</div>
                           <div className="text-muted text-[10px] truncate" title={jModel?.label ?? j.model}>
@@ -665,6 +817,7 @@ export default function AIStudio() {
             <PlatformBadge platform={job.platform} />
             <Badge tone="blue">{job.aspect_ratio}</Badge>
             {activeStyle && <Badge tone="orange">{activeStyle.label}</Badge>}
+            {isCarousel && <Badge tone="grey"><Layers size={9} /> Carousel</Badge>}
             <span className="text-muted text-xs">{job.topic}</span>
           </div>
 
@@ -692,21 +845,38 @@ export default function AIStudio() {
             </div>
           </Panel>
 
-          <Panel>
-            <div className="label mb-1">Image prompt</div>
-            <p className="text-muted text-xs mb-2">
-              The subject was written by AI from your source; the look comes from the style you picked. Edit either half before generating — nothing has been spent yet.
-            </p>
-            <textarea className="input" rows={5} value={draftPrompt} onChange={(e) => setDraftPrompt(e.target.value)} />
-            <div className="flex items-center justify-end gap-3 mt-3">
-              <CostEstimate model={activeModel} ratio={ratio} variantCount={variantCount} />
-              <Button onClick={onGenerate} loading={generating || isGenerating} disabled={!draftPrompt.trim()}>
-                <Wand2 size={15} /> Generate {variantCount} {variantCount === 1 ? 'image' : 'images'}
-              </Button>
-            </div>
-          </Panel>
+          {isCarousel ? (
+            <Panel>
+              <div className="label mb-1">Slides</div>
+              <p className="text-muted text-xs mb-3">
+                Each slide's title, caption, and image prompt were drafted by AI from your source — edit any of them before
+                generating. Nothing has been spent yet.
+              </p>
+              <SlideEditor slides={draftSlides} onChange={updateSlideDraft} />
+              <div className="flex items-center justify-end gap-3 mt-3">
+                <CostEstimate model={activeModel} ratio={ratio} count={draftSlides.length} label="slide" carousel />
+                <Button onClick={onGenerate} loading={generating || isGenerating} disabled={draftSlides.length === 0}>
+                  <Wand2 size={15} /> Generate {draftSlides.length} {draftSlides.length === 1 ? 'slide' : 'slides'}
+                </Button>
+              </div>
+            </Panel>
+          ) : (
+            <Panel>
+              <div className="label mb-1">Image prompt</div>
+              <p className="text-muted text-xs mb-2">
+                The subject was written by AI from your source; the look comes from the style you picked. Edit either half before generating — nothing has been spent yet.
+              </p>
+              <textarea className="input" rows={5} value={draftPrompt} onChange={(e) => setDraftPrompt(e.target.value)} />
+              <div className="flex items-center justify-end gap-3 mt-3">
+                <CostEstimate model={activeModel} ratio={ratio} count={variantCount} />
+                <Button onClick={onGenerate} loading={generating || isGenerating} disabled={!draftPrompt.trim()}>
+                  <Wand2 size={15} /> Generate {variantCount} {variantCount === 1 ? 'image' : 'images'}
+                </Button>
+              </div>
+            </Panel>
+          )}
 
-          {isGenerating && (
+          {isGenerating && !isCarousel && (
             <div className="card p-8 flex flex-col items-center gap-3 text-center">
               <Spinner size={22} />
               <div className="text-sm text-secondary">Generating {job.variant_count} {job.variant_count === 1 ? 'option' : 'options'}…</div>
@@ -723,7 +893,60 @@ export default function AIStudio() {
             </Panel>
           )}
 
-          {isDone && job.image_urls.length > 0 && (
+          {isCarousel && carouselSlides.length > 0 && (job.status === 'generating' || job.status === 'done' || job.status === 'failed') && (
+            <Panel>
+              <div className="label mb-3">Slides</div>
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+                {carouselSlides.map((s) => {
+                  const busy = s.status === 'generating' || regeneratingSlideIdx === s.idx
+                  return (
+                    <div key={s.idx} className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-subtle)' }}>
+                      <div
+                        className="w-full flex items-center justify-center"
+                        style={{ aspectRatio: job.aspect_ratio.replace(':', ' / '), background: 'var(--fill-tertiary)' }}
+                      >
+                        {s.status === 'done' && s.image_url ? (
+                          <button type="button" onClick={() => setLightboxUrl(s.image_url!)} className="block w-full h-full">
+                            <img src={s.image_url} alt={s.title} className="w-full h-full object-cover" />
+                          </button>
+                        ) : busy ? (
+                          <Spinner size={18} />
+                        ) : s.status === 'failed' ? (
+                          <AlertTriangle size={18} style={{ color: 'var(--accent-orange)' }} />
+                        ) : (
+                          <ImageIcon size={18} className="text-muted" />
+                        )}
+                      </div>
+                      <div className="px-2.5 py-2">
+                        <div className="text-xs font-semibold truncate">Slide {s.idx + 1}: {s.title}</div>
+                        <div className="text-muted text-[10.5px] truncate">{s.caption}</div>
+                        <button
+                          type="button"
+                          onClick={() => onRegenerateSlide(s.idx)}
+                          disabled={busy}
+                          className="btn-ghost !py-1 !px-2 text-[11px] mt-1.5 w-full justify-center"
+                        >
+                          <RefreshCw size={11} /> {busy ? 'Regenerating…' : 'Regenerate this slide'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {!carouselReady && job.status !== 'generating' && (
+                <p className="text-muted text-xs mt-3">
+                  Every slide needs a real image before this can be sent to review — regenerate any failed slide above.
+                </p>
+              )}
+              <div className="flex justify-end mt-4">
+                <Button onClick={onSendToReview} loading={sending} disabled={!carouselReady || Boolean(job.content_item_id)}>
+                  {job.content_item_id ? 'Already sent' : <>Send to Review <ArrowRight size={15} /></>}
+                </Button>
+              </div>
+            </Panel>
+          )}
+
+          {!isCarousel && isDone && job.image_urls.length > 0 && (
             <Panel>
               <div className="flex items-center justify-between mb-3">
                 <div className="label !mb-0">Pick one</div>
@@ -777,12 +1000,14 @@ export default function AIStudio() {
           hashtags={draftCopy.hashtags}
           onClose={() => setLightboxUrl(null)}
           footer={
-            <Button
-              className="w-full justify-center !py-2 text-xs"
-              onClick={() => { onPick(lightboxUrl); setLightboxUrl(null) }}
-            >
-              <Check size={13} /> Use this image
-            </Button>
+            !isCarousel ? (
+              <Button
+                className="w-full justify-center !py-2 text-xs"
+                onClick={() => { onPick(lightboxUrl); setLightboxUrl(null) }}
+              >
+                <Check size={13} /> Use this image
+              </Button>
+            ) : undefined
           }
         />
       )}
@@ -801,10 +1026,10 @@ export default function AIStudio() {
   )
 }
 
-// A "Recent" job opened as its own overlay — copy fields, the variant grid (pick + expand), and
-// Send to Review, all self-contained so it never touches the setup screen's state underneath.
-// Closing it (✕, from the shared Modal component) just removes the overlay; there's nothing to
-// navigate "back" from.
+// A "Recent" job opened as its own overlay — copy fields, the variant grid (pick + expand) or
+// carousel slide grid, and Send to Review, all self-contained so it never touches the setup
+// screen's state underneath. Closing it (✕, from the shared Modal component) just removes the
+// overlay; there's nothing to navigate "back" from.
 function RecentJobModal({
   job, onClose, onDelete, onSentToReview,
 }: {
@@ -821,34 +1046,67 @@ function RecentJobModal({
   const [sending, setSending] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const [regeneratingSlideIdx, setRegeneratingSlideIdx] = useState<number | null>(null)
   const activeStyle = current.style_id ? getStyle(current.style_id) : null
+  const isCarousel = current.post_type === 'carousel'
+  const carouselSlides = current.slides_json ?? []
+  const carouselReady = carouselSlides.length > 0 && carouselSlides.every((s) => s.status === 'done' && s.image_url)
 
   // Same reasoning as the inline poller in the main component — a job can still be mid-generation
-  // when opened from Recent (e.g. the user navigated away and came back).
+  // (or one slide mid-retry) when opened from Recent (e.g. the user navigated away and came back).
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   useEffect(() => {
-    if (current.status === 'generating' && !pollRef.current) {
+    const isActive = current.status === 'generating' || regeneratingSlideIdx !== null
+    if (isActive && !pollRef.current) {
       pollRef.current = setInterval(() => {
-        getStudioJob(current.id).then((fresh) => { if (fresh) setCurrent(fresh) })
+        getStudioJob(current.id).then((fresh) => {
+          if (!fresh) return
+          setCurrent(fresh)
+          if (regeneratingSlideIdx !== null) {
+            const slide = fresh.slides_json?.find((s) => s.idx === regeneratingSlideIdx)
+            if (slide && slide.status !== 'generating') setRegeneratingSlideIdx(null)
+          }
+        })
       }, 3000)
-    } else if (current.status !== 'generating' && pollRef.current) {
+    } else if (!isActive && pollRef.current) {
       clearInterval(pollRef.current)
       pollRef.current = null
     }
     return () => {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     }
-  }, [current.status, current.id])
+  }, [current.status, current.id, regeneratingSlideIdx])
 
   async function onPick(url: string) {
     await selectStudioVariant(current.id, url)
     setCurrent((c) => ({ ...c, selected_image_url: url }))
   }
 
+  async function onRegenerateSlide(idx: number) {
+    setRegeneratingSlideIdx(idx)
+    try {
+      await regenerateStudioSlide(current.id, idx)
+      const fresh = await getStudioJob(current.id)
+      if (fresh) setCurrent(fresh)
+    } catch (err) {
+      toast.error(toastMessage(err, 'Could not regenerate this slide'))
+      setRegeneratingSlideIdx(null)
+    }
+  }
+
   async function onSend() {
-    if (!profile || !current.selected_image_url) return
+    if (!profile) return
     setSending(true)
     try {
+      if (isCarousel) {
+        const { item, allStamped } = await sendCarouselToReview(current, profile, copy)
+        await markStudioJobUsed(current.id, item.id)
+        setCurrent((c) => ({ ...c, content_item_id: item.id }))
+        onSentToReview(current.id, item.id)
+        toast.info(allStamped ? 'Sent to Creative Review, brand-stamped.' : 'Sent to Creative Review (logo could not be loaded on at least one slide).')
+        return
+      }
+      if (!current.selected_image_url) return
       const { url, stamped } = await stampAndUpload(current.selected_image_url, `studio/${current.id}/branded`)
       const item = await createManualItem({
         profileId: profile.id,
@@ -900,6 +1158,7 @@ function RecentJobModal({
             <PlatformBadge platform={current.platform} />
             <Badge tone="blue">{current.aspect_ratio}</Badge>
             {activeStyle && <Badge tone="orange">{activeStyle.label}</Badge>}
+            {isCarousel && <Badge tone="grey"><Layers size={9} /> Carousel</Badge>}
             <Badge tone={current.status === 'done' ? 'green' : current.status === 'failed' ? 'orange' : 'grey'}>
               {current.status.replace(/_/g, ' ')}
             </Badge>
@@ -915,9 +1174,11 @@ function RecentJobModal({
             <span title={new Date(current.created_at).toString()}>{formatJobDate(current.created_at)}</span>
             <span className="text-muted">Model</span>
             <span>{activeModel?.label ?? current.model}</span>
-            <span className="text-muted">Options</span>
+            <span className="text-muted">{isCarousel ? 'Slides' : 'Options'}</span>
             <span>
-              {current.image_urls.length > 0 ? `${current.image_urls.length} generated` : `${current.variant_count} requested`}
+              {isCarousel
+                ? (carouselSlides.length > 0 ? `${carouselSlides.filter((s) => s.status === 'done').length}/${carouselSlides.length} generated` : `${current.slide_count ?? 0} requested`)
+                : (current.image_urls.length > 0 ? `${current.image_urls.length} generated` : `${current.variant_count} requested`)}
             </span>
             <span className="text-muted">Spent (est.)</span>
             <span title="Providers bill by tokens/compute, not a flat per-image rate — this is an estimate, not a guaranteed cost.">
@@ -951,14 +1212,14 @@ function RecentJobModal({
             </div>
           )}
 
-          {current.status === 'generating' && (
+          {current.status === 'generating' && !isCarousel && (
             <div className="card p-6 flex flex-col items-center gap-3 text-center">
               <Spinner size={20} />
               <div className="text-sm text-secondary">Still generating…</div>
             </div>
           )}
 
-          {current.status === 'failed' && (
+          {current.status === 'failed' && !isCarousel && (
             <Panel className="flex items-start gap-3">
               <AlertTriangle size={18} style={{ color: 'var(--accent-orange)' }} className="shrink-0 mt-0.5" />
               <div>
@@ -968,7 +1229,54 @@ function RecentJobModal({
             </Panel>
           )}
 
-          {current.status === 'done' && current.image_urls.length > 0 && (
+          {isCarousel && carouselSlides.length > 0 && (
+            <div>
+              <div className="label mb-2">Slides</div>
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
+                {carouselSlides.map((s) => {
+                  const busy = s.status === 'generating' || regeneratingSlideIdx === s.idx
+                  return (
+                    <div key={s.idx} className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-subtle)' }}>
+                      <div
+                        className="w-full flex items-center justify-center"
+                        style={{ aspectRatio: current.aspect_ratio.replace(':', ' / '), background: 'var(--fill-tertiary)' }}
+                      >
+                        {s.status === 'done' && s.image_url ? (
+                          <button type="button" onClick={() => setLightboxUrl(s.image_url!)} className="block w-full h-full">
+                            <img src={s.image_url} alt={s.title} className="w-full h-full object-cover" />
+                          </button>
+                        ) : busy ? (
+                          <Spinner size={16} />
+                        ) : s.status === 'failed' ? (
+                          <AlertTriangle size={16} style={{ color: 'var(--accent-orange)' }} />
+                        ) : (
+                          <ImageIcon size={16} className="text-muted" />
+                        )}
+                      </div>
+                      <div className="px-2 py-1.5">
+                        <div className="text-[11px] font-semibold truncate">Slide {s.idx + 1}</div>
+                        <button
+                          type="button"
+                          onClick={() => onRegenerateSlide(s.idx)}
+                          disabled={busy}
+                          className="btn-ghost !py-1 !px-1.5 text-[10.5px] mt-1 w-full justify-center"
+                        >
+                          <RefreshCw size={10} /> {busy ? 'Regenerating…' : 'Regenerate'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {!carouselReady && current.status !== 'generating' && (
+                <p className="text-muted text-xs mt-2">
+                  Every slide needs a real image before this can be sent to review.
+                </p>
+              )}
+            </div>
+          )}
+
+          {!isCarousel && current.status === 'done' && current.image_urls.length > 0 && (
             <div>
               <div className="label mb-2">Pick one</div>
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
@@ -1000,13 +1308,13 @@ function RecentJobModal({
           <button onClick={onDeleteClick} disabled={deleting} className="text-muted hover:text-terracotta text-xs flex items-center gap-1.5">
             <Trash2 size={13} /> Delete
           </button>
-          {current.status === 'done' && (
+          {(isCarousel ? carouselReady : current.status === 'done') && (
             current.content_item_id ? (
               <Button variant="ghost" onClick={() => { onClose(); navigate('/review') }}>
                 Open in Creative Review <ArrowRight size={14} />
               </Button>
             ) : (
-              <Button onClick={onSend} loading={sending} disabled={!current.selected_image_url}>
+              <Button onClick={onSend} loading={sending} disabled={isCarousel ? !carouselReady : !current.selected_image_url}>
                 Send to Review <ArrowRight size={14} />
               </Button>
             )
@@ -1022,12 +1330,14 @@ function RecentJobModal({
           hashtags={copy.hashtags}
           onClose={() => setLightboxUrl(null)}
           footer={
-            <Button
-              className="w-full justify-center !py-2 text-xs"
-              onClick={() => { onPick(lightboxUrl); setLightboxUrl(null) }}
-            >
-              <Check size={13} /> Use this image
-            </Button>
+            !isCarousel ? (
+              <Button
+                className="w-full justify-center !py-2 text-xs"
+                onClick={() => { onPick(lightboxUrl); setLightboxUrl(null) }}
+              >
+                <Check size={13} /> Use this image
+              </Button>
+            ) : undefined
           }
         />
       )}

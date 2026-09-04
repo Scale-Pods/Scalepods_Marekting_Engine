@@ -195,6 +195,13 @@ export function estimateStudioCost(model: ImageModel | null, ratio: AspectRatio,
   return { usd: perImage * Math.max(1, variantCount) }
 }
 
+/** Same per-image math as estimateStudioCost, but for a carousel: one real image PER SLIDE (no
+ *  variant multiplier — the whole point of "one shot per slide" is that this is the real cost,
+ *  not N variants of it). */
+export function estimateCarouselCost(model: ImageModel | null, ratio: AspectRatio, slideCount: number): { usd: number | null } {
+  return estimateStudioCost(model, ratio, slideCount)
+}
+
 /** Approximate USD→INR rate — fluctuates daily, last checked 2026-09-03 (~₹94.5/$1 per
  *  live market rates that day). Display convenience only, per the user's request to see both
  *  currencies; never used for anything that touches real billing. */
@@ -209,6 +216,21 @@ export function formatUsdInr(usd: number, decimals = 3): string {
 
 export type StudioJobStatus = 'drafting' | 'draft_ready' | 'generating' | 'done' | 'failed'
 export type StudioSourceKind = 'trend' | 'strategy' | 'topic'
+export type StudioPostType = 'single' | 'carousel'
+
+/** One slide of a carousel job — the working draft AND the result, same object. `image_url` is
+ *  null until that slide's own real generation call lands; `status` is per-slide so one bad slide
+ *  can be retried (`regenerateStudioSlide`) without touching the rest. Order is the array order —
+ *  no separate `idx` needed at the FE layer, but n8n keeps it explicit since PATCH rewrites the
+ *  whole jsonb array. */
+export interface StudioSlide {
+  idx: number
+  title: string
+  caption: string
+  image_prompt: string
+  image_url: string | null
+  status: 'pending' | 'generating' | 'done' | 'failed'
+}
 
 /** The editable copy GPT drafts alongside the image prompt. Same field names the Content Text
  *  Engine already writes into content_items.metadata, so handing off costs no translation. */
@@ -240,6 +262,11 @@ export interface StudioJob {
   provider_request_id: string | null
   error_detail: string | null
   content_item_id: string | null
+  /** 'single' (the original flow — everything above this line is what that uses) or 'carousel'
+   *  (everything below — image_prompt/image_urls/selected_image_url stay empty/unused). */
+  post_type: StudioPostType
+  slide_count: number | null
+  slides_json: StudioSlide[] | null
   created_at: string
   updated_at: string
 }
@@ -292,6 +319,10 @@ export async function generateStudioBrief(params: {
    *  invent gibberish or, worse, obeying a blanket "no text" rule and returning a wordless
    *  poster. See StudioStyle.rendersText. */
   styleRendersText: boolean
+  /** 'carousel' + a slideCount (3-8) makes the brief write that many slides instead of one
+   *  image_prompt — see StudioSlide. Omitted/'single' is the original one-image flow, unchanged. */
+  postType?: StudioPostType
+  slideCount?: number
 }): Promise<StudioJob> {
   if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
   const res = await fireWebhook('sp-studio-brief', {
@@ -309,24 +340,41 @@ export async function generateStudioBrief(params: {
     referenceImageUrl: params.referenceImageUrl ?? null,
     characterId: params.characterId ?? null,
     variantCount: params.variantCount,
+    postType: params.postType ?? 'single',
+    slideCount: params.postType === 'carousel' ? (params.slideCount ?? 3) : null,
   })
   return (await res.json()) as StudioJob
 }
 
-/** Persists edits made to the copy / image prompt in the review step, before generating. */
+/** Persists edits made to the copy / image prompt (or, for a carousel, the per-slide drafts) in
+ *  the review step, before generating. */
 export async function updateStudioDraft(
   jobId: string,
-  patch: { copy_json?: StudioCopy; image_prompt?: string; aspect_ratio?: string; model?: ImageModelId; variant_count?: number },
+  patch: {
+    copy_json?: StudioCopy
+    image_prompt?: string
+    aspect_ratio?: string
+    model?: ImageModelId
+    variant_count?: number
+    slides_json?: StudioSlide[]
+  },
 ): Promise<void> {
   const { error } = await supabase.from('studio_jobs').update(patch).eq('id', jobId)
   if (error) throw error
 }
 
 /** Fires the generation workflow. Returns immediately — poll getStudioJob() and watch
- *  status/image_urls, exactly like the carousel render step. */
+ *  status/image_urls (single) or slides_json (carousel). */
 export async function triggerStudioGenerate(jobId: string): Promise<void> {
   if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
   await fireWebhook('sp-studio-generate', { jobId })
+}
+
+/** Re-fires just ONE slide of a carousel job — the whole point of "one shot per slide" is that a
+ *  bad slide doesn't mean regenerating (and paying for) every other slide again too. */
+export async function regenerateStudioSlide(jobId: string, slideIdx: number): Promise<void> {
+  if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
+  await fireWebhook('sp-studio-regenerate-slide', { jobId, slideIdx })
 }
 
 export async function selectStudioVariant(jobId: string, imageUrl: string): Promise<void> {
