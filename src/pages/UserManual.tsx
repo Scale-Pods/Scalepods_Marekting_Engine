@@ -55,7 +55,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'With one or more selected, use the "Generate Strategy" bar at the bottom to pick a scope (a full month, one week, or a single post), and optionally narrow to one platform or content type.',
           'Or click "Create Post" on a single trend to build one image/carousel straight away in AI Studio instead.',
         ],
-        tip: 'A trend-anchored generation never touches your current active strategy on the Strategy page — it always lands as its own separate entry under "Recent" there, never a replacement.',
+        tip: 'A trend-anchored generation shows up as a new entry in the list on the Strategy page — nothing there is overwritten, so past generations stay browsable.',
       },
       {
         id: 'strategy',
@@ -66,7 +66,8 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         steps: [
           'Landing here shows a numbered list of every strategy you have ever generated — timestamp, scope, and status for each.',
           '"Generate Strategy" builds a new one — pick one or more trends right here or from the Trends page (or none, for a general strategy), choose a scope (a full month, one week, or a single post), and optionally narrow to one platform or content type.',
-          'Click any strategy in the list to open the full plan: AI insights, the content-pillar mix, the platform mix, and the content calendar. Edit any section by hand, regenerate just that one section, or use "Create Post" on a calendar entry to build that specific post in AI Studio.',
+          'Click any strategy in the list to open the full plan: AI insights, the content-pillar mix, the platform mix, and the content calendar. Edit any section by hand, or regenerate just that one section.',
+          '"Create Post" in the header — pick which planned post to build (or it jumps straight to AI Studio if there is only one, e.g. a single-post "Day" strategy) — is the fastest way in; clicking a calendar entry directly works too.',
           'Approve whichever strategy should drive content generation — approving one automatically un-approves whichever was approved before, so exactly one is ever active.',
         ],
         tip: 'Content generation stays locked until a strategy is approved — this is a real gate, not a formality.',

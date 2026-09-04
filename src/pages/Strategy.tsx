@@ -56,6 +56,7 @@ export default function Strategy() {
   const [detailItem, setDetailItem] = useState<CalendarItem | null>(null)
   const [activeTab, setActiveTab] = useState<StrategySection | 'calendar'>('campaign_planning')
   const [generateModalOpen, setGenerateModalOpen] = useState(false)
+  const [createPostModalOpen, setCreatePostModalOpen] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const loadList = useCallback(async (profileId: string) => {
@@ -175,6 +176,21 @@ export default function Strategy() {
     })
   }
 
+  // Header-level entry point — the per-item "Create Post" (inside the calendar-item detail modal
+  // below) was the only way in before this, and a first-time visitor had no reason to know
+  // clicking into a specific calendar row got them there. A "Day"-scope strategy only ever has
+  // one calendar item, so there's nothing to actually choose — skip the picker and go straight
+  // to AI Studio with it; anything with more than one opens the picker.
+  function onCreatePostClick() {
+    const items = activeStrategy && Array.isArray(activeStrategy.content_calendar) ? activeStrategy.content_calendar : []
+    if (items.length === 0) return
+    if (items.length === 1) {
+      onCreatePost(items[0])
+      return
+    }
+    setCreatePostModalOpen(true)
+  }
+
   if (profile === undefined) {
     return (
       <div className="flex justify-center py-16">
@@ -210,6 +226,15 @@ export default function Strategy() {
             {view === 'detail' && (
               <Button variant="ghost" onClick={backToList}>
                 <ArrowLeft size={15} /> Back to list
+              </Button>
+            )}
+            {view === 'detail' && activeStrategy && activeStrategy.status !== 'processing' && activeStrategy.status !== 'failed' && (
+              <Button
+                variant="ghost"
+                onClick={onCreatePostClick}
+                style={{ borderColor: 'var(--accent-blue)', color: 'var(--accent-blue)' }}
+              >
+                <Wand2 size={15} /> Create Post
               </Button>
             )}
             <Button variant="ghost" onClick={() => setGenerateModalOpen(true)}>
@@ -344,6 +369,34 @@ export default function Strategy() {
             waitForNewGeneration(profile.id, generations[0]?.id ?? null)
           }}
         />
+      )}
+
+      {createPostModalOpen && activeStrategy && (
+        <Modal title="Create Post" onClose={() => setCreatePostModalOpen(false)}>
+          <p className="text-muted text-xs mb-3">Pick which planned post to build in AI Studio.</p>
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+            {(Array.isArray(activeStrategy.content_calendar) ? activeStrategy.content_calendar : []).map((item, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  setCreatePostModalOpen(false)
+                  onCreatePost(item)
+                }}
+                className="w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors hover:bg-[var(--fill-secondary)]"
+                style={{ background: 'var(--fill-tertiary)', border: '1px solid var(--border-subtle)' }}
+              >
+                <Badge tone={PLATFORM_TONE[item.platform?.toLowerCase()] ?? 'blue'}>{item.platform}</Badge>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">{item.title}</div>
+                  {item.hook && <div className="text-muted text-xs truncate">{item.hook}</div>}
+                </div>
+                {item.scheduled_date && <span className="text-muted text-xs shrink-0">{item.scheduled_date}</span>}
+                <Wand2 size={14} className="text-muted shrink-0" />
+              </button>
+            ))}
+          </div>
+        </Modal>
       )}
 
       {detailItem && (
