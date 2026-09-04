@@ -136,8 +136,8 @@ export default function AIStudio() {
   const activeStyle = getStyle(styleId)
 
   // Deep-linked here rather than running a separate one-shot generator, so there's exactly one
-  // generation engine — from Trends' "Create Post" (a specific trend) or from a Recent strategy
-  // generation's calendar item (a specific planned post, see StrategyGenerationModal).
+  // generation engine — from Trends' "Create Post" (a specific trend) or from a strategy's
+  // calendar item on the Strategy page (a specific planned post).
   useEffect(() => {
     const state = location.state as { signalId?: string; topic?: string; platform?: string } | null
     if (state?.signalId) {

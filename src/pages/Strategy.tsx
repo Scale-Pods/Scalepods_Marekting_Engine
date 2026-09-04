@@ -1,27 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Target, CheckCircle2, CalendarDays, ListChecks, LayoutGrid, Magnet, MousePointerClick, Sparkles,
-  TrendingUp, ArrowRight,
+  ArrowRight, ArrowLeft, Wand2,
 } from 'lucide-react'
 import {
-  getLatestStrategy, approveStrategy, updateStrategySection, regenerateStrategySection,
-  getSourceSignal, listStrategyGenerations, type MarketingStrategy, type StrategySection, type CalendarItem,
-  type StrategyGeneration,
+  approveStrategy, updateStrategySection, regenerateStrategySection,
+  listStrategyGenerations, getStrategyGeneration,
+  type StrategyGeneration, type StrategySection, type CalendarItem,
 } from '../lib/strategy'
-import { PageHeader, Badge, Button, EmptyState, Spinner, Modal, Panel } from '../components/ui'
+import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
 import { SectionEditor } from '../components/strategy/SectionEditor'
 import { InsightHeaderStrip } from '../components/strategy/InsightHeaderStrip'
 import { PillarBalanceChart } from '../components/strategy/PillarBalanceChart'
 import { PlatformCards } from '../components/strategy/PlatformCards'
 import { StrategyCalendarView } from '../components/strategy/StrategyCalendarView'
-import { StrategyGenerationModal } from '../components/strategy/StrategyGenerationModal'
 import { GenerateStrategyModal } from '../components/strategy/GenerateStrategyModal'
 import { useProfile } from '../lib/queries'
 
 const GEN_SCOPE_LABEL: Record<string, string> = { day: 'Day', week: 'Week', month: 'Month' }
+const STATUS_TONE: Record<string, 'green' | 'blue' | 'orange' | 'grey'> = {
+  approved: 'green', completed: 'blue', processing: 'grey', failed: 'orange',
+}
 
-// platform_strategy now renders via PlatformCards below the tabs, not as one of these tabs.
+// AI Studio only generates images for these three — video generation stays manual project-wide.
+const STUDIO_SUPPORTED_PLATFORMS = new Set(['instagram', 'linkedin', 'facebook'])
+
+// platform_strategy renders via PlatformCards below the header, not as one of these tabs.
 const COMPONENTS: { key: StrategySection; label: string; icon: typeof Target; color: string }[] = [
   { key: 'campaign_planning', label: 'Campaign Planning', icon: Target, color: 'var(--accent-green)' },
   { key: 'weekly_content_strategy', label: 'Weekly Content', icon: ListChecks, color: 'var(--accent-blue)' },
@@ -37,73 +42,74 @@ const PLATFORM_TONE: Record<string, 'green' | 'blue' | 'orange'> = {
 
 export default function Strategy() {
   const { data: profile } = useProfile()
-  const [strategy, setStrategy] = useState<MarketingStrategy | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  // Every strategy ever generated for this profile — day/week/month scope, trend-anchored or
+  // general, approved or not. `strategy_generations` is the single source of truth now (see the
+  // note at the top of lib/strategy.ts for how the old single "active strategy" got here).
+  const [generations, setGenerations] = useState<StrategyGeneration[]>([])
+  const [view, setView] = useState<'list' | 'detail'>('list')
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeStrategy, setActiveStrategy] = useState<StrategyGeneration | null>(null)
   const [approving, setApproving] = useState(false)
-  const [generateModalOpen, setGenerateModalOpen] = useState(false)
   const [detailItem, setDetailItem] = useState<CalendarItem | null>(null)
   const [activeTab, setActiveTab] = useState<StrategySection | 'calendar'>('campaign_planning')
-  const [sourceSignal, setSourceSignal] = useState<{ id: string; source: string; topic: string } | null>(null)
+  const [generateModalOpen, setGenerateModalOpen] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Scoped, trend-anchored generations from the Trends page — always separate from `strategy`
-  // above, never overwrite it. Loaded alongside the main strategy; "Recent" below renders them.
-  const [generations, setGenerations] = useState<StrategyGeneration[]>([])
-  const [openGeneration, setOpenGeneration] = useState<StrategyGeneration | null>(null)
-  const genPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const loadGenerations = useCallback(async (profileId: string) => {
+  const loadList = useCallback(async (profileId: string) => {
     const list = await listStrategyGenerations(profileId)
     setGenerations(list)
     return list
   }, [])
 
-  // "Generated from" credit when this strategy came from a trend card's "General Strategy"
-  // button rather than the broad "Regenerate all". The signal may since have been pruned by a
-  // later scan, in which case this just stays null and the credit line doesn't render.
-  useEffect(() => {
-    if (!strategy?.source_signal_id) {
-      setSourceSignal(null)
-      return
-    }
-    let cancelled = false
-    getSourceSignal(strategy.source_signal_id).then((s) => {
-      if (!cancelled) setSourceSignal(s)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [strategy?.source_signal_id])
-
-  const location = useLocation()
-
-  const load = useCallback(async (profileId: string) => {
-    const s = await getLatestStrategy(profileId)
-    setStrategy(s)
+  const loadActive = useCallback(async (id: string) => {
+    const s = await getStrategyGeneration(id)
+    setActiveStrategy(s)
     return s
   }, [])
 
+  function openDetail(id: string) {
+    setActiveId(id)
+    setActiveTab('campaign_planning')
+    setView('detail')
+  }
+
+  function backToList() {
+    setView('list')
+    setActiveId(null)
+    setActiveStrategy(null)
+  }
+
+  // Poll for a genuinely NEW row (a different id than `beforeId`), not just any row — an old one
+  // would otherwise pass instantly. The webhook returns before the placeholder row necessarily
+  // exists, so a single load right after triggering can still race ahead of it.
+  const waitForNewGeneration = useCallback((profileId: string, beforeId: string | null) => {
+    let tries = 0
+    const poll = setInterval(() => {
+      tries += 1
+      loadList(profileId).then((fresh) => {
+        const found = fresh.find((g) => g.id !== beforeId)
+        if (found && (found.status !== 'processing' || tries >= 20)) {
+          clearInterval(poll)
+          openDetail(found.id)
+        } else if (tries >= 20) {
+          clearInterval(poll)
+        }
+      })
+    }, 3000)
+  }, [loadList])
+
   useEffect(() => {
     if (!profile) return
-    load(profile.id)
-    loadGenerations(profile.id).then((list) => {
-      // Same race, but for a scoped generation fired from Trends.tsx's "Generate Strategy" bar:
-      // the webhook returns before the placeholder row necessarily exists, so poll for a
-      // genuinely new row rather than trusting the first load.
+    loadList(profile.id).then((list) => {
+      // Arrived here right after firing a generation from Trends.tsx's "Generate Strategy" bar —
+      // a real cross-page navigation, so this mount effect actually runs. (The same-page case —
+      // this page's own "Generate Strategy" button — is handled directly by that button's
+      // onGenerated below, since navigating to the page you're already on doesn't remount it.)
       if (location.state?.justTriggeredGeneration) {
-        const beforeId = list[0]?.id ?? null
-        let tries = 0
-        const poll = setInterval(() => {
-          tries += 1
-          loadGenerations(profile.id).then((fresh) => {
-            const found = fresh.find((g) => g.id !== beforeId)
-            if (found && (found.status !== 'processing' || tries >= 20)) {
-              clearInterval(poll)
-              setOpenGeneration(found)
-            } else if (tries >= 20) {
-              clearInterval(poll)
-            }
-          })
-        }, 3000)
+        waitForNewGeneration(profile.id, list[0]?.id ?? null)
       }
     })
     // Only ever meant to fire once per landing on this page — re-running on every `profile`
@@ -112,29 +118,17 @@ export default function Strategy() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id])
 
-  // Keep the Recent grid's status badges live while any generation is still processing —
-  // separate from the auto-open poll above, which only cares about the just-triggered one.
   useEffect(() => {
-    if (!profile) return
-    const anyProcessing = generations.some((g) => g.status === 'processing')
-    if (anyProcessing && !genPollRef.current) {
-      genPollRef.current = setInterval(() => loadGenerations(profile.id), 4000)
-    } else if (!anyProcessing && genPollRef.current) {
-      clearInterval(genPollRef.current)
-      genPollRef.current = null
-    }
-    return () => {
-      if (genPollRef.current) clearInterval(genPollRef.current)
-      genPollRef.current = null
-    }
-  }, [profile, generations, loadGenerations])
+    if (!activeId) return
+    loadActive(activeId)
+  }, [activeId, loadActive])
 
+  // Keep the open detail view live while its own generation is still running.
   useEffect(() => {
-    if (!profile) return
-    const isActive = strategy?.status === 'processing'
-    if (isActive && !pollRef.current) {
-      pollRef.current = setInterval(() => load(profile.id), 4000)
-    } else if (!isActive && pollRef.current) {
+    const isProcessing = activeStrategy?.status === 'processing'
+    if (isProcessing && activeId && !pollRef.current) {
+      pollRef.current = setInterval(() => loadActive(activeId), 4000)
+    } else if (!isProcessing && pollRef.current) {
       clearInterval(pollRef.current)
       pollRef.current = null
     }
@@ -142,33 +136,43 @@ export default function Strategy() {
       if (pollRef.current) clearInterval(pollRef.current)
       pollRef.current = null
     }
-  }, [profile, strategy?.status, load])
+  }, [activeId, activeStrategy?.status, loadActive])
 
   async function onApprove() {
-    if (!strategy) return
+    if (!activeStrategy || !profile) return
     setApproving(true)
-    await approveStrategy(strategy.id)
-    await load(strategy.profile_id)
+    await approveStrategy(activeStrategy.id, profile.id)
+    await loadActive(activeStrategy.id)
+    await loadList(profile.id)
     setApproving(false)
   }
 
   async function onSaveSection(section: StrategySection, value: unknown) {
-    if (!strategy) return
-    await updateStrategySection(strategy.id, section, value)
-    await load(strategy.profile_id)
+    if (!activeStrategy) return
+    await updateStrategySection(activeStrategy.id, section, value)
+    await loadActive(activeStrategy.id)
   }
 
   async function onRegenerateSection(section: StrategySection) {
-    if (!strategy || !profile) return
-    await regenerateStrategySection(strategy.id, profile.id, section)
-    // Section regenerate doesn't touch `status`, so poll this one column directly for a
-    // fresh updated_at instead of relying on the status-based poller above.
-    const before = strategy.updated_at
+    if (!activeStrategy || !profile) return
+    await regenerateStrategySection(activeStrategy.id, profile.id, section)
+    // Section regenerate doesn't touch `status`, so poll this one column directly for a fresh
+    // updated_at instead of relying on the status-based poller above.
+    const before = activeStrategy.updated_at
     for (let i = 0; i < 5; i++) {
       await new Promise((r) => setTimeout(r, 2500))
-      const fresh = await load(profile.id)
+      const fresh = await loadActive(activeStrategy.id)
       if (fresh && fresh.updated_at !== before) break
     }
+  }
+
+  function onCreatePost(item: CalendarItem) {
+    navigate('/studio', {
+      state: {
+        topic: item.hook ? `${item.title}: ${item.hook}` : item.title,
+        platform: STUDIO_SUPPORTED_PLATFORMS.has(item.platform?.toLowerCase()) ? item.platform.toLowerCase() : undefined,
+      },
+    })
   }
 
   if (profile === undefined) {
@@ -188,21 +192,30 @@ export default function Strategy() {
     )
   }
 
-  const isActive = strategy?.status === 'processing'
-  const isApproved = strategy?.status === 'approved'
+  const isDetailActive = activeStrategy?.status === 'processing'
+  const isApproved = activeStrategy?.status === 'approved'
 
   return (
     <div>
       <PageHeader
         accent={<Badge><Target size={12} /> Strategy</Badge>}
         title={`Marketing Strategy — ${profile.business_name}`}
-        subtitle="Generated from the BI report + trend signals + your real past post performance. Edit any section manually, regenerate it with AI, or approve before content generation can begin."
+        subtitle={
+          view === 'list'
+            ? 'Every strategy generated for this business — pick a scope and (optionally) some trends, generate, and approve whichever one should drive content generation.'
+            : 'Generated from the BI report + trend signals + your real past post performance. Edit any section manually, regenerate it with AI, or approve it.'
+        }
         actions={
           <div className="flex gap-2">
+            {view === 'detail' && (
+              <Button variant="ghost" onClick={backToList}>
+                <ArrowLeft size={15} /> Back to list
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => setGenerateModalOpen(true)}>
               <Target size={15} /> Generate Strategy <ArrowRight size={15} />
             </Button>
-            {strategy && strategy.status === 'completed' && (
+            {view === 'detail' && activeStrategy && activeStrategy.status !== 'processing' && !isApproved && (
               <Button onClick={onApprove} loading={approving}>
                 <CheckCircle2 size={15} /> Approve
               </Button>
@@ -211,33 +224,69 @@ export default function Strategy() {
         }
       />
 
-      {!strategy ? (
-        <EmptyState icon={<Target size={28} />} title="No active strategy" hint="This page shows the plan you're actively working from. Use Generate Strategy above to build a scoped plan anchored on your trends — it lands under Recent below." />
-      ) : isActive ? (
+      {view === 'list' ? (
+        generations.length === 0 ? (
+          <EmptyState icon={<Target size={28} />} title="No strategies yet" hint="Use Generate Strategy above to build your first plan." />
+        ) : (
+          <div className="space-y-2">
+            {generations.map((g, i) => {
+              const topics = g.source_signals_snapshot.map((s) => s.topic).join(', ')
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => openDetail(g.id)}
+                  className="card w-full text-left p-4 flex items-center gap-4 transition-colors hover:bg-[var(--fill-secondary)]"
+                >
+                  <span className="text-muted text-sm font-semibold w-7 shrink-0 text-center">#{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                      <Badge tone="blue">{GEN_SCOPE_LABEL[g.scope] ?? g.scope}</Badge>
+                      {g.platform && <Badge tone="green">{g.platform}</Badge>}
+                      {g.content_type && <Badge tone="orange">{g.content_type.replace(/_/g, ' ')}</Badge>}
+                      <Badge tone={STATUS_TONE[g.status] ?? 'grey'}>{g.status}</Badge>
+                    </div>
+                    <div className="text-sm font-medium truncate">{topics || 'General strategy'}</div>
+                    {g.ai_summary && <div className="text-muted text-xs truncate mt-0.5">{g.ai_summary}</div>}
+                  </div>
+                  <span className="text-muted text-xs shrink-0">{new Date(g.created_at).toLocaleString()}</span>
+                </button>
+              )
+            })}
+          </div>
+        )
+      ) : !activeStrategy ? (
+        <div className="flex justify-center py-16">
+          <Spinner size={24} />
+        </div>
+      ) : isDetailActive ? (
         <div className="card p-8 flex flex-col items-center gap-3 text-center">
           <Spinner size={22} />
           <div className="text-sm text-secondary">Building campaign plan, calendar, and platform strategy…</div>
         </div>
-      ) : strategy.status === 'failed' ? (
-        <EmptyState title="Strategy generation failed" hint="This was the active strategy's last generation attempt — it did not complete." />
+      ) : activeStrategy.status === 'failed' ? (
+        <EmptyState title="Strategy generation failed" hint={activeStrategy.error_detail || 'This generation did not complete.'} />
       ) : (
         <>
           <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <Badge tone={isApproved ? 'green' : 'blue'}>{isApproved ? 'Approved' : 'Awaiting approval'}</Badge>
-            {sourceSignal && (
-              <Badge tone="orange">
-                <Sparkles size={11} /> Generated from: {sourceSignal.source} — {sourceSignal.topic}
+            <Badge tone={STATUS_TONE[activeStrategy.status] ?? 'grey'}>{isApproved ? 'Approved' : 'Awaiting approval'}</Badge>
+            <Badge tone="blue">{GEN_SCOPE_LABEL[activeStrategy.scope] ?? activeStrategy.scope}</Badge>
+            {activeStrategy.platform && <Badge tone="green">{activeStrategy.platform}</Badge>}
+            {activeStrategy.content_type && <Badge tone="orange">{activeStrategy.content_type.replace(/_/g, ' ')}</Badge>}
+            {activeStrategy.source_signals_snapshot.map((s) => (
+              <Badge key={s.id} tone="orange">
+                <Sparkles size={11} /> {s.source} — {s.topic}
               </Badge>
-            )}
+            ))}
           </div>
           <div className="mb-5">
-            {strategy.ai_summary && <span className="text-secondary text-sm">{strategy.ai_summary}</span>}
+            {activeStrategy.ai_summary && <span className="text-secondary text-sm">{activeStrategy.ai_summary}</span>}
           </div>
 
-          <InsightHeaderStrip insights={strategy.header_insights} />
-          <PillarBalanceChart balance={strategy.pillar_balance} />
+          <InsightHeaderStrip insights={activeStrategy.header_insights} />
+          <PillarBalanceChart balance={activeStrategy.pillar_balance} />
           <PlatformCards
-            value={strategy.platform_strategy}
+            value={activeStrategy.platform_strategy}
             onSave={(v) => onSaveSection('platform_strategy', v)}
             onRegenerate={() => onRegenerateSection('platform_strategy')}
           />
@@ -265,7 +314,7 @@ export default function Strategy() {
 
           {activeTab === 'calendar' ? (
             <StrategyCalendarView
-              items={Array.isArray(strategy.content_calendar) ? strategy.content_calendar : []}
+              items={Array.isArray(activeStrategy.content_calendar) ? activeStrategy.content_calendar : []}
               onSelect={setDetailItem}
             />
           ) : (
@@ -275,7 +324,7 @@ export default function Strategy() {
                 <SectionEditor
                   label={c.label}
                   sectionKey={c.key}
-                  value={strategy[c.key]}
+                  value={activeStrategy[c.key]}
                   onSave={(v) => onSaveSection(c.key, v)}
                   onRegenerate={() => onRegenerateSection(c.key)}
                 />
@@ -285,52 +334,15 @@ export default function Strategy() {
         </>
       )}
 
-      {/* Scoped, trend-anchored generations from the Trends page — always separate from the
-          strategy above, per the user's explicit choice: this list is a browsable archive, not
-          a way to change what's currently active. */}
-      {generations.length > 0 && (
-        <Panel className="mt-6">
-          <div className="label mb-3">Recent</div>
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
-            {generations.slice(0, 12).map((g) => {
-              const topics = g.source_signals_snapshot.map((s) => s.topic).join(', ')
-              return (
-                <button
-                  key={g.id}
-                  type="button"
-                  onClick={() => setOpenGeneration(g)}
-                  className="text-left rounded-lg p-3"
-                  style={{ border: '1px solid var(--border-subtle)', background: 'var(--fill-tertiary)' }}
-                >
-                  <div className="flex items-center gap-1.5 flex-wrap mb-2">
-                    <Badge tone="blue">{GEN_SCOPE_LABEL[g.scope] ?? g.scope}</Badge>
-                    {g.platform && <Badge tone="green">{g.platform}</Badge>}
-                    {g.content_type && <Badge tone="orange">{g.content_type.replace(/_/g, ' ')}</Badge>}
-                    <Badge tone={g.status === 'completed' ? 'green' : g.status === 'failed' ? 'orange' : 'grey'}>{g.status}</Badge>
-                  </div>
-                  <div className="text-xs font-medium leading-snug mb-1.5 line-clamp-2">
-                    {topics || 'Generated strategy'}
-                  </div>
-                  <div className="text-muted text-[10.5px] flex items-center gap-1">
-                    <TrendingUp size={10} /> {new Date(g.created_at).toLocaleString()}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </Panel>
-      )}
-
-      {openGeneration && (
-        <StrategyGenerationModal generation={openGeneration} onClose={() => setOpenGeneration(null)} />
-      )}
-
       {generateModalOpen && profile && (
         <GenerateStrategyModal
           profileId={profile.id}
           allowPicker
           onClose={() => setGenerateModalOpen(false)}
-          onGenerated={() => setGenerateModalOpen(false)}
+          onGenerated={() => {
+            setGenerateModalOpen(false)
+            waitForNewGeneration(profile.id, generations[0]?.id ?? null)
+          }}
         />
       )}
 
@@ -354,6 +366,11 @@ export default function Strategy() {
                 <div className="text-sm text-secondary">{detailItem.hook}</div>
               </div>
             )}
+            <div className="flex justify-end pt-1">
+              <Button onClick={() => onCreatePost(detailItem)}>
+                <Wand2 size={15} /> Create Post
+              </Button>
+            </div>
           </div>
         </Modal>
       )}

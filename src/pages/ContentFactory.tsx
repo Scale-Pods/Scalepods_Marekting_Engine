@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Sparkles, RefreshCw, ImageIcon, Video, FileText, CheckCircle2, XCircle, Copy, Check, Filter, Megaphone, Plus, Wand2 } from 'lucide-react'
-import { getLatestStrategy, type MarketingStrategy } from '../lib/strategy'
+import { getApprovedStrategy, type StrategyGeneration } from '../lib/strategy'
 import { useProfile, useLatestRun, useRunItems } from '../lib/queries'
 import {
   triggerContentGeneration, triggerCarousel,
@@ -96,7 +96,7 @@ function ItemPreviewFooter({ item, onCarousel }: { item: ContentItem; onCarousel
 }
 
 export default function ContentFactory() {
-  const [strategy, setStrategy] = useState<MarketingStrategy | null>(null)
+  const [strategy, setStrategy] = useState<StrategyGeneration | null>(null)
   const [generating, setGenerating] = useState(false)
   const [platformFilter, setPlatformFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
@@ -120,7 +120,7 @@ export default function ContentFactory() {
   }, [refetchRun, refetchItems])
 
   useEffect(() => {
-    if (profile) getLatestStrategy(profile.id).then(setStrategy)
+    if (profile) getApprovedStrategy(profile.id).then(setStrategy)
   }, [profile])
 
   async function onGenerate() {

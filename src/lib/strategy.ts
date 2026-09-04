@@ -29,98 +29,20 @@ export interface PillarBalance {
   notes?: Partial<Record<'hr' | 'sales' | 'ops' | 'marketing', string>>
 }
 
-export interface MarketingStrategy {
-  id: string
-  profile_id: string
-  status: 'processing' | 'completed' | 'approved' | 'failed'
-  ai_summary: string | null
-  campaign_planning: unknown
-  weekly_content_strategy: unknown
-  content_pillars: unknown
-  content_calendar: CalendarItem[]
-  platform_strategy: unknown
-  lead_generation_strategy: unknown
-  cta_strategy: unknown
-  /** Null on any strategy generated before this redesign shipped — every renderer for these
-   *  two must handle null gracefully. */
-  header_insights: HeaderInsights | null
-  pillar_balance: PillarBalance | null
-  /** Set when this strategy was generated via "General Strategy" on a specific trend card,
-   *  rather than the broad "Regenerate all" — null for the latter. */
-  source_signal_id: string | null
-  created_at: string
-  updated_at: string
-}
-
-export async function getLatestStrategy(profileId: string): Promise<MarketingStrategy | null> {
-  const { data, error } = await supabase
-    .from('marketing_strategies')
-    .select('*')
-    .eq('profile_id', profileId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (error) throw error
-  return data as MarketingStrategy | null
-}
-
-export async function listStrategies(profileId: string): Promise<MarketingStrategy[]> {
-  const { data, error } = await supabase
-    .from('marketing_strategies')
-    .select('*')
-    .eq('profile_id', profileId)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return data as MarketingStrategy[]
-}
-
-/** Fires the Marketing Strategy n8n workflow (M5). Writes a new marketing_strategies row.
- *  Pass `signalId` (a trend_signals.id) to anchor the strategy around one specific trend —
- *  fired from the "General Strategy" button on a Trends signal card — instead of the broad,
- *  all-trends synthesis the plain "Regenerate all" button on the Strategy page still uses. */
-export async function triggerStrategy(profileId: string, signalId?: string): Promise<void> {
-  await fireWebhook('sp-strategy', signalId ? { profileId, signalId } : { profileId })
-}
-
-/** The one trend signal a strategy was generated around, for a "Generated from" credit on the
- *  Strategy page — null when the strategy has no source_signal_id (the normal "Regenerate all"
- *  case) or when that signal has since been deleted. */
-export async function getSourceSignal(signalId: string): Promise<{ id: string; source: string; topic: string } | null> {
-  const { data, error } = await supabase
-    .from('trend_signals')
-    .select('id, source, topic')
-    .eq('id', signalId)
-    .maybeSingle()
-  if (error) throw error
-  return data
-}
-
-export async function approveStrategy(id: string): Promise<void> {
-  const { error } = await supabase.from('marketing_strategies').update({ status: 'approved' }).eq('id', id)
-  if (error) throw error
-}
-
 export type StrategySection =
   | 'campaign_planning' | 'weekly_content_strategy' | 'content_pillars'
   | 'platform_strategy' | 'lead_generation_strategy' | 'cta_strategy'
 
-/** Direct manual edit — PATCHes just the one JSON column. */
-export async function updateStrategySection(id: string, section: StrategySection, value: unknown): Promise<void> {
-  const { error } = await supabase.from('marketing_strategies').update({ [section]: value }).eq('id', id)
-  if (error) throw error
-}
-
-/** Fires the section-level AI regenerate n8n workflow (M5b) — rewrites just one column. */
-export async function regenerateStrategySection(strategyId: string, profileId: string, section: StrategySection): Promise<void> {
-  await fireWebhook('sp-strategy-section-regenerate', { strategyId, profileId, section })
-}
-
-// --- Scoped, trend-anchored generations (M5c) ------------------------------
+// --- Strategies -------------------------------------------------------------
 //
-// A completely separate artifact from `marketing_strategies` above — picking trends on the
-// Trends page and generating never touches the current active strategy (getLatestStrategy always
-// stays whatever it was). Each one is a standalone saved record, shown in Strategy.tsx's "Recent"
-// section, keyed to whichever trend(s) it was anchored on.
+// `strategy_generations` is the single source of truth for every strategy — the old, separate
+// `marketing_strategies` ("the one active strategy", written only by the now-retired
+// "Regenerate all") was unified in here on 2026-09-03: the single row it ever had was migrated
+// once by hand, and `marketing_strategies` itself is left untouched as a frozen historical
+// record, read by nothing. Every strategy — day/week/month scope, trend-anchored or general — is
+// a `StrategyGeneration` row now, and any of them can be approved: `approveStrategy` enforces
+// exactly one `status='approved'` row per profile at a time, which is what "the strategy content
+// generation is gated on" (see ContentFactory.tsx) means in practice.
 
 export type GenerationScope = 'day' | 'week' | 'month'
 
@@ -133,10 +55,11 @@ export interface SourceSignalSnapshot {
 export interface StrategyGeneration {
   id: string
   profile_id: string
-  status: 'processing' | 'completed' | 'failed'
+  status: 'processing' | 'completed' | 'approved' | 'failed'
   source_signal_ids: string[]
   /** Durable snapshot of the trend(s) this was generated from, taken at generation time — still
-   *  renders correctly even if the original trend_signals row is later pruned by a newer scan. */
+   *  renders correctly even if the original trend_signals row is later pruned by a newer scan.
+   *  Empty for a strategy that wasn't anchored on any particular trend. */
   source_signals_snapshot: SourceSignalSnapshot[]
   scope: GenerationScope
   /** Empty string = "any relevant platform", not a specific one. */
@@ -158,9 +81,9 @@ export interface StrategyGeneration {
   updated_at: string
 }
 
-/** Fires the scoped Strategy Generation n8n workflow (M5c, sp-strategy-generate) — writes a new
- *  standalone `strategy_generations` row, never `marketing_strategies`. `platform`/`contentType`
- *  omitted or empty means "any". */
+/** Fires the scoped Strategy Generation n8n workflow (sp-strategy-generate) — the only way any
+ *  new strategy gets created. `platform`/`contentType` omitted or empty means "any"; `signalIds`
+ *  empty means a general strategy not anchored on any particular trend. */
 export async function triggerStrategyGeneration(
   profileId: string,
   signalIds: string[],
@@ -195,4 +118,52 @@ export async function getStrategyGeneration(id: string): Promise<StrategyGenerat
     .maybeSingle()
   if (error) throw error
   return data as StrategyGeneration | null
+}
+
+/** The one strategy currently approved for a profile — what ContentFactory.tsx's "content
+ *  generation stays locked until a strategy is approved" gate actually checks. `order by
+ *  updated_at desc` is a defensive tiebreaker only; `approveStrategy` below keeps this to at
+ *  most one row in practice. */
+export async function getApprovedStrategy(profileId: string): Promise<StrategyGeneration | null> {
+  const { data, error } = await supabase
+    .from('strategy_generations')
+    .select('*')
+    .eq('profile_id', profileId)
+    .eq('status', 'approved')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data as StrategyGeneration | null
+}
+
+/** Approves one strategy and un-approves any other currently-approved strategy for the same
+ *  profile, so exactly one is ever active at a time — same semantics the old single-row
+ *  `marketing_strategies` table gave for free, now enforced explicitly since any strategy here
+ *  can be approved. */
+export async function approveStrategy(id: string, profileId: string): Promise<void> {
+  const { error: approveError } = await supabase
+    .from('strategy_generations')
+    .update({ status: 'approved' })
+    .eq('id', id)
+  if (approveError) throw approveError
+
+  const { error: demoteError } = await supabase
+    .from('strategy_generations')
+    .update({ status: 'completed' })
+    .eq('profile_id', profileId)
+    .eq('status', 'approved')
+    .neq('id', id)
+  if (demoteError) throw demoteError
+}
+
+/** Direct manual edit — PATCHes just the one JSON column. */
+export async function updateStrategySection(id: string, section: StrategySection, value: unknown): Promise<void> {
+  const { error } = await supabase.from('strategy_generations').update({ [section]: value }).eq('id', id)
+  if (error) throw error
+}
+
+/** Fires the section-level AI regenerate n8n workflow — rewrites just one column. */
+export async function regenerateStrategySection(strategyId: string, profileId: string, section: StrategySection): Promise<void> {
+  await fireWebhook('sp-strategy-section-regenerate', { strategyId, profileId, section })
 }

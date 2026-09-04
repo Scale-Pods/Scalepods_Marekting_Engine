@@ -33,9 +33,9 @@ const GEN_CONTENT_TYPES = [
 
 /** Shared by Trends.tsx (trends already picked from its grid — pass `initialSelected`) and the
  *  Strategy page (no grid there — pass `allowPicker` so this modal fetches recent signals and
- *  lets you check them off inline). Always writes a standalone `strategy_generations` row via
- *  `triggerStrategyGeneration` — never the active `marketing_strategies` row, regardless of
- *  where it was opened from. */
+ *  lets you check them off inline). Always creates a new `strategy_generations` row via
+ *  `triggerStrategyGeneration` — the single source of truth for every strategy; it shows up in
+ *  the Strategy page's list and can be approved from there like any other. */
 export function GenerateStrategyModal({
   profileId, initialSelected, allowPicker, onClose, onGenerated,
 }: {
@@ -78,7 +78,6 @@ export function GenerateStrategyModal({
   }
 
   async function onGenerate() {
-    if (selected.size === 0) return
     setGenerating(true)
     try {
       await triggerStrategyGeneration(profileId, Array.from(selected.keys()), scope, platform, contentType)
@@ -97,7 +96,9 @@ export function GenerateStrategyModal({
         <div>
           <div className="label mb-2">From these trends</div>
           {selected.size === 0 ? (
-            <p className="text-muted text-xs">{allowPicker ? 'Pick one or more trends below.' : 'No trends selected.'}</p>
+            <p className="text-muted text-xs">
+              {allowPicker ? "No trends picked — this will be a general strategy, not anchored on any particular trend." : 'No trends selected.'}
+            </p>
           ) : (
             <div className="flex gap-1.5 flex-wrap">
               {Array.from(selected.entries()).map(([id, s]) => (
@@ -198,7 +199,7 @@ export function GenerateStrategyModal({
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose} disabled={generating}>Cancel</Button>
-          <Button onClick={onGenerate} loading={generating} disabled={selected.size === 0}>
+          <Button onClick={onGenerate} loading={generating}>
             <Target size={15} /> Generate
           </Button>
         </div>
