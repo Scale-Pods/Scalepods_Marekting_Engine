@@ -102,6 +102,16 @@ export function Modal({
 }) {
   const resolvedSize = size ?? (wide ? 'lg' : 'md')
   const maxWidthClass = resolvedSize === '2xl' ? 'max-w-7xl' : resolvedSize === 'xl' ? 'max-w-4xl' : resolvedSize === 'lg' ? 'max-w-2xl' : 'max-w-md'
+  // A fixed pixel max-width (from maxWidthClass) is fine on a tall enough screen — its
+  // aspect-video height comes in comfortably under the viewport. On a shorter laptop screen it
+  // doesn't: the panel overflows past the top of the viewport with no way to scroll up to it
+  // (confirmed live — the title sat cropped under the browser chrome). `min()` recomputes the
+  // width DOWN from whichever of (the viewport, the size cap, 90% of viewport height translated
+  // back through the 16:9 ratio) is smallest, so the panel shrinks — still exactly 16:9, since
+  // height is still derived from this resolved width via `aspect-video` below — until its height
+  // actually fits. Desktop is unaffected (the size cap is already the binding constraint there).
+  const MAX_WIDTH_PX: Record<'md' | 'lg' | 'xl' | '2xl', number> = { md: 448, lg: 672, xl: 896, '2xl': 1280 }
+  const aspectWidthStyle = aspectVideo ? { width: `min(100%, ${MAX_WIDTH_PX[resolvedSize]}px, calc(90vh * 16 / 9))` } : undefined
   // Rendered via portal straight onto <body> — a `fixed`-positioned overlay nested inside
   // any ancestor with backdrop-filter/filter/transform (e.g. `.card`, `.panel`) would
   // otherwise be scoped to that ancestor's box instead of the viewport (CSS containing-block
@@ -109,7 +119,8 @@ export function Modal({
   return createPortal(
     <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className={`modal-panel w-full ${maxWidthClass} p-7 ${aspectVideo ? 'aspect-video flex flex-col' : 'max-h-[90vh] overflow-y-auto'}`}
+        className={`modal-panel p-7 ${aspectVideo ? 'aspect-video flex flex-col' : `w-full ${maxWidthClass} max-h-[90vh] overflow-y-auto`}`}
+        style={aspectWidthStyle}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4 shrink-0">
