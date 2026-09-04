@@ -91,7 +91,7 @@ export function GenerateStrategyModal({
   }
 
   return (
-    <Modal title="Generate Strategy" onClose={onClose}>
+    <Modal title="Generate Strategy" onClose={onClose} size="xl" aspectVideo>
       <div className="space-y-4">
         <div>
           <div className="label mb-2">From these trends</div>

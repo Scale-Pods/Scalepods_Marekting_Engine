@@ -83,6 +83,7 @@ export function Modal({
   children,
   wide,
   size,
+  aspectVideo,
 }: {
   title: string
   onClose: () => void
@@ -91,6 +92,11 @@ export function Modal({
   /** Overrides `wide` when given. "xl" (max-w-4xl) is for two-column layouts (form + live
    *  preview side by side), e.g. the Create post composer. */
   size?: 'md' | 'lg' | 'xl'
+  /** Locks the panel to a 16:9 (landscape) shape instead of the default content-driven height —
+   *  the header stays fixed and the body scrolls inside that fixed-height box instead of growing
+   *  the panel. Opt-in per call site (e.g. GenerateStrategyModal) — every other modal keeps its
+   *  normal auto-height behavior. */
+  aspectVideo?: boolean
 }) {
   const resolvedSize = size ?? (wide ? 'lg' : 'md')
   const maxWidthClass = resolvedSize === 'xl' ? 'max-w-4xl' : resolvedSize === 'lg' ? 'max-w-2xl' : 'max-w-md'
@@ -101,16 +107,16 @@ export function Modal({
   return createPortal(
     <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className={`modal-panel w-full ${maxWidthClass} max-h-[90vh] overflow-y-auto p-7`}
+        className={`modal-panel w-full ${maxWidthClass} p-7 ${aspectVideo ? 'aspect-video flex flex-col' : 'max-h-[90vh] overflow-y-auto'}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 shrink-0">
           <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
           <button onClick={onClose} className="text-muted hover:text-ink transition-colors">
             <X size={18} />
           </button>
         </div>
-        {children}
+        {aspectVideo ? <div className="flex-1 min-h-0 overflow-y-auto">{children}</div> : children}
       </div>
     </div>,
     document.body,
