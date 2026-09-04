@@ -1,10 +1,32 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Target, X } from 'lucide-react'
+import { Target, X, Calendar } from 'lucide-react'
 import { Button, Modal } from '../ui'
 import { useToast, toastMessage } from '../Toast'
 import { listSignalsSince, sourceColor, type TrendSignal } from '../../lib/trends'
 import { triggerStrategyGeneration, type GenerationScope } from '../../lib/strategy'
+
+type PickerRange = '7d' | '30d' | 'all' | 'custom'
+const PICKER_RANGE_OPTIONS: { value: PickerRange; label: string }[] = [
+  { value: '7d', label: 'Last 7 days' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: 'all', label: 'All time' },
+  { value: 'custom', label: 'Custom range' },
+]
+
+// "2 hours ago" while it's fresh, a plain date once it's a day+ old — same idea as any feed's
+// timestamp, just not worth pulling in a date library for one function.
+function formatRelative(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const diffMin = Math.floor(diffMs / 60_000)
+  const diffHr = Math.floor(diffMs / 3_600_000)
+  if (diffMin < 1) return 'just now'
+  if (diffHr < 1) return `${diffMin} min${diffMin === 1 ? '' : 's'} ago`
+  if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? '' : 's'} ago`
+  const d = new Date(iso)
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleDateString(undefined, sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' })
+}
 
 // Scope/platform/content type are all optional narrowing — the n8n workflow treats an unset
 // platform/content_type as "any", and 'month' is the default scope (the same calendar length
@@ -49,16 +71,32 @@ export function GenerateStrategyModal({
   const toast = useToast()
   const [selected, setSelected] = useState<Map<string, { source: string; topic: string }>>(initialSelected ?? new Map())
   const [pickerSignals, setPickerSignals] = useState<TrendSignal[]>([])
+  const [pickerRange, setPickerRange] = useState<PickerRange>('30d')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
   const [scope, setScope] = useState<GenerationScope>('month')
   const [platform, setPlatform] = useState('')
   const [contentType, setContentType] = useState('')
   const [generating, setGenerating] = useState(false)
 
+  // Same range-filter idea as Trends.tsx's own date filter, scoped to just this picker — "30 days"
+  // was a fixed, unadjustable window before; a trend worth building a strategy around might be
+  // older than that, or you might want to narrow to just this week.
   useEffect(() => {
     if (!allowPicker) return
-    const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
+    if (pickerRange === 'custom') {
+      if (!customStart) {
+        setPickerSignals([])
+        return
+      }
+      const since = new Date(customStart).toISOString()
+      const until = customEnd ? new Date(new Date(customEnd).getTime() + 86_399_000).toISOString() : undefined
+      listSignalsSince(profileId, since, until).then(setPickerSignals).catch(() => setPickerSignals([]))
+      return
+    }
+    const since = pickerRange === 'all' ? undefined : new Date(Date.now() - (pickerRange === '7d' ? 7 : 30) * 86_400_000).toISOString()
     listSignalsSince(profileId, since).then(setPickerSignals).catch(() => setPickerSignals([]))
-  }, [allowPicker, profileId])
+  }, [allowPicker, profileId, pickerRange, customStart, customEnd])
 
   function onRemove(id: string) {
     setSelected((prev) => {
@@ -91,8 +129,8 @@ export function GenerateStrategyModal({
   }
 
   return (
-    <Modal title="Generate Strategy" onClose={onClose} size="xl" aspectVideo>
-      <div className="space-y-4">
+    <Modal title="Generate Strategy" onClose={onClose} size="2xl" aspectVideo>
+      <div className="space-y-3">
         <div>
           <div className="label mb-2">From these trends</div>
           {selected.size === 0 ? (
@@ -115,11 +153,46 @@ export function GenerateStrategyModal({
 
         {allowPicker && (
           <div>
-            <div className="label mb-2">Pick trends</div>
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+              <div className="label !mb-0">Pick trends</div>
+              <div className="flex items-center gap-1.5">
+                <Calendar size={12} className="text-muted shrink-0" />
+                {PICKER_RANGE_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => setPickerRange(o.value)}
+                    className="px-2 py-1 rounded-full text-[10.5px] font-semibold transition-all"
+                    style={{
+                      background: pickerRange === o.value ? 'var(--accent-green)' : 'var(--fill-secondary)',
+                      color: pickerRange === o.value ? 'var(--bg-primary)' : 'var(--text-primary)',
+                      border: `1.5px solid ${pickerRange === o.value ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {pickerRange === 'custom' && (
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
+                <label className="text-xs text-muted flex items-center gap-2">
+                  From
+                  <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="input !py-1 !px-2 text-xs" />
+                </label>
+                <label className="text-xs text-muted flex items-center gap-2">
+                  To
+                  <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="input !py-1 !px-2 text-xs" />
+                </label>
+                {!customStart && <span className="text-xs text-muted">Pick a start date to see trends</span>}
+              </div>
+            )}
             {pickerSignals.length === 0 ? (
-              <p className="text-muted text-xs">No trend signals in the last 30 days — run a scan on the Trends page first.</p>
+              <p className="text-muted text-xs">
+                {pickerRange === 'custom' && !customStart ? 'Pick a start date above.' : 'No trend signals in this range — try a wider range, or run a scan on the Trends page first.'}
+              </p>
             ) : (
-              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
                 {pickerSignals.map((sig) => {
                   const checked = selected.has(sig.id)
                   return (
@@ -133,6 +206,7 @@ export function GenerateStrategyModal({
                         {sig.source}
                       </span>
                       <span className="flex-1 truncate">{sig.topic}</span>
+                      <span className="text-muted text-[10.5px] shrink-0">{formatRelative(sig.created_at)}</span>
                     </label>
                   )
                 })}

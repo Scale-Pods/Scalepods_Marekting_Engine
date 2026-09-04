@@ -90,8 +90,10 @@ export function Modal({
   children: ReactNode
   wide?: boolean
   /** Overrides `wide` when given. "xl" (max-w-4xl) is for two-column layouts (form + live
-   *  preview side by side), e.g. the Create post composer. */
-  size?: 'md' | 'lg' | 'xl'
+   *  preview side by side), e.g. the Create post composer. "2xl" (max-w-7xl) is for a wide
+   *  `aspectVideo` panel that needs real room (e.g. GenerateStrategyModal) so its sections fit
+   *  without an outer scroll. */
+  size?: 'md' | 'lg' | 'xl' | '2xl'
   /** Locks the panel to a 16:9 (landscape) shape instead of the default content-driven height —
    *  the header stays fixed and the body scrolls inside that fixed-height box instead of growing
    *  the panel. Opt-in per call site (e.g. GenerateStrategyModal) — every other modal keeps its
@@ -99,7 +101,7 @@ export function Modal({
   aspectVideo?: boolean
 }) {
   const resolvedSize = size ?? (wide ? 'lg' : 'md')
-  const maxWidthClass = resolvedSize === 'xl' ? 'max-w-4xl' : resolvedSize === 'lg' ? 'max-w-2xl' : 'max-w-md'
+  const maxWidthClass = resolvedSize === '2xl' ? 'max-w-7xl' : resolvedSize === 'xl' ? 'max-w-4xl' : resolvedSize === 'lg' ? 'max-w-2xl' : 'max-w-md'
   // Rendered via portal straight onto <body> — a `fixed`-positioned overlay nested inside
   // any ancestor with backdrop-filter/filter/transform (e.g. `.card`, `.panel`) would
   // otherwise be scoped to that ancestor's box instead of the viewport (CSS containing-block
