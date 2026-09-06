@@ -36,7 +36,17 @@ export default function CreatePostModal({
   // separately. PDF and Story stay single-platform (no other connected platform has an
   // equivalent), enforced by the effects below rather than by restricting the picker itself.
   const [platforms, setPlatforms] = useState<string[]>(restored?.platforms ?? ['instagram'])
-  const [linkedinAccount, setLinkedinAccount] = useState(restored?.linkedinAccount ?? LINKEDIN_ACCOUNTS[0].value)
+  // Coerced against the current list rather than trusted verbatim: a draft saved before an
+  // account was removed from LINKEDIN_ACCOUNTS still carries the old value, and the <select>
+  // below has no matching <option> for it — the browser then *displays* the first account while
+  // state still holds the removed one, so the post would publish as the removed account the user
+  // can no longer even see. Falling back to a real option keeps what's shown and what's sent
+  // the same thing.
+  const [linkedinAccount, setLinkedinAccount] = useState(() =>
+    LINKEDIN_ACCOUNTS.some((a) => a.value === restored?.linkedinAccount)
+      ? (restored?.linkedinAccount as string)
+      : LINKEDIN_ACCOUNTS[0].value,
+  )
   // Off by default: one caption/hashtag pair goes to every selected platform. On: each platform
   // gets its own editable caption+hashtags (seeded from the shared ones the first time it's
   // edited) — only reachable/relevant with 2+ platforms selected.

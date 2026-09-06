@@ -44,12 +44,22 @@ export function isActivePlatform(platform?: string | null): boolean {
  * value (a stale 'founder2', a typo, etc.) makes the post silently vanish with no error and no
  * publish. Update both together.
  *
+ * 'hrishikesh' was removed from this list on 2026-09-06 at the user's request, so it can no
+ * longer be *picked*. Deliberately FE-only: the router branch and its LinkedIn credential are
+ * both still live in n8n, which is what keeps the two already-published posts that carry that
+ * value re-publishable. Two things follow from that, and both are real:
+ *   1. n8n still DEFAULTS to this account when a post has no `linkedin_account` in its metadata
+ *      (`meta.linkedin_account ? meta.linkedin_account : 'hrishikesh'` in its Build Context
+ *      node). Anything that calls createManualItem with linkedinAccount: null — AI Studio's
+ *      Send to Review does exactly that — therefore still publishes as Hrishikesh. Removing the
+ *      option here does NOT stop that; changing the n8n default is a separate, deliberate edit.
+ *   2. Re-adding it here alone is enough to bring the option back; no n8n change needed.
+ *
  * "company_page" has no matching branch yet — it's offered here so the composer doesn't need a
  * follow-up change, but selecting it today is a no-op until Community Management API's
  * w_organization_social approval lands and that branch gets added (pending as of 2026-08-13).
  */
 export const LINKEDIN_ACCOUNTS: { value: string; label: string }[] = [
-  { value: 'hrishikesh', label: "Hrishikesh's LinkedIn Account" },
   { value: 'adnan', label: "Adnan's LinkedIn Account" },
   { value: 'raunak', label: "Raunak's LinkedIn Account" },
   { value: 'company_page', label: 'ScalePods Page' },
