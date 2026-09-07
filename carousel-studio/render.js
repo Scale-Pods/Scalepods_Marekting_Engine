@@ -279,6 +279,130 @@ async function renderCarousel({ slug, opts, onSlideDone, onProgress }) {
   return { rendered, failed, outDir };
 }
 
+// ============================================================================
+// Video Studio — stitching multiple per-slide MP4s into ONE continuous video
+// ============================================================================
+// renderCarousel() above is completely UNMODIFIED by any of this — Carousel Studio's own output
+// is deliberately one MP4 per slide (Instagram carousels post as separate slide videos), and
+// stays exactly that. Video Studio needs the opposite: one continuous file. This is new work
+// layered on top of the same per-slide render, not a change to it.
+//
+// Target dimensions mirror this app's own AspectRatio type (src/lib/studioStyles.ts) — duplicated
+// here (not imported) since this worker is plain Node CJS with no build step, deployed as its
+// own container separate from the Vite/TS app. Keep in sync by hand if AspectRatio's ratio set
+// ever changes. Values are real social-video conventions (1080-wide/tall on the short edge),
+// not derived from the image-generation SIZE_BY_RATIO maps used elsewhere in this project —
+// video and image size conventions differ and shouldn't be conflated.
+const TARGET_DIMENSIONS = {
+  '1:1': [1080, 1080],
+  '4:5': [1080, 1350], // native slide resolution (render.js:149) -- no scaling needed for this one
+  '9:16': [1080, 1920],
+  '16:9': [1920, 1080],
+  '4:3': [1440, 1080],
+  '3:2': [1620, 1080],
+};
+
+function runFfmpeg(args) {
+  return new Promise((resolve, reject) => {
+    execFile('ffmpeg', args, (err, stdout, stderr) => {
+      if (err) return reject(new Error(stderr || err.message));
+      resolve();
+    });
+  });
+}
+
+// Step 1: join same-codec MP4s with the concat DEMUXER (`-c copy`, no re-encode) — the standard
+// way to join clips that already share codec/resolution/framerate, which every slide here does,
+// since they all come from the identical ffmpegEncode() above. Re-encoding filters (scale/crop/
+// overlay) can't run in the same ffmpeg invocation as `-c copy`, so this has to be its own step.
+async function concatSlides(slideFiles, outDir) {
+  const listPath = path.join(outDir, 'concat-list.txt');
+  // ffmpeg's concat-demuxer list format single-quotes each path and needs its OWN escaping for
+  // any literal single quote in the path — Windows/Linux temp paths here never contain one, but
+  // escaping unconditionally costs nothing and avoids a real (if unlikely) file-list corruption.
+  const listBody = slideFiles.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n');
+  fs.writeFileSync(listPath, listBody);
+  const outfile = path.join(outDir, 'concatenated.mp4');
+  await runFfmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', outfile]);
+  return outfile;
+}
+
+// Step 2: one filter_complex pass doing everything the re-encode actually needs:
+//   - scale/crop the concatenated 1080x1350 video to fill the TARGET aspect ratio's frame with a
+//     blurred, scaled-up copy of itself, rather than plain black bars or a lossy edge-crop of the
+//     real content. Content composed for 4:5 (the templates' native shape) would lose real
+//     text/layout if simply center-cropped into e.g. 9:16 — this is the standard "blurred
+//     background fill" technique (split into a blurred fill-the-frame layer + the real content
+//     scaled to fit *within* the frame, centered on top), not a shortcut.
+//   - burns in the brand logo, bottom-right corner, safe-area padded.
+//   - if a voiceover track exists, adds it as the video's ONLY audio stream — slides render
+//     silent (Chrome runs with --mute-audio, and ffmpegEncode() above never maps an audio
+//     stream at all), so this ADDS audio where none exists; there's no existing track to mix
+//     with. `-shortest` makes the output's real duration whichever of {video, voiceover} is
+//     shorter — the VO script is written to roughly match total slide duration, but this
+//     guarantees no silent tail or an abrupt narration cutoff either way.
+async function finalizeVideo({ concatenatedPath, aspectRatio, logoPath, voiceoverPath, outfile }) {
+  const [tw, th] = TARGET_DIMENSIONS[aspectRatio] || TARGET_DIMENSIONS['9:16'];
+  const logoW = Math.round(tw * 0.22);
+  const margin = Math.round(tw * 0.04);
+  const filterComplex = [
+    '[0:v]split=2[bg][fg]',
+    `[bg]scale=${tw}:${th}:force_original_aspect_ratio=increase,crop=${tw}:${th},gblur=sigma=24[bgblur]`,
+    `[fg]scale=${tw}:${th}:force_original_aspect_ratio=decrease[fgscaled]`,
+    '[bgblur][fgscaled]overlay=(W-w)/2:(H-h)/2[framed]',
+    `[1:v]scale=${logoW}:-1[logo]`,
+    `[framed][logo]overlay=W-w-${margin}:H-h-${margin}[outv]`,
+  ].join(';');
+
+  const args = ['-y', '-i', concatenatedPath, '-i', logoPath];
+  if (voiceoverPath) args.push('-i', voiceoverPath);
+  args.push('-filter_complex', filterComplex, '-map', '[outv]');
+  if (voiceoverPath) args.push('-map', '2:a', '-shortest');
+  args.push(
+    '-c:v', 'libx264',
+    // Same rationale as ffmpegEncode() above — a small container's real thread/process budget
+    // gets exhausted fast if ffmpeg defaults to one encoder thread per (over-)reported CPU.
+    '-threads', '2',
+    '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart',
+  );
+  if (voiceoverPath) args.push('-c:a', 'aac', '-b:a', '128k');
+  args.push(outfile);
+
+  await runFfmpeg(args);
+  return outfile;
+}
+
+// The reusable core for Video Studio, mirroring renderCarousel()'s shape and reusing it directly
+// (same outline format, same per-slide render — gen.js/renderSlide() need ZERO changes for this),
+// then layers the concat + finalize steps above on top. `logoPath` is required — every Video
+// Studio output is brand-stamped, no opt-out, matching how every other Studio in this app
+// auto-stamps its output. `voiceoverPath` is optional.
+//
+// Deliberately does NOT pass onSlideDone through to renderCarousel() — that callback exists so
+// server.js's carousel job runner can upload+report each slide individually as its own asset,
+// which Video Studio doesn't want (only the final stitched file is a real asset here). The
+// per-slide MP4s stay on local disk in outDir and are consumed directly by concatSlides() before
+// cleanup, never uploaded.
+async function renderVideo({ slug, aspectRatio, logoPath, voiceoverPath, onProgress }) {
+  const { rendered, failed, outDir } = await renderCarousel({
+    slug,
+    opts: { keepFrames: false, only: null },
+    onProgress,
+  });
+
+  if (failed.length > 0) {
+    return { failed, outDir, finalVideoPath: null };
+  }
+
+  if (onProgress) onProgress({ phase: 'stitching' });
+  const concatenated = await concatSlides(rendered, outDir);
+  const outfile = path.join(outDir, 'final.mp4');
+  await finalizeVideo({ concatenatedPath: concatenated, aspectRatio, logoPath, voiceoverPath, outfile });
+
+  return { failed: [], outDir, finalVideoPath: outfile };
+}
+
 async function main() {
   const { slug, opts } = parseArgs(process.argv);
   if (!slug) {
@@ -297,7 +421,7 @@ async function main() {
   }
 }
 
-module.exports = { renderCarousel };
+module.exports = { renderCarousel, renderVideo };
 
 if (require.main === module) {
   main().catch((err) => {
