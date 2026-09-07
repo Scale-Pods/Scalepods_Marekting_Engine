@@ -70,7 +70,10 @@ async function startGeneration({ prompt, engine, aspectRatio, durationS, resolut
       parameters: {
         aspectRatio: veoAspect,
         resolution,
-        durationSeconds: String(durationS),
+        // A real live call corrected the docs here (2026-09-08): Google's own written example
+        // showed this quoted ("4"|"6"|"8") but the real API rejects a string with
+        // INVALID_ARGUMENT ("needs to be a number"). Send the actual number.
+        durationSeconds: Number(durationS),
         personGeneration: 'allow_all',
       },
     }),
