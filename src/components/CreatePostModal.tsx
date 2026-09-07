@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
-import { Send, CheckCircle2, X, RotateCcw, FileText } from 'lucide-react'
+import { Send, CheckCircle2, X, RotateCcw, FileText, ChevronDown } from 'lucide-react'
 import { getComposerDraft, saveComposerDraft, clearComposerDraft } from '../lib/theme'
 import { createManualItem, LINKEDIN_ACCOUNTS, type ContentSlide, type ContentItem } from '../lib/content'
 import { triggerPublish } from '../lib/publishing'
@@ -14,12 +15,113 @@ import { renderPdfPages } from '../lib/pdfPreview'
 // A native <input type="time">'s `step` attribute constrains its up/down-arrow increment and
 // form validity, but NOT the options its own dropdown-picker lists — Chrome's time control still
 // enumerates all 60 minutes there regardless of step (confirmed live: step={1800} left the minute
-// column showing 00, 01, 02, 03... rather than just 00/30). A plain pair of <select>s is the only
-// reliable way to make the minute list literally contain nothing but the two half-hour marks the
-// ScalePods · Publishing Scheduler actually polls at (every 30 min) — no snapping/validation
-// needed afterward since an out-of-grid value can't be selected in the first place.
+// column showing 00, 01, 02, 03... rather than just 00/30). A plain <select> fixes the option
+// list, but its own native popup is a real problem too: on Windows/Chrome it's an OS-level popup
+// that isn't clipped to the browser window, so a 24-option list opened near the bottom of the
+// screen renders straight through the browser chrome and off the top of the monitor (confirmed
+// live via screenshot). TimeSelect below is a custom dropdown for exactly that reason — it clamps
+// its own list to whichever real space (above or below the trigger) is actually available.
 const SCHEDULE_HOURS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))
 const SCHEDULE_MINUTES = ['00', '30']
+
+/** Minimal custom dropdown standing in for a native <select> — see the comment above for why.
+ *  Portaled to document.body for the same reason Modal (ui.tsx) is: a positioned element inside
+ *  this modal's own panel (backdrop-filter establishes a containing block) would otherwise be
+ *  clipped to that panel's box instead of the viewport. Position + max-height are computed from
+ *  the trigger's real bounding rect on open, so the list always fits in whichever direction
+ *  (above/below) actually has room, scrolling internally rather than ever escaping the window. */
+function TimeSelect({
+  value, options, placeholder, onChange,
+}: {
+  value: string
+  options: string[]
+  placeholder: string
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number } | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  function openDropdown() {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const GAP = 4
+    const DESIRED = 240
+    const spaceBelow = window.innerHeight - rect.bottom - GAP
+    const spaceAbove = rect.top - GAP
+    const openBelow = spaceBelow >= 120 || spaceBelow >= spaceAbove
+    setPos(
+      openBelow
+        ? { left: rect.left, width: rect.width, top: rect.bottom + GAP, maxHeight: Math.max(80, Math.min(DESIRED, spaceBelow)) }
+        : { left: rect.left, width: rect.width, bottom: window.innerHeight - rect.top + GAP, maxHeight: Math.max(80, Math.min(DESIRED, spaceAbove)) },
+    )
+    setOpen(true)
+  }
+
+  // Bring the currently-selected option into view without requiring a manual scroll first —
+  // opening the hour list on "17" should show 17, not strand the view at "00".
+  useEffect(() => {
+    if (!open) return
+    listRef.current?.querySelector('[data-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open])
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => (open ? setOpen(false) : openDropdown())}
+        className="input !w-auto !py-1.5 text-xs flex items-center gap-1.5"
+      >
+        {value || placeholder}
+        <ChevronDown size={12} className="text-muted" />
+      </button>
+      {open && pos && createPortal(
+        <>
+          <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} />
+          <div
+            ref={listRef}
+            className="fixed z-50 rounded-lg overflow-y-auto py-1"
+            style={{
+              left: pos.left, minWidth: pos.width, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight,
+              background: 'var(--fill-secondary)', border: '1px solid var(--border-subtle)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            }}
+          >
+            {options.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                data-selected={opt === value}
+                onClick={() => { onChange(opt); setOpen(false) }}
+                className="block w-full text-left px-3 py-1.5 text-xs"
+                style={{
+                  background: opt === value ? 'var(--accent-green)' : 'transparent',
+                  color: opt === value ? 'var(--bg-primary)' : 'var(--text-primary)',
+                }}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </>,
+        document.body,
+      )}
+    </>
+  )
+}
 
 export default function CreatePostModal({
   profileId,
@@ -915,23 +1017,19 @@ export default function CreatePostModal({
                     onChange={(e) => setScheduledDate(e.target.value)}
                   />
                   <div className="flex items-center gap-1">
-                    <select
-                      className="input !w-auto !py-1.5 text-xs"
+                    <TimeSelect
+                      placeholder="HH"
+                      options={SCHEDULE_HOURS}
                       value={scheduledTime.split(':')[0] ?? ''}
-                      onChange={(e) => setScheduledTime(`${e.target.value}:${scheduledTime.split(':')[1] ?? '00'}`)}
-                    >
-                      <option value="" disabled>HH</option>
-                      {SCHEDULE_HOURS.map((h) => <option key={h} value={h}>{h}</option>)}
-                    </select>
+                      onChange={(h) => setScheduledTime(`${h}:${scheduledTime.split(':')[1] ?? '00'}`)}
+                    />
                     <span className="text-muted text-xs">:</span>
-                    <select
-                      className="input !w-auto !py-1.5 text-xs"
+                    <TimeSelect
+                      placeholder="MM"
+                      options={SCHEDULE_MINUTES}
                       value={scheduledTime.split(':')[1] ?? ''}
-                      onChange={(e) => setScheduledTime(`${scheduledTime.split(':')[0] ?? '00'}:${e.target.value}`)}
-                    >
-                      <option value="" disabled>MM</option>
-                      {SCHEDULE_MINUTES.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
+                      onChange={(m) => setScheduledTime(`${scheduledTime.split(':')[0] ?? '00'}:${m}`)}
+                    />
                   </div>
                 </>
               )}
