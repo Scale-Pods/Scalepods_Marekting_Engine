@@ -29,7 +29,11 @@ export type CarouselJobStatus = 'drafting' | 'draft_ready' | 'rendering' | 'done
 export interface RenderProgress {
   // 'stitching' is Video Studio-only (render.js's renderVideo(), after all slides are captured,
   // before the final concat+crop+logo ffmpeg pass) — Carousel Studio's own worker never emits it.
-  phase: 'starting' | 'loading' | 'capturing' | 'retrying' | 'encoding' | 'uploading' | 'stitching' | 'slide_failed' | 'done' | 'failed'
+  // 'shot_generating'/'shot_polling' are Video Studio Phase 2-only (generateAndAssembleVideo(),
+  // per Veo shot) — reuse slideIndex/slideTotal generically for "shot N of M", same convention
+  // 'stitching' already established for reusing this one shared progress shape across both
+  // Video Studio phases instead of a second parallel type.
+  phase: 'starting' | 'loading' | 'capturing' | 'retrying' | 'encoding' | 'uploading' | 'stitching' | 'shot_generating' | 'shot_polling' | 'slide_failed' | 'done' | 'failed'
   slideIndex?: number
   slideTotal?: number
   slideName?: string
@@ -65,6 +69,8 @@ export function describeProgress(p: RenderProgress | null | undefined): string {
     case 'encoding': return `${slide ?? 'Slide'} — encoding video…`
     case 'uploading': return `${slide ?? 'Slide'} — uploading…`
     case 'stitching': return 'Stitching slides, branding, and encoding the final video…'
+    case 'shot_generating': return `${slide ?? 'Shot'} — sending to Veo…`
+    case 'shot_polling': return `${slide ?? 'Shot'} — Veo is rendering (this can take a few minutes)…`
     case 'slide_failed': return `${slide ?? 'Slide'} failed — ${p.message ?? 'unknown error'}`
     case 'done': return 'Finished'
     case 'failed': return p.message ?? 'Render failed'

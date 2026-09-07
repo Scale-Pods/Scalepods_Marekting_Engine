@@ -6,6 +6,14 @@ import { pushNotification } from './notifications'
 // Video engines (HeyGen, fal.ai) are NEVER wired to a trigger here — manual n8n only.
 export const GENERATION_ENABLED = true
 export const PUBLISHING_ENABLED = true
+// Video Studio Phase 2 (docs/video-studio-prd.md §0/§8) — separate from GENERATION_ENABLED
+// on purpose: this one gates a real per-click Veo spend ($0.48-$3.20+/shot), not a few cents
+// of GPT text. Ships false: no GEMINI_API_KEY exists on the Railway worker yet (see
+// docs/video-studio-trd-phase2.md §2), so there is nothing for this to safely enable. Flip to
+// true once that credential is wired in and a real end-to-end render has been verified —
+// same "keep it false until a stage is actually being demoed/used" discipline as every other
+// credit-safety flag in this file.
+export const VIDEO_GENERATION_ENABLED = false
 
 export type ContentType =
   | 'static_image' | 'carousel' | 'ugc_video' | 'motion_graphics' | 'product_video'
@@ -389,7 +397,7 @@ export async function reviseWithAi(itemId: string, notes: string): Promise<void>
 export async function createManualItem(input: {
   profileId: string
   platform: string
-  contentType: 'static_image' | 'social_caption' | 'carousel' | 'story' | 'ugc_video' | 'linkedin_pdf' | 'motion_graphics'
+  contentType: 'static_image' | 'social_caption' | 'carousel' | 'story' | 'ugc_video' | 'linkedin_pdf' | 'motion_graphics' | 'product_video'
   title: string | null
   body: string
   mediaUrl: string | null

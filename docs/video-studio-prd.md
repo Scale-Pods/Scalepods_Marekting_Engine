@@ -1,7 +1,7 @@
 # PRD — Video Studio (`/video-studio`)
 
 **Status:** Approved, decisions locked 2026-09-08 · **Owner:** ScalePods (marketing@scalepods.co)
-**Date:** 2026-09-04 · **Author:** Claude Code · **Next step:** [video-studio-trd.md](video-studio-trd.md) written, then build
+**Date:** 2026-09-04 · **Author:** Claude Code · **Next step:** [video-studio-trd.md](video-studio-trd.md) (Phase 1, built) · [video-studio-trd-phase2.md](video-studio-trd-phase2.md) (Phase 2, build started 2026-09-08)
 **Relates to:** [AI Studio](../src/pages/AIStudio.tsx) · [carousel-studio-integration.md](carousel-studio-integration.md) · [PRD.md](PRD.md) §M6
 
 ## Decisions (2026-09-08, see §12 for the original options)
@@ -18,6 +18,27 @@
    nothing to gate — pick the real number (§8 proposed $5) when Phase 2 actually starts.
 5. **fal.ai account creation: also deferred** — moot until Phase 2+; Phase 2 itself can run on the
    Google credential already in hand (§3.3) without a new vendor at all.
+
+## Phase 2 decisions (2026-09-08 — locked when Phase 2 build started)
+
+1. **Per-video spend ceiling: $5** (the §8 proposed default). Hard cap — the Generate button is
+   disabled above it, not just warned.
+2. **Daily/monthly spend ledger: not built yet.** Per-video ceiling only for this first Phase 2
+   build; the cumulative-burn gap §8 flags is real and explicitly deferred, not overlooked —
+   revisit if actual usage volume makes it matter.
+3. **Engine tiers: Veo 3.1 Fast, Lite, AND Standard all enabled** — diverges from §8's own
+   recommended default (Standard shipped disabled, 5x Fast's price for a marginal quality gain).
+   User's explicit choice; Standard's ~$12.85/video is still under the $5 *per-shot* framing
+   below, since the real UI doesn't let a single video get anywhere near full-Standard pricing
+   without deliberately stacking many expensive shots — see the TRD's cost-estimate section for
+   the actual math this decision implies.
+4. **§3.3's claim that a "Google AI Studio" Veo credential already exists
+   (`xVDIEwPOhjN8qAGQ`) was checked against the live n8n credential list and is stale/wrong — no
+   such credential exists.** Building proceeds with the Veo-calling HTTP node's credential left
+   unassigned; the user will create a Gemini API key at aistudio.google.com (billing-enabled,
+   Veo needs a paid project) and add it to n8n, then it gets wired in as a follow-up. This is a
+   real, open blocker on Phase 2 actually running end-to-end — everything else (schema, spend
+   gate, storyboard FE, worker assembly, workflow scaffolding) does not depend on it.
 
 ---
 

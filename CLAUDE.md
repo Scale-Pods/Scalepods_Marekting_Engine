@@ -16,12 +16,18 @@ re-scoped, re-branded replication of the shipped **Victory Growth OS**. Read
   The Content/Image auto-engines' content-type filter must still match only
   `static_image | carousel | social_caption`, so a video type can never enter an automated
   pipeline. Narrowed 2026-09-08 (was strictly manual-only) to allow a real FE path: **Video
-  Studio** (see `docs/video-studio-prd.md`) may fire video generation from an explicit human
-  click, behind a hard per-video spend ceiling and a real-cost confirmation before the first
-  spend — same discipline AI Studio already applies to images. HeyGen (founder avatar) and
-  fal.ai/Google Veo remain the manual-only routes for anything outside that one surface.
+  Studio** (see `docs/video-studio-prd.md`, `docs/video-studio-trd.md` Phase 1,
+  `docs/video-studio-trd-phase2.md` Phase 2) may fire video generation from an explicit human
+  click, behind a hard per-video spend ceiling ($5, `PER_VIDEO_CEILING_USD` in
+  `src/lib/videoStudio.ts`) and a real-cost confirmation dialog before the first spend — same
+  discipline AI Studio already applies to images. Phase 1 (motion graphics, no AI model) is
+  live. Phase 2 (real Veo 3.1 clips) is built but gated behind `VIDEO_GENERATION_ENABLED`
+  (currently `false` — no `GEMINI_API_KEY` exists on the Railway worker yet). HeyGen (founder
+  avatar) and fal.ai remain the manual-only routes for anything outside this one surface.
 - **Credit safety flags** `GENERATION_ENABLED` and `PUBLISHING_ENABLED` live in
-  `src/lib/content.ts`. Keep them false until a stage is being demoed/used.
+  `src/lib/content.ts`. `VIDEO_GENERATION_ENABLED` (same file) is the separate, stricter gate
+  for Phase 2's real per-shot Veo spend. Keep all three false until a stage is being
+  demoed/used.
 - **Brand:** use ONLY the official tokens in `brand-kit/` (TRD §9): dark bg `#04070D`,
   cards `#080A0E`, panels `#10131C`, Sage Green accent `#B1D997` (primary), Electric Blue
   `#63A5E7` (secondary), Terracotta `#CC6B49` (Claude-partner badges only), cream light-mode

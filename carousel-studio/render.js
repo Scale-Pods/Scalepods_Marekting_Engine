@@ -37,6 +37,7 @@ const path = require('path');
 const { execFile } = require('child_process');
 const puppeteer = require('puppeteer-core');
 const { startServer } = require('./serve');
+const { generateShot } = require('./veo'); // Video Studio Phase 2 only — used by generateAndAssembleVideo() below
 
 const ROOT = __dirname;
 // NOT a fixed port — see renderCarousel() below. A hardcoded port here caused a real bug: two
@@ -403,6 +404,141 @@ async function renderVideo({ slug, aspectRatio, logoPath, voiceoverPath, onProgr
   return { failed: [], outDir, finalVideoPath: outfile };
 }
 
+// ============================================================================
+// Video Studio Phase 2 — assembling AI-generated shots (Veo) into one video
+// ============================================================================
+// Everything below is new on top of the Phase 1 section above; nothing above this line is
+// touched. renderVideo()/stitchVideo() (Phase 1, motion-graphics slides rendered locally by
+// Chrome) and generateAndAssembleVideo() (Phase 2, clips generated remotely by Veo) are two
+// independent entry points that both end by calling the SAME finalizeVideo() — the blurred-fill
+// crop + logo overlay + optional voiceover mux is identical either way, only how the raw clips
+// were produced differs. See docs/video-studio-trd-phase2.md §5.
+
+// Veo shots may differ slightly in exact output resolution/fps between calls (a real, observed
+// characteristic of generative video, unlike Chrome's byte-identical deterministic frames), so
+// unlike concatSlides() above (which can safely `-c copy` same-codec files), each raw clip is
+// individually re-encoded to the target dimensions FIRST. Audio is stripped here too — Phase 2
+// deliberately uses one whole-video voiceover track rather than each shot's own native Veo audio
+// (TRD §4), so there is nothing to preserve per-clip.
+//
+// Frame rate is forced to TARGET_FPS as well as resolution — caught by a real structural test
+// (docs/video-studio-trd-phase2.md §8 step 2) using two synthetic clips at 24fps/30fps: without
+// this, the concat demuxer's `-c copy` step below blindly copies packets from streams at two
+// different frame rates into one container, corrupting the real playback timing (the combined
+// file's reported duration came out wrong and the second shot played at the wrong speed). Every
+// clip must share an identical fps before `-c copy` concat is valid, not just identical
+// resolution/codec.
+const TARGET_FPS = 30; // matches this app's own slide renders (gen.js/render.js's Phase 1 path)
+
+async function normalizeClip(clipPath, aspectRatio, outfile) {
+  const [tw, th] = TARGET_DIMENSIONS[aspectRatio] || TARGET_DIMENSIONS['9:16'];
+  await runFfmpeg([
+    '-y', '-i', clipPath,
+    '-vf', `scale=${tw}:${th}:force_original_aspect_ratio=increase,crop=${tw}:${th},fps=${TARGET_FPS}`,
+    '-an',
+    '-c:v', 'libx264', '-threads', '2', '-pix_fmt', 'yuv420p',
+    outfile,
+  ]);
+  return outfile;
+}
+
+async function normalizeAndConcatClips(clipPaths, aspectRatio, outDir) {
+  const normalizedDir = path.join(outDir, 'normalized');
+  fs.mkdirSync(normalizedDir, { recursive: true });
+  const normalized = [];
+  for (let i = 0; i < clipPaths.length; i++) {
+    const outfile = path.join(normalizedDir, `shot-${String(i).padStart(2, '0')}.mp4`);
+    await normalizeClip(clipPaths[i], aspectRatio, outfile);
+    normalized.push(outfile);
+  }
+  // Same concat-demuxer approach as concatSlides() — every normalized clip now shares codec/
+  // resolution/fps/no-audio, so `-c copy` applies cleanly.
+  const concatenated = await concatSlides(normalized, outDir);
+
+  // One more Phase-2-only pass: re-encode with a forced constant frame rate to regenerate a
+  // clean, gapless timeline. Caught by the same structural test that found the fps mismatch
+  // above (docs/video-studio-trd-phase2.md §8 step 2): even with every input clip normalized to
+  // an identical fps/resolution/codec, `-c copy` concat of files that were each encoded
+  // separately (unlike Phase 1's concatSlides(), whose inputs all come from the same
+  // ffmpegEncode() call with frame-accurate, deterministic timestamps) can leave the SECOND
+  // segment onward with a subtly irregular presentation timeline — invisible to ffprobe's
+  // reported duration/frame count, but real enough that finalizeVideo()'s logo-overlay filter
+  // (Phase 1, unmodified — deliberately not touched here) stopped drawing the logo entirely
+  // partway through a real assembled test video. `-vsync cfr` forces every output frame onto a
+  // strict, evenly-spaced 30fps grid, which fixed it (re-verified below). Cheaper than tracking
+  // down concat's exact PTS behavior further, and this is a normal, supported ffmpeg pattern for
+  // "clean up a concat-demuxer output before feeding it into more filtering."
+  const cleaned = path.join(outDir, 'concatenated-clean.mp4');
+  await runFfmpeg([
+    '-y', '-i', concatenated,
+    '-r', String(TARGET_FPS), '-vsync', 'cfr',
+    '-c:v', 'libx264', '-threads', '2', '-pix_fmt', 'yuv420p',
+    cleaned,
+  ]);
+  return cleaned;
+}
+
+// The Phase 2 counterpart to renderVideo(): generates every shot via Veo (veo.js), then reuses
+// finalizeVideo() completely unchanged for the crop/logo/VO pass — Veo's native 16:9 or 9:16
+// output feeds directly into the same blurred-background-fill technique Phase 1 built for 4:5
+// slides (TRD §1).
+//
+// A shot that already has `status: 'done'` and a real `clipUrl` (set by an earlier
+// /regenerate-shot call) is REUSED, not regenerated — ffmpeg reads http/https URLs natively (the
+// same fact Phase 1's voiceover mux already relies on), so normalizeAndConcatClips() below can
+// take a mix of local paths (freshly generated) and remote URLs (reused) with no special-casing.
+// This is what makes per-shot regenerate actually cheaper than a full re-render, matching AI
+// Studio's per-slide regenerate economics — without it, every Approve & Render would re-pay for
+// every shot regardless of which ones had already been fixed.
+//
+// `onShotDone(shot, i)` fires after each shot (generated OR reused) so server.js can PATCH
+// shots_json incrementally, mirroring renderCarousel()'s onSlideDone. For a freshly generated
+// shot it receives `localPath` (server.js uploads it and writes the real clipUrl back); for a
+// reused shot there is nothing new to upload, so `localPath` is absent.
+async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, logoPath, voiceoverPath, onProgress, onShotDone }) {
+  const outDir = path.join(ROOT, 'output', jobId);
+  fs.mkdirSync(outDir, { recursive: true });
+
+  const clipSources = [];
+  for (let i = 0; i < shots.length; i++) {
+    const shot = shots[i];
+    if (onProgress) onProgress({ phase: 'shot_generating', slideIndex: i + 1, slideTotal: shots.length });
+
+    if (shot.status === 'done' && shot.clipUrl) {
+      clipSources.push(shot.clipUrl);
+      if (onShotDone) await onShotDone({ ...shot }, i);
+      continue;
+    }
+
+    const outfile = path.join(outDir, `shot-${String(i).padStart(2, '0')}-raw.mp4`);
+    try {
+      const { localPath, costUsd } = await generateShot({
+        prompt: shot.prompt,
+        engine,
+        aspectRatio,
+        durationS: shot.durationS,
+        outfile,
+        // Real Veo generation can take several minutes -- reports 'shot_polling' on every poll
+        // tick (veo.js's pollUntilDone(), ~every 10s) so the FE shows genuine ongoing activity
+        // instead of "generating..." frozen for minutes at a time.
+        onPoll: () => { if (onProgress) onProgress({ phase: 'shot_polling', slideIndex: i + 1, slideTotal: shots.length }); },
+      });
+      clipSources.push(localPath);
+      if (onShotDone) await onShotDone({ ...shot, status: 'done', costUsd, localPath }, i);
+    } catch (err) {
+      if (onShotDone) await onShotDone({ ...shot, status: 'failed', errorDetail: err.message.slice(0, 300) }, i);
+      return { failed: [`shot ${i + 1}: ${err.message}`], outDir, finalVideoPath: null };
+    }
+  }
+
+  if (onProgress) onProgress({ phase: 'stitching' });
+  const concatenated = await normalizeAndConcatClips(clipSources, aspectRatio, outDir);
+  const outfile = path.join(outDir, 'final.mp4');
+  await finalizeVideo({ concatenatedPath: concatenated, aspectRatio, logoPath, voiceoverPath, outfile });
+
+  return { failed: [], outDir, finalVideoPath: outfile };
+}
+
 async function main() {
   const { slug, opts } = parseArgs(process.argv);
   if (!slug) {
@@ -421,7 +557,7 @@ async function main() {
   }
 }
 
-module.exports = { renderCarousel, renderVideo };
+module.exports = { renderCarousel, renderVideo, generateAndAssembleVideo };
 
 if (require.main === module) {
   main().catch((err) => {

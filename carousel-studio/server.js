@@ -24,20 +24,31 @@
 //                             HTTP response, since the work outlives the
 //                             request/response cycle by a wide margin.
 //   POST /render-video       body: { job_id, outline, aspect_ratio, voiceover_url? }
-//                             Video Studio's route (docs/video-studio-trd.md §3c) — same
+//                             Video Studio Phase 1's route (docs/video-studio-trd.md §3c) — same
 //                             X-Worker-Secret auth and 202-then-background pattern as /render,
 //                             reusing gen.js/render.js's per-slide render UNCHANGED, but then
 //                             concatenates + brand-stamps + aspect-crops into ONE final MP4
 //                             (render.js's renderVideo()) instead of uploading per-slide clips.
 //                             Reports to the `video_jobs` row, a separate table from `/render`'s
 //                             `carousel_jobs` — the two routes never touch each other's rows.
+//   POST /generate-video     body: { job_id, engine, shots, aspect_ratio, voiceover_url? }
+//                             Video Studio Phase 2's route (docs/video-studio-trd-phase2.md §5) —
+//                             same auth/202 pattern. Generates every shot via Veo (veo.js),
+//                             uploading each raw clip as it lands (so a later /regenerate-shot
+//                             call can be reused instead of re-paid-for), then assembles them
+//                             through the SAME finalizeVideo() Phase 1 already built. Also
+//                             reports to `video_jobs`.
+//   POST /regenerate-shot    body: { job_id, shot_index, engine, shot, aspect_ratio }
+//                             Re-generates exactly ONE shot and uploads it — does not re-run
+//                             assembly. Mirrors AI Studio's per-slide regenerate.
 // ============================================================================
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { generateCarousel } = require('./gen');
-const { renderCarousel, renderVideo } = require('./render');
+const { renderCarousel, renderVideo, generateAndAssembleVideo } = require('./render');
+const { generateShot } = require('./veo'); // Video Studio Phase 2 only
 
 const ROOT = __dirname;
 const PORT = process.env.PORT || 8080;
@@ -130,6 +141,39 @@ async function patchVideoJob(jobId, patch) {
     body: JSON.stringify(patch),
   });
   if (!res.ok) throw new Error(`Job PATCH failed (${res.status}): ${await res.text()}`);
+}
+
+// Video Studio Phase 2 only — uploads ONE raw Veo shot clip so it can be reused (not
+// regenerated, not re-paid-for) the next time this job's assembly step runs — see
+// generateAndAssembleVideo()'s shot-reuse comment in render.js for why this matters.
+async function uploadShotClip(jobId, shotIndex, localPath) {
+  const objectPath = `video-studio/${jobId}/shots/shot-${String(shotIndex).padStart(2, '0')}.mp4`;
+  const data = fs.readFileSync(localPath);
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${VIDEO_STORAGE_BUCKET}/${objectPath}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      'Content-Type': 'video/mp4',
+      'x-upsert': 'true',
+    },
+    body: data,
+  });
+  if (!res.ok) throw new Error(`Storage upload failed (${res.status}): ${await res.text()}`);
+  return `${SUPABASE_URL}/storage/v1/object/public/${VIDEO_STORAGE_BUCKET}/${objectPath}`;
+}
+
+// Video Studio Phase 2 only — /regenerate-shot needs to read the job's current shots_json
+// before patching just one entry (a Postgres jsonb PATCH replaces the whole column, it doesn't
+// merge array elements, so the caller has to read-modify-write the full array).
+async function fetchVideoJob(jobId) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/video_jobs?id=eq.${jobId}&select=*`, {
+    headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
+  });
+  if (!res.ok) throw new Error(`Job fetch failed (${res.status}): ${await res.text()}`);
+  const rows = await res.json();
+  if (!rows[0]) throw new Error(`video_jobs row ${jobId} not found`);
+  return rows[0];
 }
 
 function cleanupJobFiles(jobId) {
@@ -282,6 +326,126 @@ async function runVideoJob(jobId, outline, aspectRatio, voiceoverUrl) {
   }
 }
 
+// ============================================================================
+// Video Studio Phase 2 — generated-clips job runner
+// ============================================================================
+// Same shape as runVideoJob() above (progress throttling, try/catch/finally with cleanup), but
+// the raw material is Veo-generated shots instead of locally-rendered slides, and shots_json is
+// PATCHed incrementally as each shot finishes generating (not just the final render_progress),
+// so the FE's storyboard can show each shot going pending -> generating -> done/failed in near
+// real time, same discipline as Phase 1's per-slide slide_urls updates.
+async function runGenerateVideoJob(jobId, shots, engine, aspectRatio, voiceoverUrl) {
+  const PROGRESS_THROTTLE_MS = 1200;
+  let lastProgressAt = 0;
+  let lastPhase = null;
+  let progressInFlight = false;
+  const reportProgress = (progress) => {
+    const now = Date.now();
+    const phaseChanged = progress.phase !== lastPhase;
+    if (!phaseChanged && now - lastProgressAt < PROGRESS_THROTTLE_MS) return;
+    if (progressInFlight && !phaseChanged) return;
+    lastProgressAt = now;
+    lastPhase = progress.phase;
+    progressInFlight = true;
+    patchVideoJob(jobId, { render_progress: progress })
+      .catch(() => {})
+      .finally(() => { progressInFlight = false; });
+  };
+
+  // Mutated in place as each shot resolves, then re-PATCHed whole (see fetchVideoJob's comment
+  // on jsonb PATCH semantics) — this is the in-memory copy the worker itself tracks; it does not
+  // re-read from Postgres between shots, since this worker is the only writer for this job while
+  // it's running.
+  let currentShots = shots;
+
+  try {
+    await patchVideoJob(jobId, {
+      status: 'rendering',
+      shots_json: currentShots,
+      render_progress: { phase: 'starting', slideIndex: 0, slideTotal: currentShots.length },
+    });
+
+    const { failed, finalVideoPath } = await generateAndAssembleVideo({
+      jobId,
+      shots: currentShots,
+      engine,
+      aspectRatio: aspectRatio || '9:16',
+      logoPath: LOGO_PATH,
+      voiceoverPath: voiceoverUrl || null,
+      onProgress: reportProgress,
+      onShotDone: async (updatedShot, i) => {
+        // `localPath` only appears on a freshly generated shot (a reused shot already has a
+        // real clipUrl and nothing new to upload) — see generateAndAssembleVideo()'s comment in
+        // render.js. Upload it here, then write the real public URL, never the local temp path.
+        const { localPath, ...shotFields } = updatedShot;
+        const clipUrl = localPath ? await uploadShotClip(jobId, i, localPath) : shotFields.clipUrl;
+        currentShots = currentShots.map((s, idx) => (idx === i ? { ...s, ...shotFields, clipUrl } : s));
+        await patchVideoJob(jobId, { shots_json: currentShots });
+      },
+    });
+
+    if (failed.length > 0) {
+      await patchVideoJob(jobId, {
+        status: 'failed',
+        error_detail: failed.join('; '),
+        shots_json: currentShots,
+        render_progress: { phase: 'failed', slideTotal: currentShots.length, message: 'One or more shots failed to generate' },
+      });
+    } else {
+      const finalVideoUrl = await uploadFinalVideo(jobId, finalVideoPath);
+      await patchVideoJob(jobId, {
+        status: 'done',
+        final_video_url: finalVideoUrl,
+        shots_json: currentShots,
+        render_progress: { phase: 'done', slideIndex: currentShots.length, slideTotal: currentShots.length },
+      });
+    }
+  } catch (err) {
+    await patchVideoJob(jobId, {
+      status: 'failed',
+      error_detail: err.message,
+      render_progress: { phase: 'failed', message: err.message.slice(0, 300) },
+    }).catch((e) =>
+      console.error(`Generate-video job ${jobId}: also failed to write failure status:`, e.message),
+    );
+  } finally {
+    cleanupJobFiles(jobId);
+  }
+}
+
+// Re-generates exactly ONE shot (AI Studio's regenerateStudioSlide's shape, for shots) — does
+// NOT re-run assembly; the user re-runs Approve & Render after fixing whichever shots they want
+// fixed, same "review before the expensive step" discipline as everything else in this app. The
+// regenerated clip is uploaded and its real URL written to shots_json, not discarded — that's
+// what lets the next Approve & Render REUSE it instead of paying Veo for every shot again (see
+// generateAndAssembleVideo()'s shot-reuse comment in render.js).
+async function runRegenerateShot(jobId, shotIndex, engine, shot, aspectRatio) {
+  try {
+    const job = await fetchVideoJob(jobId);
+    const shots = Array.isArray(job.shots_json) ? job.shots_json : [];
+    const patched = (i, patch) => shots.map((s, idx) => (idx === i ? { ...s, ...patch } : s));
+
+    await patchVideoJob(jobId, { shots_json: patched(shotIndex, { status: 'generating' }) });
+
+    const outfile = path.join(ROOT, 'output', jobId, `shot-${String(shotIndex).padStart(2, '0')}-raw.mp4`);
+    const { costUsd } = await generateShot({
+      prompt: shot.prompt,
+      engine,
+      aspectRatio: aspectRatio || '9:16',
+      durationS: shot.durationS,
+      outfile,
+    });
+    const clipUrl = await uploadShotClip(jobId, shotIndex, outfile);
+    fs.unlinkSync(outfile);
+    await patchVideoJob(jobId, { shots_json: patched(shotIndex, { status: 'done', costUsd, clipUrl, errorDetail: null }) });
+  } catch (err) {
+    const job = await fetchVideoJob(jobId).catch(() => null);
+    const shots = job && Array.isArray(job.shots_json) ? job.shots_json : [];
+    const patched = shots.map((s, idx) => (idx === shotIndex ? { ...s, status: 'failed', errorDetail: err.message.slice(0, 300) } : s));
+    await patchVideoJob(jobId, { shots_json: patched }).catch(() => {});
+  }
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -351,6 +515,64 @@ const server = http.createServer(async (req, res) => {
 
     runVideoJob(job_id, outline, aspect_ratio, voiceover_url).catch((err) =>
       console.error(`Video job ${job_id} crashed unexpectedly:`, err),
+    );
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/generate-video') {
+    if (WORKER_SECRET && req.headers['x-worker-secret'] !== WORKER_SECRET) {
+      res.writeHead(401, { 'Content-Type': 'text/plain' });
+      return res.end('unauthorized');
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(await readBody(req));
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      return res.end('invalid JSON body');
+    }
+
+    const { job_id, engine, shots, aspect_ratio, voiceover_url } = parsed;
+    if (!job_id || !engine || !Array.isArray(shots) || shots.length === 0) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      return res.end('job_id (string), engine (string) and shots (non-empty array) are required');
+    }
+
+    res.writeHead(202, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'accepted', job_id }));
+
+    runGenerateVideoJob(job_id, shots, engine, aspect_ratio, voiceover_url).catch((err) =>
+      console.error(`Generate-video job ${job_id} crashed unexpectedly:`, err),
+    );
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/regenerate-shot') {
+    if (WORKER_SECRET && req.headers['x-worker-secret'] !== WORKER_SECRET) {
+      res.writeHead(401, { 'Content-Type': 'text/plain' });
+      return res.end('unauthorized');
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(await readBody(req));
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      return res.end('invalid JSON body');
+    }
+
+    const { job_id, shot_index, engine, shot, aspect_ratio } = parsed;
+    if (!job_id || typeof shot_index !== 'number' || !engine || !shot || !shot.prompt) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      return res.end('job_id (string), shot_index (number), engine (string) and shot (object with prompt) are required');
+    }
+
+    res.writeHead(202, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'accepted', job_id, shot_index }));
+
+    runRegenerateShot(job_id, shot_index, engine, shot, aspect_ratio).catch((err) =>
+      console.error(`Regenerate-shot job ${job_id}/${shot_index} crashed unexpectedly:`, err),
     );
     return;
   }
