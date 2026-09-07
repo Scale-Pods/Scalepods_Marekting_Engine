@@ -1,7 +1,7 @@
 # PRD — Video Studio (`/video-studio`)
 
 **Status:** Approved, decisions locked 2026-09-08 · **Owner:** ScalePods (marketing@scalepods.co)
-**Date:** 2026-09-04 · **Author:** Claude Code · **Next step:** TRD, then build
+**Date:** 2026-09-04 · **Author:** Claude Code · **Next step:** [video-studio-trd.md](video-studio-trd.md) written, then build
 **Relates to:** [AI Studio](../src/pages/AIStudio.tsx) · [carousel-studio-integration.md](carousel-studio-integration.md) · [PRD.md](PRD.md) §M6
 
 ## Decisions (2026-09-08, see §12 for the original options)
