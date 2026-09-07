@@ -11,6 +11,23 @@ import { PostPreviewModal } from './postPreview'
 import AssetUploader from './AssetUploader'
 import { renderPdfPages } from '../lib/pdfPreview'
 
+/** Snaps an "HH:MM" value to the nearest :00/:30 — the granularity the n8n Publishing Scheduler
+ *  actually polls at (every 30 min, see ScalePods · Publishing Scheduler). `step={1800}` on the
+ *  <input type="time"> below keeps the native picker UI itself offering only half-hour marks,
+ *  but a keyboard-typed value (e.g. pasted, or a browser that doesn't enforce `step` on manual
+ *  entry) could still land off-grid — rounding here keeps what's displayed and what actually
+ *  fires in sync, rather than implying a precision the scheduler doesn't have. */
+function snapToHalfHour(hhmm: string): string {
+  const match = /^(\d{2}):(\d{2})$/.exec(hhmm)
+  if (!match) return hhmm
+  const h = Number(match[1])
+  const m = Number(match[2])
+  const totalMinutes = Math.round((h * 60 + m) / 30) * 30
+  const snappedH = Math.floor(totalMinutes / 60) % 24
+  const snappedM = totalMinutes % 60
+  return `${String(snappedH).padStart(2, '0')}:${String(snappedM).padStart(2, '0')}`
+}
+
 export default function CreatePostModal({
   profileId,
   onClose,
@@ -906,9 +923,10 @@ export default function CreatePostModal({
                   />
                   <input
                     type="time"
+                    step={1800}
                     className="input !w-auto !py-1.5 text-xs"
                     value={scheduledTime}
-                    onChange={(e) => setScheduledTime(e.target.value)}
+                    onChange={(e) => setScheduledTime(snapToHalfHour(e.target.value))}
                   />
                 </>
               )}
@@ -916,6 +934,11 @@ export default function CreatePostModal({
             {scheduling && !targetValid && (
               <p className="text-[var(--accent-orange)] text-xs mt-1.5">
                 Pick both a date and a time to schedule this post.
+              </p>
+            )}
+            {when === 'date' && (
+              <p className="text-muted text-xs mt-1.5">
+                Only half-hour marks (e.g. 2:00, 2:30) are pickable — the scheduler that fires this checks for due posts every 30 minutes.
               </p>
             )}
             {targetInPast && (
