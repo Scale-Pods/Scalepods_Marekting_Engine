@@ -389,7 +389,7 @@ export async function reviseWithAi(itemId: string, notes: string): Promise<void>
 export async function createManualItem(input: {
   profileId: string
   platform: string
-  contentType: 'static_image' | 'social_caption' | 'carousel' | 'story' | 'ugc_video' | 'linkedin_pdf'
+  contentType: 'static_image' | 'social_caption' | 'carousel' | 'story' | 'ugc_video' | 'linkedin_pdf' | 'motion_graphics'
   title: string | null
   body: string
   mediaUrl: string | null

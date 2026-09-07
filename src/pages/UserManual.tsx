@@ -1,7 +1,7 @@
 import { useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  BookOpen, Building2, TrendingUp, Target, Wand2, Clapperboard, CheckSquare,
+  BookOpen, Building2, TrendingUp, Target, Wand2, Clapperboard, Film, CheckSquare,
   CalendarDays, Send, Newspaper, BarChart3, BrainCircuit, Settings as SettingsIcon,
   ArrowRight, ShieldCheck, Lightbulb,
 } from 'lucide-react'
@@ -109,6 +109,21 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'When it is done, send it on to review and publishing like any other post.',
         ],
         tip: 'The render keeps running if you navigate away — come back to this page and the job will still be there.',
+      },
+      {
+        id: 'video-studio',
+        label: 'Video Studio',
+        to: '/video-studio',
+        icon: <Film size={17} />,
+        what: 'Topic in, one continuous branded motion-graphics video out — a cover, a few point/stat slides, and a closing card stitched into a single MP4.',
+        steps: [
+          'Pick what the video is about (a live trend, the strategy, or your own topic), the platform, shape and slide count, and optionally turn on a voiceover script.',
+          'Click "Draft brief" — AI writes the on-screen outline AND the post caption together. Nothing has rendered yet.',
+          'Edit any slide, the caption, or the voiceover script, then click "Approve & Render".',
+          'The worker stitches every slide into one video, crops it to the chosen shape, and burns in the logo — this takes a few minutes and keeps running if you navigate away.',
+          'When it is done, preview the finished video and click "Send to Review" to hand it to Creative Review like any other post.',
+        ],
+        tip: 'Phase 1 is motion graphics only — on-screen text and (optionally) narration, no AI-generated video footage. That stays a manual, non-automated route for now.',
       },
       {
         id: 'creative-review',

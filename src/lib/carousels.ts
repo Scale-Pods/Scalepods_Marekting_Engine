@@ -27,7 +27,9 @@ export type CarouselJobStatus = 'drafting' | 'draft_ready' | 'rendering' | 'done
  *  actually happening inside a multi-minute render. The worker throttles these writes (~1/sec)
  *  but always writes immediately on a phase change, so the phase label is never stale. */
 export interface RenderProgress {
-  phase: 'starting' | 'loading' | 'capturing' | 'retrying' | 'encoding' | 'uploading' | 'slide_failed' | 'done' | 'failed'
+  // 'stitching' is Video Studio-only (render.js's renderVideo(), after all slides are captured,
+  // before the final concat+crop+logo ffmpeg pass) — Carousel Studio's own worker never emits it.
+  phase: 'starting' | 'loading' | 'capturing' | 'retrying' | 'encoding' | 'uploading' | 'stitching' | 'slide_failed' | 'done' | 'failed'
   slideIndex?: number
   slideTotal?: number
   slideName?: string
@@ -62,6 +64,7 @@ export function describeProgress(p: RenderProgress | null | undefined): string {
     case 'retrying': return p.message ?? `${slide ?? 'Slide'} — retrying dropped frames`
     case 'encoding': return `${slide ?? 'Slide'} — encoding video…`
     case 'uploading': return `${slide ?? 'Slide'} — uploading…`
+    case 'stitching': return 'Stitching slides, branding, and encoding the final video…'
     case 'slide_failed': return `${slide ?? 'Slide'} failed — ${p.message ?? 'unknown error'}`
     case 'done': return 'Finished'
     case 'failed': return p.message ?? 'Render failed'
@@ -72,7 +75,12 @@ export function describeProgress(p: RenderProgress | null | undefined): string {
 /** 0..1 across the WHOLE carousel, blending completed slides with progress inside the current
  *  one — a bar that only moved on slide completion sat still for a minute at a time. */
 export function overallProgress(p: RenderProgress | null | undefined): number {
-  if (!p || !p.slideTotal) return 0
+  if (!p) return 0
+  // 'stitching' fires after every slide is captured, with no slideIndex/slideTotal on the patch
+  // (it's a whole-video step, not a per-slide one) — without this it would fall through to the
+  // !p.slideTotal guard below and the bar would visibly snap back to 0% right before finishing.
+  if (p.phase === 'stitching') return 0.95
+  if (!p.slideTotal) return 0
   const done = Math.max(0, (p.slideIndex ?? 1) - 1)
   let within = 0
   if (p.phase === 'capturing' && p.frameTotal) within = (p.frame ?? 0) / p.frameTotal * 0.85

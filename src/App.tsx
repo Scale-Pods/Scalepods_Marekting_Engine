@@ -20,6 +20,7 @@ const Trends = lazy(() => import('./pages/Trends'))
 const Strategy = lazy(() => import('./pages/Strategy'))
 const ContentFactory = lazy(() => import('./pages/ContentFactory'))
 const CarouselStudio = lazy(() => import('./pages/CarouselStudio'))
+const VideoStudio = lazy(() => import('./pages/VideoStudio'))
 const AIStudio = lazy(() => import('./pages/AIStudio'))
 const CreativeReview = lazy(() => import('./pages/CreativeReview'))
 const Calendar = lazy(() => import('./pages/Calendar'))
@@ -77,6 +78,7 @@ export default function App() {
               <Route path="/strategy" element={<Protected><Strategy /></Protected>} />
               <Route path="/content" element={<Protected><ContentFactory /></Protected>} />
               <Route path="/carousel-studio" element={<Protected><CarouselStudio /></Protected>} />
+              <Route path="/video-studio" element={<Protected><VideoStudio /></Protected>} />
               <Route path="/studio" element={<Protected><AIStudio /></Protected>} />
               <Route path="/review" element={<Protected><CreativeReview /></Protected>} />
               <Route path="/calendar" element={<Protected><Calendar /></Protected>} />
