@@ -11,22 +11,15 @@ import { PostPreviewModal } from './postPreview'
 import AssetUploader from './AssetUploader'
 import { renderPdfPages } from '../lib/pdfPreview'
 
-/** Snaps an "HH:MM" value to the nearest :00/:30 — the granularity the n8n Publishing Scheduler
- *  actually polls at (every 30 min, see ScalePods · Publishing Scheduler). `step={1800}` on the
- *  <input type="time"> below keeps the native picker UI itself offering only half-hour marks,
- *  but a keyboard-typed value (e.g. pasted, or a browser that doesn't enforce `step` on manual
- *  entry) could still land off-grid — rounding here keeps what's displayed and what actually
- *  fires in sync, rather than implying a precision the scheduler doesn't have. */
-function snapToHalfHour(hhmm: string): string {
-  const match = /^(\d{2}):(\d{2})$/.exec(hhmm)
-  if (!match) return hhmm
-  const h = Number(match[1])
-  const m = Number(match[2])
-  const totalMinutes = Math.round((h * 60 + m) / 30) * 30
-  const snappedH = Math.floor(totalMinutes / 60) % 24
-  const snappedM = totalMinutes % 60
-  return `${String(snappedH).padStart(2, '0')}:${String(snappedM).padStart(2, '0')}`
-}
+// A native <input type="time">'s `step` attribute constrains its up/down-arrow increment and
+// form validity, but NOT the options its own dropdown-picker lists — Chrome's time control still
+// enumerates all 60 minutes there regardless of step (confirmed live: step={1800} left the minute
+// column showing 00, 01, 02, 03... rather than just 00/30). A plain pair of <select>s is the only
+// reliable way to make the minute list literally contain nothing but the two half-hour marks the
+// ScalePods · Publishing Scheduler actually polls at (every 30 min) — no snapping/validation
+// needed afterward since an out-of-grid value can't be selected in the first place.
+const SCHEDULE_HOURS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))
+const SCHEDULE_MINUTES = ['00', '30']
 
 export default function CreatePostModal({
   profileId,
@@ -921,13 +914,25 @@ export default function CreatePostModal({
                     value={scheduledDate}
                     onChange={(e) => setScheduledDate(e.target.value)}
                   />
-                  <input
-                    type="time"
-                    step={1800}
-                    className="input !w-auto !py-1.5 text-xs"
-                    value={scheduledTime}
-                    onChange={(e) => setScheduledTime(snapToHalfHour(e.target.value))}
-                  />
+                  <div className="flex items-center gap-1">
+                    <select
+                      className="input !w-auto !py-1.5 text-xs"
+                      value={scheduledTime.split(':')[0] ?? ''}
+                      onChange={(e) => setScheduledTime(`${e.target.value}:${scheduledTime.split(':')[1] ?? '00'}`)}
+                    >
+                      <option value="" disabled>HH</option>
+                      {SCHEDULE_HOURS.map((h) => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                    <span className="text-muted text-xs">:</span>
+                    <select
+                      className="input !w-auto !py-1.5 text-xs"
+                      value={scheduledTime.split(':')[1] ?? ''}
+                      onChange={(e) => setScheduledTime(`${scheduledTime.split(':')[0] ?? '00'}:${e.target.value}`)}
+                    >
+                      <option value="" disabled>MM</option>
+                      {SCHEDULE_MINUTES.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
                 </>
               )}
             </div>
