@@ -334,7 +334,7 @@ async function runVideoJob(jobId, outline, aspectRatio, voiceoverUrl) {
 // PATCHed incrementally as each shot finishes generating (not just the final render_progress),
 // so the FE's storyboard can show each shot going pending -> generating -> done/failed in near
 // real time, same discipline as Phase 1's per-slide slide_urls updates.
-async function runGenerateVideoJob(jobId, shots, engine, aspectRatio, voiceoverUrl) {
+async function runGenerateVideoJob(jobId, shots, engine, aspectRatio, voiceoverUrl, resolution) {
   const PROGRESS_THROTTLE_MS = 1200;
   let lastProgressAt = 0;
   let lastPhase = null;
@@ -372,6 +372,7 @@ async function runGenerateVideoJob(jobId, shots, engine, aspectRatio, voiceoverU
       aspectRatio: aspectRatio || '9:16',
       logoPath: LOGO_PATH,
       voiceoverPath: voiceoverUrl || null,
+      resolution: resolution || '1080p',
       onProgress: reportProgress,
       onShotDone: async (updatedShot, i) => {
         // `localPath` only appears on a freshly generated shot (a reused shot already has a
@@ -419,7 +420,7 @@ async function runGenerateVideoJob(jobId, shots, engine, aspectRatio, voiceoverU
 // regenerated clip is uploaded and its real URL written to shots_json, not discarded — that's
 // what lets the next Approve & Render REUSE it instead of paying Veo for every shot again (see
 // generateAndAssembleVideo()'s shot-reuse comment in render.js).
-async function runRegenerateShot(jobId, shotIndex, engine, shot, aspectRatio) {
+async function runRegenerateShot(jobId, shotIndex, engine, shot, aspectRatio, resolution) {
   try {
     const job = await fetchVideoJob(jobId);
     const shots = Array.isArray(job.shots_json) ? job.shots_json : [];
@@ -434,6 +435,7 @@ async function runRegenerateShot(jobId, shotIndex, engine, shot, aspectRatio) {
       aspectRatio: aspectRatio || '9:16',
       durationS: shot.durationS,
       outfile,
+      resolution: resolution || '1080p',
     });
     const clipUrl = await uploadShotClip(jobId, shotIndex, outfile);
     fs.unlinkSync(outfile);
@@ -533,7 +535,7 @@ const server = http.createServer(async (req, res) => {
       return res.end('invalid JSON body');
     }
 
-    const { job_id, engine, shots, aspect_ratio, voiceover_url } = parsed;
+    const { job_id, engine, shots, aspect_ratio, voiceover_url, resolution } = parsed;
     if (!job_id || !engine || !Array.isArray(shots) || shots.length === 0) {
       res.writeHead(400, { 'Content-Type': 'text/plain' });
       return res.end('job_id (string), engine (string) and shots (non-empty array) are required');
@@ -542,7 +544,10 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(202, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'accepted', job_id }));
 
-    runGenerateVideoJob(job_id, shots, engine, aspect_ratio, voiceover_url).catch((err) =>
+    // `resolution` is optional and NOT yet exposed by the FE/n8n (still 1080p-only there as of
+    // 2026-09-08, see veo.js's PRICE_PER_SECOND comment) — accepted here so a manual/direct test
+    // call can request 720p; runGenerateVideoJob defaults to 1080p when omitted.
+    runGenerateVideoJob(job_id, shots, engine, aspect_ratio, voiceover_url, resolution).catch((err) =>
       console.error(`Generate-video job ${job_id} crashed unexpectedly:`, err),
     );
     return;
@@ -562,7 +567,7 @@ const server = http.createServer(async (req, res) => {
       return res.end('invalid JSON body');
     }
 
-    const { job_id, shot_index, engine, shot, aspect_ratio } = parsed;
+    const { job_id, shot_index, engine, shot, aspect_ratio, resolution } = parsed;
     if (!job_id || typeof shot_index !== 'number' || !engine || !shot || !shot.prompt) {
       res.writeHead(400, { 'Content-Type': 'text/plain' });
       return res.end('job_id (string), shot_index (number), engine (string) and shot (object with prompt) are required');
@@ -571,7 +576,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(202, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'accepted', job_id, shot_index }));
 
-    runRegenerateShot(job_id, shot_index, engine, shot, aspect_ratio).catch((err) =>
+    runRegenerateShot(job_id, shot_index, engine, shot, aspect_ratio, resolution).catch((err) =>
       console.error(`Regenerate-shot job ${job_id}/${shot_index} crashed unexpectedly:`, err),
     );
     return;

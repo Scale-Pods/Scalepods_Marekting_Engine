@@ -495,7 +495,7 @@ async function normalizeAndConcatClips(clipPaths, aspectRatio, outDir) {
 // shots_json incrementally, mirroring renderCarousel()'s onSlideDone. For a freshly generated
 // shot it receives `localPath` (server.js uploads it and writes the real clipUrl back); for a
 // reused shot there is nothing new to upload, so `localPath` is absent.
-async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, logoPath, voiceoverPath, onProgress, onShotDone }) {
+async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, logoPath, voiceoverPath, onProgress, onShotDone, resolution = '1080p' }) {
   const outDir = path.join(ROOT, 'output', jobId);
   fs.mkdirSync(outDir, { recursive: true });
 
@@ -518,6 +518,7 @@ async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, log
         aspectRatio,
         durationS: shot.durationS,
         outfile,
+        resolution,
         // Real Veo generation can take several minutes -- reports 'shot_polling' on every poll
         // tick (veo.js's pollUntilDone(), ~every 10s) so the FE shows genuine ongoing activity
         // instead of "generating..." frozen for minutes at a time.

@@ -27,15 +27,19 @@ const MODEL_ID = {
   'veo-3.1-lite': 'veo-3.1-lite-generate-preview',
 };
 
-// Real 1080p per-second pricing, confirmed against ai.google.dev/gemini-api/docs/pricing
-// (2026-09-08). Duplicated here rather than imported — this worker is plain Node CJS with no
-// build step, deployed as its own container, same convention TARGET_DIMENSIONS in render.js
-// already uses. Keep this in sync by hand with src/lib/videoStudio.ts's copy if Google's
-// pricing changes.
+// Real per-second pricing by resolution, confirmed against ai.google.dev/gemini-api/docs/pricing
+// (2026-09-08) — Lite/Fast get genuinely cheaper at 720p, Standard does not (Google's own price
+// table charges the same for 720p and 1080p on Standard). Duplicated here rather than imported —
+// this worker is plain Node CJS with no build step, deployed as its own container, same
+// convention TARGET_DIMENSIONS in render.js already uses. Keep this in sync by hand with
+// src/lib/videoStudio.ts's and the ScalePods · Video Brief workflow's copies if Google's pricing
+// changes. NOTE: the FE/n8n copies are still 1080p-only as of 2026-09-08 (no resolution picker
+// exposed yet, per the TRD's own out-of-scope list) — this worker-side table is intentionally
+// ahead of them, for the manual resolution override used in direct/manual test calls.
 const PRICE_PER_SECOND = {
-  'veo-3.1-lite': 0.08,
-  'veo-3.1-fast': 0.12,
-  'veo-3.1-standard': 0.40,
+  'veo-3.1-lite': { '720p': 0.05, '1080p': 0.08 },
+  'veo-3.1-fast': { '720p': 0.10, '1080p': 0.12, '4k': 0.30 },
+  'veo-3.1-standard': { '720p': 0.40, '1080p': 0.40, '4k': 0.60 },
 };
 
 const POLL_INTERVAL_MS = 10000;
@@ -47,9 +51,12 @@ function apiKey() {
   return key;
 }
 
-async function startGeneration({ prompt, engine, aspectRatio, durationS }) {
+async function startGeneration({ prompt, engine, aspectRatio, durationS, resolution }) {
   const modelId = MODEL_ID[engine];
   if (!modelId) throw new Error(`Unknown engine "${engine}" — expected one of ${Object.keys(MODEL_ID).join(', ')}`);
+  if (!PRICE_PER_SECOND[engine][resolution]) {
+    throw new Error(`"${resolution}" is not offered for ${engine} — expected one of ${Object.keys(PRICE_PER_SECOND[engine]).join(', ')}`);
+  }
   // Veo only accepts 16:9 or 9:16 (confirmed, TRD §1) — the caller maps the job's real target
   // ratio to whichever of these two is closer; the assembly step's existing crop/pad (Phase 1's
   // finalizeVideo(), reused unchanged) handles turning that into the actual requested ratio.
@@ -62,7 +69,7 @@ async function startGeneration({ prompt, engine, aspectRatio, durationS }) {
       instances: [{ prompt }],
       parameters: {
         aspectRatio: veoAspect,
-        resolution: '1080p',
+        resolution,
         durationSeconds: String(durationS),
         personGeneration: 'allow_all',
       },
@@ -115,14 +122,14 @@ async function downloadVideo(videoUri, outfile) {
  * used so `shots_json[i].costUsd` reflects what really happened, same discipline as this app's
  * other jobCostEstimate()-style "what did this actually cost" displays).
  */
-async function generateShot({ prompt, engine, aspectRatio, durationS, outfile, onPoll }) {
-  const operationName = await startGeneration({ prompt, engine, aspectRatio, durationS });
+async function generateShot({ prompt, engine, aspectRatio, durationS, outfile, onPoll, resolution = '1080p' }) {
+  const operationName = await startGeneration({ prompt, engine, aspectRatio, durationS, resolution });
   const result = await pollUntilDone(operationName, onPoll);
   const samples = result?.response?.generateVideoResponse?.generatedSamples;
   const videoUri = samples && samples[0] && samples[0].video && samples[0].video.uri;
   if (!videoUri) throw new Error(`Veo operation finished but returned no video URI: ${JSON.stringify(result)}`);
   await downloadVideo(videoUri, outfile);
-  const costUsd = Math.round(durationS * PRICE_PER_SECOND[engine] * 100) / 100;
+  const costUsd = Math.round(durationS * PRICE_PER_SECOND[engine][resolution] * 100) / 100;
   return { localPath: outfile, costUsd };
 }
 
