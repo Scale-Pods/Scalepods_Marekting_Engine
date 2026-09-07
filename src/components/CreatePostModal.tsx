@@ -67,9 +67,17 @@ function ScheduleTimeSelect({ value, onChange }: { value: string; onChange: (val
     listRef.current?.querySelector('[data-selected="true"]')?.scrollIntoView({ block: 'center' })
   }, [open])
 
+  // Closes on a scroll of the PAGE behind the dropdown (so it doesn't end up floating away from
+  // its trigger) — deliberately NOT on a scroll inside the dropdown's own list. `capture: true`
+  // on window means this fires for every scroll event in the document, including the list's own
+  // internal overflow-y: auto; without the target check below, scrolling the list closed it
+  // instead of scrolling it (confirmed live — the exact bug reported).
   useEffect(() => {
     if (!open) return
-    const close = () => setOpen(false)
+    const close = (e: Event) => {
+      if (e.target instanceof Node && listRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
     return () => {
@@ -103,8 +111,15 @@ function ScheduleTimeSelect({ value, onChange }: { value: string; onChange: (val
             className="fixed z-50 rounded-lg overflow-y-auto py-1"
             style={{
               left: pos.left, minWidth: Math.max(pos.width, 140), top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight,
-              background: 'var(--fill-secondary)', border: '1px solid var(--border-subtle)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+              // A real opaque surface, not --fill-secondary (only 10% white/6% black tint —
+              // meant for a subtle highlight sitting ON TOP of an already-solid background, not
+              // as a standalone floating panel's own fill). Confirmed live: with fill-secondary
+              // the page content behind it (the red validation line, in this case) showed clean
+              // through the list, reading as "transparent, not looking good". --bg-card is this
+              // codebase's own established solid token for exactly this — see the native
+              // <select> `option` background rule a few lines up in index.css.
+              background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
             }}
           >
             {SCHEDULE_TIMES.map((t) => (
