@@ -38,7 +38,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY base.css gen.js render.js server.js serve.js ./
+COPY base.css gen.js render.js server.js serve.js veo.js ./
 COPY vendor/ ./vendor/
 COPY assets/ ./assets/
 COPY icons/ ./icons/
