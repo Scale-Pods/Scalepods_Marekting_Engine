@@ -12,9 +12,14 @@ re-scoped, re-branded replication of the shipped **Victory Growth OS**. Read
   `docs/blog-module.md` (once written) for the details Antigravity's discovery answers settle.
 - **LinkedIn is the primary channel** (B2B agency audience). Register the Company Page +
   Marketing Developer Platform app for real analytics.
-- **Video generation is MANUAL-ONLY.** HeyGen (founder avatar) and fal.ai Veo/Seedance
-  (motion) are never wired to an FE button or an auto-chain. The Image Engine filter must
-  match only `static_image | carousel | social_caption`.
+- **Video generation is never auto-chained — no scheduler, no strategy auto-run, no batch.**
+  The Content/Image auto-engines' content-type filter must still match only
+  `static_image | carousel | social_caption`, so a video type can never enter an automated
+  pipeline. Narrowed 2026-09-08 (was strictly manual-only) to allow a real FE path: **Video
+  Studio** (see `docs/video-studio-prd.md`) may fire video generation from an explicit human
+  click, behind a hard per-video spend ceiling and a real-cost confirmation before the first
+  spend — same discipline AI Studio already applies to images. HeyGen (founder avatar) and
+  fal.ai/Google Veo remain the manual-only routes for anything outside that one surface.
 - **Credit safety flags** `GENERATION_ENABLED` and `PUBLISHING_ENABLED` live in
   `src/lib/content.ts`. Keep them false until a stage is being demoed/used.
 - **Brand:** use ONLY the official tokens in `brand-kit/` (TRD §9): dark bg `#04070D`,
