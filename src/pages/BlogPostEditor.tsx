@@ -104,6 +104,8 @@ export default function BlogPostEditor() {
   const [slugEdited, setSlugEdited] = useState(false)
   const [category, setCategory] = useState('Article')
   const [excerpt, setExcerpt] = useState('')
+  const [metaTitle, setMetaTitle] = useState('')
+  const [metaDescription, setMetaDescription] = useState('')
   const [bannerUrlDark, setBannerUrlDark] = useState<string | null>(null)
   const [bannerUrlLight, setBannerUrlLight] = useState<string | null>(null)
   const [faqs, setFaqs] = useState<BlogFaq[]>([])
@@ -133,6 +135,8 @@ export default function BlogPostEditor() {
       setSlugEdited(true)
       setCategory(existing.category)
       setExcerpt(existing.excerpt)
+      setMetaTitle(existing.meta_title ?? '')
+      setMetaDescription(existing.meta_description ?? '')
       setBannerUrlDark(existing.banner_url_dark ?? existing.banner_url)
       setBannerUrlLight(existing.banner_url_light)
       setFaqs(existing.faqs ?? [])
@@ -190,6 +194,8 @@ export default function BlogPostEditor() {
         slug: slug.trim(),
         category: category.trim() || 'Article',
         excerpt: excerpt.trim(),
+        metaTitle: metaTitle.trim() || null,
+        metaDescription: metaDescription.trim() || null,
         bannerUrlDark,
         bannerUrlLight,
         sections,
@@ -330,6 +336,31 @@ export default function BlogPostEditor() {
               onChange={(e) => setExcerpt(e.target.value)}
               placeholder="One or two sentences shown on the blog listing card"
             />
+          </div>
+
+          <div>
+            <div className="label mb-2">SEO title &amp; description (optional)</div>
+            <p className="text-muted text-xs mb-2">
+              Overrides what search engines show for this post. Leave blank to fall back to the title/excerpt
+              above — the site's own metadata reader needs a matching update before these actually reach a
+              live &lt;title&gt;/&lt;meta&gt; tag, see docs/blog-module.md.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="label">Meta title</label>
+                  <span className="text-muted text-[11px]">{metaTitle.length}/60</span>
+                </div>
+                <input className="input mt-1.5" value={metaTitle} onChange={(e) => setMetaTitle(e.target.value)} placeholder="Shown as the search-result headline" />
+              </div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="label">Meta description</label>
+                  <span className="text-muted text-[11px]">{metaDescription.length}/160</span>
+                </div>
+                <textarea className="input mt-1.5" rows={2} value={metaDescription} onChange={(e) => setMetaDescription(e.target.value)} placeholder="Shown as the search-result snippet" />
+              </div>
+            </div>
           </div>
 
           <div>

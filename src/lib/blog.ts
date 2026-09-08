@@ -74,6 +74,14 @@ export interface BlogPost {
   slug: string
   category: string
   excerpt: string
+  /** Per-post SEO title/description for the site's <title>/<meta name="description"> tags.
+   *  Documented gap in docs/blog-module.md — proposed in the original spec but never given a
+   *  column. `null`/empty means the site falls back to title/excerpt, so this is always safe to
+   *  leave blank. Storing it here is the Growth OS half of the fix; the site's own
+   *  generateMetadata() (F:\Scalepods.co\scalepods-website-nextjs) still needs a matching change
+   *  to actually read these before they affect real search-engine tags — see docs/blog-module.md. */
+  meta_title: string | null
+  meta_description: string | null
   /** Fallback/single banner — what the live site currently renders (its dynamic-post render
    *  path only reads website_content.hero_image, no dark/light split — see docs/blog-module.md).
    *  Kept in sync from banner_url_dark on save so the currently-working single-banner path never
@@ -140,6 +148,8 @@ export async function createBlogPost(input: {
   slug: string
   category: string
   excerpt: string
+  metaTitle: string | null
+  metaDescription: string | null
   bannerUrlDark: string | null
   bannerUrlLight: string | null
   sections: BlogSection[]
@@ -156,6 +166,8 @@ export async function createBlogPost(input: {
       slug: input.slug,
       category: input.category,
       excerpt: input.excerpt,
+      meta_title: input.metaTitle,
+      meta_description: input.metaDescription,
       banner_url: resolveFallbackBanner(input.bannerUrlDark, input.bannerUrlLight),
       banner_url_dark: input.bannerUrlDark,
       banner_url_light: input.bannerUrlLight,
@@ -180,6 +192,8 @@ export async function updateBlogPost(
     slug: string
     category: string
     excerpt: string
+    metaTitle: string | null
+    metaDescription: string | null
     bannerUrlDark: string | null
     bannerUrlLight: string | null
     sections: BlogSection[]
@@ -205,6 +219,8 @@ export async function updateBlogPost(
       ...(patch.slug !== undefined ? { slug: patch.slug } : {}),
       ...(patch.category !== undefined ? { category: patch.category } : {}),
       ...(patch.excerpt !== undefined ? { excerpt: patch.excerpt } : {}),
+      ...(patch.metaTitle !== undefined ? { meta_title: patch.metaTitle } : {}),
+      ...(patch.metaDescription !== undefined ? { meta_description: patch.metaDescription } : {}),
       ...bannerFields,
       ...(patch.sections !== undefined ? { sections: patch.sections } : {}),
       ...(patch.faqs !== undefined ? { faqs: patch.faqs.length > 0 ? patch.faqs : null } : {}),
