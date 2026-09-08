@@ -704,6 +704,7 @@ export default function VideoStudio() {
   const { data: profile, isLoading: profileLoading } = useProfile()
   const [jobs, setJobs] = useState<VideoJob[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
   const [signals, setSignals] = useState<TrendSignal[]>([])
   const [sourceKind, setSourceKind] = useState<StudioSourceKind>('trend')
   const [signalId, setSignalId] = useState<string | null>(null)
@@ -826,6 +827,7 @@ export default function VideoStudio() {
         styleArc: isClips && selectedType ? selectedType.arc : undefined,
       })
       setJobs((prev) => [job, ...prev])
+      setCreateOpen(false)
       setSelectedId(job.id)
       setTopic('')
       setSignalId(null)
@@ -863,15 +865,22 @@ export default function VideoStudio() {
         subtitle="A trend or a topic in, a branded short-form video out. Review every shot and its real price before anything is generated."
       />
 
-      {/* --- Recent videos, as a grid ---------------------------------------- */}
-      {jobs.length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
+      {/* --- Recent videos, with the create action opposite the heading ------- */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="flex items-center gap-2">
             <div className="label !mb-0">Recent videos</div>
-            <div className="text-[11px] text-muted">{jobs.length} total</div>
+            {jobs.length > 0 && <span className="text-[11px] text-muted">{jobs.length} total</span>}
           </div>
-          {/* Same tile grid as Creative Review, and the same PostTile component — it already
-              renders a muted video thumbnail with a play badge for any .mp4 URL. */}
+          <Button onClick={() => setCreateOpen(true)} className="!py-1.5 text-xs">
+            <Plus size={14} /> New video
+          </Button>
+        </div>
+        {/* Same tile grid as Creative Review, and the same PostTile component — it already
+            renders a muted video thumbnail with a play badge for any .mp4 URL. */}
+        {jobs.length === 0 ? (
+          <EmptyState icon={<Film size={28} />} title="No videos yet" hint="Hit New video to draft your first storyboard." />
+        ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-1.5">
             {jobs.map((job) => (
               <PostTile
@@ -910,30 +919,31 @@ export default function VideoStudio() {
               />
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* --- The selected video, opened under the grid ------------------------ */}
+      {/* --- A video opens as its own overlay ---------------------------------
+          Deliberately NOT inline under the grid: sitting directly above the
+          create form, the two sections read as one block and it was never
+          obvious which video the controls underneath belonged to. An overlay
+          makes "this is that video, and nothing else" unambiguous. */}
       {selectedJob && (
-        <Panel className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <div className="label !mb-0">Selected video</div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => onDelete(selectedJob.id)}
-                className="text-xs text-muted hover:text-terracotta flex items-center gap-1"
-              >
-                <Trash2 size={12} /> Delete
-              </button>
-              <button onClick={() => setSelectedId(null)} className="text-xs text-muted hover:text-ink">Close</button>
-            </div>
+        <Modal title={selectedJob.topic || 'Video'} size="xl" onClose={() => setSelectedId(null)}>
+          <div className="flex justify-end mb-3">
+            <button
+              onClick={() => onDelete(selectedJob.id)}
+              className="text-xs text-muted hover:text-terracotta flex items-center gap-1"
+            >
+              <Trash2 size={12} /> Delete this video
+            </button>
           </div>
           <JobDetail job={selectedJob} onChanged={() => profile && load(profile.id)} />
-        </Panel>
+        </Modal>
       )}
 
-      <Panel className="mb-6 space-y-4">
-        <div className="font-medium text-sm">New video</div>
+      {createOpen && (
+      <Modal title="New video" size="xl" onClose={() => setCreateOpen(false)}>
+        <div className="space-y-4">
 
         {/* --- How it's made ------------------------------------------------ */}
         <div className="flex gap-2 flex-wrap">
@@ -1114,10 +1124,8 @@ export default function VideoStudio() {
         </div>
         {!GENERATION_ENABLED && <div className="text-xs text-terracotta">Generation is currently disabled (GENERATION_ENABLED=false).</div>}
         {isClips && !VIDEO_GENERATION_ENABLED && <div className="text-xs text-terracotta">AI video generation is disabled (VIDEO_GENERATION_ENABLED=false).</div>}
-      </Panel>
-
-      {jobs.length === 0 && (
-        <EmptyState icon={<Film size={28} />} title="No videos yet" hint="Pick a trend or a topic above to draft your first storyboard." />
+        </div>
+      </Modal>
       )}
     </div>
   )
