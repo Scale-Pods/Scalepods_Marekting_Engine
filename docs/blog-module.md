@@ -119,8 +119,22 @@ sitemap, but invisible on `/blog` itself until both filters are corrected.
 Its sample `POST /api/blog/publish` payload included `bannerUrlLight`, `metaTitle`,
 `metaDescription` — none of these have a column in `website_content` today, and
 `generateMetadata()` for DB posts only ever reads `title`/`excerpt`. Not a blocker: v1 ships with
-one hero image and auto-derived SEO. Real per-post SEO + light/dark hero is a fast-follow if
-wanted (2 small migration + code changes on the site side).
+one hero image and auto-derived SEO.
+
+**`metaTitle`/`metaDescription` closed 2026-09-08** — no site-DB migration needed after all (Growth
+OS holds no credential for the site's separate Supabase project `pjblbouksmeypryiyoyr` and never
+will, so a migration there wasn't even an option from this side). Followed the exact pattern
+`ctaTitle`/`bannerUrlDark` already used: `blog_posts.meta_title`/`meta_description` (real columns,
+Growth OS side only) get embedded into `formattedBody`'s JSON wrapper by `/api/blog/publish`, and
+`generateMetadata()` in `blog/[slug]/page.tsx` now selects `body` (previously only `title,
+excerpt`) and reads `bodyMeta.metaTitle`/`metaDescription` back out, falling back to the existing
+auto-derived title/excerpt when either is unset. `ScalePods · Blog Publish` (n8n `xI3NGHVG59IJwr43`)
+threads the two fields through in its POST payload. Not yet verified with a real live publish
+(would need firing at an actual post) — the wiring exactly mirrors the already-proven ctaTitle
+path, but call that out if it's ever in question.
+
+Light/dark hero variant (`bannerUrlLight` reaching the live render) is still open — see the
+Confirmed Facts section above ("One hero image column... only the dark variant is used").
 
 ## Integration contract (once the API route exists)
 
