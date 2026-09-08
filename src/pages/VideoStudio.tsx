@@ -19,6 +19,7 @@ import {
 } from '../lib/videoStudio'
 import { createManualItem, GENERATION_ENABLED, VIDEO_GENERATION_ENABLED } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
+import { PostTile } from '../components/postPreview'
 import { useToast, toastMessage } from '../components/Toast'
 
 const POSES = ['casual', 'pointing', 'victory', 'arms-crossed', 'phone'] as const
@@ -363,7 +364,36 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
   const liveCost = isGeneratedClips ? estimateShotsCost(engine, resolution, shots) : 0
   const seconds = totalDurationS(shots)
   const overCeiling = isGeneratedClips && liveCost > PER_VIDEO_CEILING_USD
-  const editable = job.status === 'draft_ready'
+  // Editable in every state except mid-render — after a video is finished you can still rework a
+  // shot prompt and re-run it, which is the whole point of keeping the storyboard on screen.
+  const editable = job.status !== 'rendering'
+
+  // A shot that already has a real clip is REUSED by the worker rather than regenerated, so the
+  // next click only pays for shots that still need generating. Editing a prompt resets that shot
+  // (see onShotChange), which is exactly when it re-enters this number.
+  const pendingShots = shots.filter((s) => !(s.status === 'done' && s.clipUrl))
+  const nextRunCost = isGeneratedClips
+    ? Math.round(pendingShots.reduce((sum, s) => sum + s.durationS * (ratePerSecond(engine, resolution) ?? 0), 0) * 100) / 100
+    : 0
+  const nextRunOverCeiling = isGeneratedClips && nextRunCost > PER_VIDEO_CEILING_USD
+  const hasFinished = job.status === 'done' && Boolean(job.final_video_url)
+
+  /**
+   * Editing a shot's PROMPT (or its duration) invalidates the clip that was generated from the
+   * old one — the worker reuses any shot still marked done+clipUrl, so without this the edit
+   * would silently do nothing and the old footage would be stitched back in.
+   *
+   * Editing only the on-screen text does NOT reset it: captions are burned on at assembly time
+   * by ffmpeg, so changing the words costs nothing and needs no regeneration. That difference is
+   * worth real money, so the UI states it rather than making people guess.
+   */
+  function onShotChange(i: number, next: VideoShot) {
+    setShots((prev) => prev.map((p, idx) => {
+      if (idx !== i) return p
+      const regenerationNeeded = p.status === 'done' && (next.prompt !== p.prompt || next.durationS !== p.durationS)
+      return regenerationNeeded ? { ...next, status: 'pending', clipUrl: null, costUsd: null } : next
+    }))
+  }
 
   async function doRender() {
     setSaving(true)
@@ -375,8 +405,16 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
       }
       setSaving(false)
       setRendering(true)
-      await triggerVideoRender(job.id, job.video_type, liveCost)
-      toast.info(isGeneratedClips ? 'Generating — Veo takes a few minutes per shot.' : 'Render started — this takes several minutes.')
+      // The ceiling applies to what this run will actually charge — already-generated shots are
+      // reused, not re-billed.
+      await triggerVideoRender(job.id, job.video_type, nextRunCost)
+      toast.info(
+        isGeneratedClips
+          ? (pendingShots.length === 0
+            ? 'Re-assembling with your new on-screen text — no new generation, no extra cost.'
+            : `Generating ${pendingShots.length} shot${pendingShots.length === 1 ? '' : 's'} — Veo takes a few minutes each.`)
+          : 'Render started — this takes several minutes.',
+      )
       onChanged()
     } catch (err) {
       toast.error(toastMessage(err, 'Could not start the render'))
@@ -389,8 +427,9 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
   async function onApprove() {
     // Real money about to be spent — PRD §8 guardrail #3: a second, explicit confirmation
     // restating the actual figure. Motion graphics has no such gate (nothing paid past the GPT
-    // brief, already spent by this point).
-    if (isGeneratedClips) { setConfirmOpen(true); return }
+    // brief, already spent by this point), and neither does a re-assembly that generates nothing
+    // new — confirming a $0.00 charge is just friction.
+    if (isGeneratedClips && nextRunCost > 0) { setConfirmOpen(true); return }
     await doRender()
   }
 
@@ -464,7 +503,7 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                   engine={engine}
                   resolution={resolution}
                   editable
-                  onChange={(s) => setShots((prev) => prev.map((p, idx) => (idx === i ? s : p)))}
+                  onChange={(s) => onShotChange(i, s)}
                   onRemove={shots.length > 1 ? () => setShots((prev) => prev.filter((_, idx) => idx !== i).map((s, idx) => ({ ...s, index: idx }))) : undefined}
                 />
               ))}
@@ -523,37 +562,17 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
             </div>
           )}
 
-          {isGeneratedClips && shots.length > 0 && (
-            <div className="space-y-2">
-              {shots.map((shot, i) => (
-                <ShotEditor
-                  key={i}
-                  shot={shot}
-                  engine={engine}
-                  resolution={resolution}
-                  editable={false}
-                  onChange={() => {}}
-                  onRegenerate={job.status !== 'rendering' ? () => onRegenerateShot(i) : undefined}
-                  regenerating={regeneratingShot === i}
-                />
-              ))}
-            </div>
-          )}
-
-          {job.status === 'failed' && (
-            <ErrorPanel raw={job.error_detail} onRetry={doRender} retrying={saving || rendering} />
-          )}
-
-          {job.status === 'done' && job.final_video_url && (
+          {/* The finished video first — it's what you came back to look at. */}
+          {hasFinished && (
             <div className="space-y-3">
               <video
-                src={job.final_video_url}
+                src={job.final_video_url!}
                 controls
                 className="w-full rounded-lg"
                 style={{ maxHeight: 480, background: 'var(--fill-tertiary)' }}
               />
               <div className="flex items-center gap-2 flex-wrap">
-                <a href={job.final_video_url} target="_blank" rel="noreferrer" className="text-xs text-sage flex items-center gap-1">
+                <a href={job.final_video_url!} target="_blank" rel="noreferrer" className="text-xs text-sage flex items-center gap-1">
                   <Download size={12} /> Download
                 </a>
                 {job.content_item_id ? (
@@ -566,9 +585,75 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
               </div>
               {isGeneratedClips && (
                 <div className="text-xs text-muted">
-                  Actually spent: {formatUsdInr(estimateShotsCost(engine, resolution, shots))} across {shots.length} shot{shots.length === 1 ? '' : 's'}.
-                  Regenerating one shot above costs only that shot.
+                  Spent so far: {formatUsdInr(estimateShotsCost(engine, resolution, shots))} across {shots.length} shot{shots.length === 1 ? '' : 's'}.
                 </div>
+              )}
+            </div>
+          )}
+
+          {job.status === 'failed' && (
+            <ErrorPanel raw={job.error_detail} onRetry={doRender} retrying={saving || rendering} />
+          )}
+
+          {/* The storyboard stays on screen after generation, still editable — this is how you
+              rework a shot you don't like and run it again without starting over. */}
+          {isGeneratedClips && shots.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="label !mb-0">Storyboard</div>
+                {editable && (
+                  <div className="text-[11px] text-muted">
+                    Editing a prompt re-generates that shot · editing on-screen text is free
+                  </div>
+                )}
+              </div>
+              {shots.map((shot, i) => (
+                <ShotEditor
+                  key={i}
+                  shot={shot}
+                  engine={engine}
+                  resolution={resolution}
+                  editable={editable}
+                  onChange={(s) => onShotChange(i, s)}
+                  onRegenerate={editable ? () => onRegenerateShot(i) : undefined}
+                  regenerating={regeneratingShot === i}
+                />
+              ))}
+
+              <CopyEditor copy={copy} onChange={setCopy} />
+              {job.voiceover_script !== null && (
+                <Panel className="!p-4 space-y-2">
+                  <div className="label flex items-center gap-1.5"><Mic size={13} /> Voiceover script</div>
+                  <textarea className="input" rows={3} value={voScript} onChange={(e) => setVoScript(e.target.value)} disabled={!editable} />
+                </Panel>
+              )}
+
+              {editable && (
+                <>
+                  {nextRunCost > 0 ? (
+                    <CostBar
+                      engine={engine}
+                      resolution={resolution}
+                      seconds={totalDurationS(pendingShots)}
+                      shots={pendingShots.length}
+                      overCeiling={nextRunOverCeiling}
+                    />
+                  ) : (
+                    <div className="text-xs text-sage">
+                      Nothing to re-generate — re-assembling only applies your new on-screen text and caption, at no cost.
+                    </div>
+                  )}
+                  <Button
+                    onClick={onApprove}
+                    loading={saving || rendering}
+                    disabled={!GENERATION_ENABLED || !VIDEO_GENERATION_ENABLED || nextRunOverCeiling}
+                  >
+                    <RefreshCw size={15} />{' '}
+                    {nextRunCost > 0
+                      ? `Regenerate video — ≈$${nextRunCost.toFixed(2)}`
+                      : 'Rebuild video — free'}
+                  </Button>
+                </>
               )}
             </div>
           )}
@@ -581,14 +666,19 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
             <div className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'var(--fill-tertiary)' }}>
               <AlertTriangle size={18} className="text-terracotta shrink-0 mt-0.5" />
               <div className="text-sm text-secondary">
-                This will generate {shots.length} shot{shots.length === 1 ? '' : 's'} ({seconds} seconds) with{' '}
-                <b className="text-ink">{ENGINE_LABEL[engine]}</b> at {resolution}. It charges the connected Google
-                account immediately — this is a real payment, not a preview.
+                This will generate {pendingShots.length} shot{pendingShots.length === 1 ? '' : 's'}{' '}
+                ({totalDurationS(pendingShots)} seconds) with <b className="text-ink">{ENGINE_LABEL[engine]}</b> at{' '}
+                {resolution}. It charges the connected Google account immediately — this is a real payment, not a
+                preview.
+                {shots.length > pendingShots.length && (
+                  <> {shots.length - pendingShots.length} already-generated shot
+                    {shots.length - pendingShots.length === 1 ? ' is' : 's are'} reused free of charge.</>
+                )}
               </div>
             </div>
             <div className="text-center py-1">
-              <div className="text-3xl font-bold text-ink tabular-nums">${liveCost.toFixed(2)}</div>
-              <div className="text-sm text-secondary mt-1">≈ ₹{Math.round(liveCost * 94.6).toLocaleString('en-IN')}</div>
+              <div className="text-3xl font-bold text-ink tabular-nums">${nextRunCost.toFixed(2)}</div>
+              <div className="text-sm text-secondary mt-1">≈ ₹{Math.round(nextRunCost * 94.6).toLocaleString('en-IN')}</div>
               <div className="text-[11px] text-muted mt-2">
                 Estimate based on Google's published per-second rate. You are only charged for shots that generate successfully.
               </div>
@@ -772,6 +862,75 @@ export default function VideoStudio() {
         title="Video Studio"
         subtitle="A trend or a topic in, a branded short-form video out. Review every shot and its real price before anything is generated."
       />
+
+      {/* --- Recent videos, as a grid ---------------------------------------- */}
+      {jobs.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <div className="label !mb-0">Recent videos</div>
+            <div className="text-[11px] text-muted">{jobs.length} total</div>
+          </div>
+          {/* Same tile grid as Creative Review, and the same PostTile component — it already
+              renders a muted video thumbnail with a play badge for any .mp4 URL. */}
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-1.5">
+            {jobs.map((job) => (
+              <PostTile
+                key={job.id}
+                img={job.final_video_url}
+                platform={job.platform}
+                placeholder={job.topic}
+                busyNote={job.status === 'rendering' ? (
+                  <>
+                    <Spinner size={16} />
+                    <span className="text-[10px] text-muted px-2 text-center leading-tight">
+                      {describeProgress(job.render_progress)}
+                    </span>
+                  </>
+                ) : undefined}
+                topRight={
+                  job.status === 'failed'
+                    ? <Badge tone="orange" className="!text-[10px] !px-1.5 !py-0.5">Failed</Badge>
+                    : job.status === 'draft_ready'
+                      ? <Badge tone="grey" className="!text-[10px] !px-1.5 !py-0.5">Draft</Badge>
+                      : job.video_type === 'generated_clips'
+                        ? <Badge tone="blue" className="!text-[10px] !px-1.5 !py-0.5">AI</Badge>
+                        : undefined
+                }
+                bottomLeft={
+                  job.estimated_cost_usd != null && job.video_type === 'generated_clips' ? (
+                    <span
+                      className="text-[10px] font-semibold px-1.5 py-0.5 rounded tabular-nums text-white"
+                      style={{ background: 'rgba(0,0,0,0.55)' }}
+                    >
+                      ${job.estimated_cost_usd.toFixed(2)}
+                    </span>
+                  ) : undefined
+                }
+                onClick={() => setSelectedId(selectedId === job.id ? null : job.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* --- The selected video, opened under the grid ------------------------ */}
+      {selectedJob && (
+        <Panel className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="label !mb-0">Selected video</div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onDelete(selectedJob.id)}
+                className="text-xs text-muted hover:text-terracotta flex items-center gap-1"
+              >
+                <Trash2 size={12} /> Delete
+              </button>
+              <button onClick={() => setSelectedId(null)} className="text-xs text-muted hover:text-ink">Close</button>
+            </div>
+          </div>
+          <JobDetail job={selectedJob} onChanged={() => profile && load(profile.id)} />
+        </Panel>
+      )}
 
       <Panel className="mb-6 space-y-4">
         <div className="font-medium text-sm">New video</div>
@@ -957,52 +1116,8 @@ export default function VideoStudio() {
         {isClips && !VIDEO_GENERATION_ENABLED && <div className="text-xs text-terracotta">AI video generation is disabled (VIDEO_GENERATION_ENABLED=false).</div>}
       </Panel>
 
-      {jobs.length === 0 ? (
+      {jobs.length === 0 && (
         <EmptyState icon={<Film size={28} />} title="No videos yet" hint="Pick a trend or a topic above to draft your first storyboard." />
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
-          <div className="space-y-2">
-            {jobs.map((job) => (
-              <div
-                key={job.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedId(job.id)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedId(job.id) }}
-                className="w-full text-left cursor-pointer"
-              >
-                <Panel className={`!p-3 ${selectedId === job.id ? '!border-sage border' : ''}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="text-xs text-secondary line-clamp-2">{job.topic}</div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(job.id) }}
-                      className="text-muted hover:text-terracotta shrink-0"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <StatusBadge status={job.status} />
-                    {job.video_type === 'generated_clips' && (
-                      <span className="text-[10px] text-muted flex items-center gap-1"><Wand2 size={10} /> AI video</span>
-                    )}
-                    {job.estimated_cost_usd != null && job.video_type === 'generated_clips' && (
-                      <span className="text-[10px] text-muted tabular-nums">${job.estimated_cost_usd.toFixed(2)}</span>
-                    )}
-                  </div>
-                </Panel>
-              </div>
-            ))}
-          </div>
-
-          <div>
-            {selectedJob ? (
-              <JobDetail job={selectedJob} onChanged={() => profile && load(profile.id)} />
-            ) : (
-              <EmptyState icon={<RefreshCw size={24} />} title="Pick a video" hint="Select one from the list to review or watch it generate." />
-            )}
-          </div>
-        </div>
       )}
     </div>
   )

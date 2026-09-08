@@ -312,6 +312,21 @@ function runFfmpeg(args) {
   });
 }
 
+// Whether a file carries a real audio stream. Veo 3.1 always generates audio (Google's own model
+// table lists it as "Always on" for Lite, Fast and Standard alike), so in practice this is true
+// for every generated shot — but the concat demuxer requires every segment to have an IDENTICAL
+// stream layout, so one silent clip slipping through would break the whole render rather than
+// just that shot. Cheap check, avoids a hard failure.
+function hasAudioStream(input) {
+  return new Promise((resolve) => {
+    execFile(
+      'ffprobe',
+      ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', input],
+      (err, stdout) => resolve(!err && String(stdout).trim().length > 0),
+    );
+  });
+}
+
 // Step 1: join same-codec MP4s with the concat DEMUXER (`-c copy`, no re-encode) — the standard
 // way to join clips that already share codec/resolution/framerate, which every slide here does,
 // since they all come from the identical ffmpegEncode() above. Re-encoding filters (scale/crop/
@@ -336,29 +351,54 @@ async function concatSlides(slideFiles, outDir) {
 //     background fill" technique (split into a blurred fill-the-frame layer + the real content
 //     scaled to fit *within* the frame, centered on top), not a shortcut.
 //   - burns in the brand logo, bottom-right corner, safe-area padded.
-//   - if a voiceover track exists, adds it as the video's ONLY audio stream — slides render
-//     silent (Chrome runs with --mute-audio, and ffmpegEncode() above never maps an audio
-//     stream at all), so this ADDS audio where none exists; there's no existing track to mix
-//     with. `-shortest` makes the output's real duration whichever of {video, voiceover} is
-//     shorter — the VO script is written to roughly match total slide duration, but this
-//     guarantees no silent tail or an abrupt narration cutoff either way.
-async function finalizeVideo({ concatenatedPath, aspectRatio, logoPath, voiceoverPath, outfile }) {
+//   - handles audio three ways, depending on what the source actually has:
+//       * Phase 1 slides (hasSourceAudio false, no VO): silent, exactly as before. Chrome runs
+//         with --mute-audio and ffmpegEncode() never maps an audio stream, so there is genuinely
+//         nothing to keep.
+//       * Phase 1 slides + VO: the voiceover becomes the only track, with `-shortest` so there's
+//         no silent tail or clipped narration either way. Unchanged behaviour.
+//       * Phase 2 Veo clips (hasSourceAudio true): Veo's OWN generated audio is kept — it is
+//         always on and already paid for. With a voiceover on top, the native track is ducked
+//         under the narration and mixed rather than thrown away, so ambience and SFX survive
+//         beneath the voice.
+async function finalizeVideo({ concatenatedPath, aspectRatio, logoPath, voiceoverPath, outfile, hasSourceAudio = false }) {
   const [tw, th] = TARGET_DIMENSIONS[aspectRatio] || TARGET_DIMENSIONS['9:16'];
   const logoW = Math.round(tw * 0.22);
   const margin = Math.round(tw * 0.04);
-  const filterComplex = [
+  const videoFilters = [
     '[0:v]split=2[bg][fg]',
     `[bg]scale=${tw}:${th}:force_original_aspect_ratio=increase,crop=${tw}:${th},gblur=sigma=24[bgblur]`,
     `[fg]scale=${tw}:${th}:force_original_aspect_ratio=decrease[fgscaled]`,
     '[bgblur][fgscaled]overlay=(W-w)/2:(H-h)/2[framed]',
     `[1:v]scale=${logoW}:-1[logo]`,
     `[framed][logo]overlay=W-w-${margin}:H-h-${margin}[outv]`,
-  ].join(';');
+  ];
+
+  // Native audio ducked to 18% under the narration — loud enough that the scene still sounds
+  // alive, quiet enough that the voice stays the thing you hear. duration=first ties the mix to
+  // the video's own length, so an over-long VO is trimmed rather than extending the video.
+  const mixNativeWithVo = hasSourceAudio && voiceoverPath;
+  if (mixNativeWithVo) {
+    videoFilters.push('[0:a]volume=0.18[duck]');
+    videoFilters.push('[2:a]volume=1.0[vo]');
+    videoFilters.push('[duck][vo]amix=inputs=2:duration=first:dropout_transition=0[outa]');
+  }
 
   const args = ['-y', '-i', concatenatedPath, '-i', logoPath];
   if (voiceoverPath) args.push('-i', voiceoverPath);
-  args.push('-filter_complex', filterComplex, '-map', '[outv]');
-  if (voiceoverPath) args.push('-map', '2:a', '-shortest');
+  args.push('-filter_complex', videoFilters.join(';'), '-map', '[outv]');
+
+  const hasAnyAudio = hasSourceAudio || Boolean(voiceoverPath);
+  if (mixNativeWithVo) {
+    args.push('-map', '[outa]');
+  } else if (voiceoverPath) {
+    // Phase 1: silent slides + a VO track. Unchanged from the original behaviour.
+    args.push('-map', '2:a', '-shortest');
+  } else if (hasSourceAudio) {
+    // Phase 2 with no VO: keep exactly what Veo generated.
+    args.push('-map', '0:a');
+  }
+
   args.push(
     '-c:v', 'libx264',
     // Same rationale as ffmpegEncode() above — a small container's real thread/process budget
@@ -367,7 +407,7 @@ async function finalizeVideo({ concatenatedPath, aspectRatio, logoPath, voiceove
     '-pix_fmt', 'yuv420p',
     '-movflags', '+faststart',
   );
-  if (voiceoverPath) args.push('-c:a', 'aac', '-b:a', '128k');
+  if (hasAnyAudio) args.push('-c:a', 'aac', '-b:a', '192k');
   args.push(outfile);
 
   await runFfmpeg(args);
@@ -496,13 +536,27 @@ async function normalizeClip(clipPath, aspectRatio, outfile, onScreenText) {
     console.warn(`  overlay font missing at ${OVERLAY_FONT} — skipping on-screen text for this shot`);
   }
 
-  await runFfmpeg([
-    '-y', '-i', clipPath,
+  // Veo's native audio is KEPT, not stripped. Every Veo clip ships with an AAC 48kHz stereo
+  // track (audio is "always on" and priced in whether you use it or not), and the earlier
+  // version of this function discarded it with `-an` — paying for sound and then deleting it.
+  // Normalised to identical codec/rate/layout here because the concat demuxer below compares
+  // stream layout across segments, not just video.
+  const sourceHasAudio = await hasAudioStream(clipPath);
+  const args = ['-y', '-i', clipPath];
+  // A clip with no audio at all gets a silent track synthesised, so the concat step still sees a
+  // consistent [video + audio] layout for every segment.
+  if (!sourceHasAudio) args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000');
+  args.push(
     '-vf', filters.join(','),
-    '-an',
+    '-map', '0:v:0',
+    '-map', sourceHasAudio ? '0:a:0' : '1:a:0',
     '-c:v', 'libx264', '-threads', '2', '-pix_fmt', 'yuv420p',
-    outfile,
-  ]);
+    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
+  );
+  if (!sourceHasAudio) args.push('-shortest'); // stop at the video's end, not the infinite silence
+  args.push(outfile);
+
+  await runFfmpeg(args);
   return outfile;
 }
 
@@ -517,8 +571,10 @@ async function normalizeAndConcatClips(clips, aspectRatio, outDir) {
     await normalizeClip(clips[i].source, aspectRatio, outfile, clips[i].onScreenText);
     normalized.push(outfile);
   }
-  // Same concat-demuxer approach as concatSlides() — every normalized clip now shares codec/
-  // resolution/fps/no-audio, so `-c copy` applies cleanly.
+  // Same concat-demuxer approach as concatSlides() — every normalized clip now shares codec,
+  // resolution, fps AND audio layout (AAC 48kHz stereo on every segment), so `-c copy` applies
+  // cleanly. The audio consistency matters as much as the video here: the demuxer compares the
+  // whole stream layout, so a segment missing its audio track would fail the join outright.
   const concatenated = await concatSlides(normalized, outDir);
 
   // One more Phase-2-only pass: re-encode with a forced constant frame rate to regenerate a
@@ -539,6 +595,9 @@ async function normalizeAndConcatClips(clips, aspectRatio, outDir) {
     '-y', '-i', concatenated,
     '-r', String(TARGET_FPS), '-vsync', 'cfr',
     '-c:v', 'libx264', '-threads', '2', '-pix_fmt', 'yuv420p',
+    // Audio carried through explicitly rather than left to ffmpeg's defaults — this pass exists
+    // to rebuild the timeline, and the soundtrack has to survive it intact.
+    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
     cleaned,
   ]);
   return cleaned;
@@ -602,7 +661,10 @@ async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, log
   if (onProgress) onProgress({ phase: 'stitching' });
   const concatenated = await normalizeAndConcatClips(clips, aspectRatio, outDir);
   const outfile = path.join(outDir, 'final.mp4');
-  await finalizeVideo({ concatenatedPath: concatenated, aspectRatio, logoPath, voiceoverPath, outfile });
+  // hasSourceAudio: Veo generates audio on every clip (always on, all tiers), and
+  // normalizeAndConcatClips() now preserves it end to end, so the assembled input really does
+  // carry a soundtrack — unlike Phase 1's silent slides.
+  await finalizeVideo({ concatenatedPath: concatenated, aspectRatio, logoPath, voiceoverPath, outfile, hasSourceAudio: true });
 
   return { failed: [], outDir, finalVideoPath: outfile };
 }

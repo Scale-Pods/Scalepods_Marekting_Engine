@@ -120,16 +120,33 @@ to Kling Avatar/HeyGen output (Phase 3, not built). This is a real, documented j
 (both existing content_types were reused rather than adding a new one, per PRD §9's "content_
 items needs no changes" instruction) — flagged here rather than silently assumed.
 
-## 4. Audio — deliberately NOT using Veo's native audio in v1
+## 4. Audio — REVERSED 2026-09-09: Veo's native audio is now kept
 
-Veo 3.1 supports native synced dialogue per-clip. Phase 2 v1 does **not** use it: shot prompts
-are written as visual descriptions only ("no dialogue" is stated explicitly in the GPT system
-prompt), and the video gets exactly one voiceover track for the whole thing — reusing Phase 1's
-existing `finalizeVideo()` VO-mux path completely unchanged. Reasons: (1) per-shot native audio
-would need per-shot volume/tone consistency across independently generated clips, a real quality
-risk; (2) it collapses "does this video have audio" into the one mechanism Phase 1 already built
-and verified live, instead of two. A real, flagged scope cut — native per-shot audio is a
-plausible Phase 2.1 addition, not built now.
+**Original decision (wrong, corrected below):** Phase 2 v1 stripped Veo's audio and relied only
+on an optional whole-video voiceover, on the reasoning that per-shot audio consistency was a
+quality risk.
+
+**What was actually true:** Google's own model table lists native audio as **"Always on"** for
+Veo 3.1, Fast *and* Lite, with **no parameter to disable it** — and their pricing page notes the
+default rate *includes* audio. So every clip we generated arrived with a real AAC 48kHz stereo
+track that we had already paid for, and `normalizeClip()`'s `-an` flag deleted it. Confirmed by
+ffprobing a real generated clip straight out of storage: video + `aac, 48000 Hz, stereo`.
+
+**Now:**
+- `normalizeClip()` keeps the source audio, normalised to AAC 48kHz stereo so every segment
+  shares an identical stream layout (the concat demuxer compares audio layout too, not just
+  video — a segment missing its track fails the join outright). A clip with no audio at all gets
+  a synthesised silent track so the join still works.
+- The concat clean-up pass carries audio through explicitly rather than relying on ffmpeg
+  defaults.
+- `finalizeVideo()` takes a `hasSourceAudio` flag: Phase 1's silent slides behave exactly as
+  before, while Phase 2 keeps Veo's own audio — and when a voiceover is also present, the native
+  track is **ducked to 18% and mixed under** the narration rather than discarded, so ambience and
+  SFX survive beneath the voice.
+
+The GPT prompt still forbids *dialogue* (spoken words in-frame), because lip-sync across
+independently generated shots is a genuine quality risk. Ambience, room tone and SFX are exactly
+what native audio is good for here.
 
 ## 5. Worker changes (`carousel-studio/`)
 
