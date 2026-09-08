@@ -7,13 +7,13 @@ import { pushNotification } from './notifications'
 export const GENERATION_ENABLED = true
 export const PUBLISHING_ENABLED = true
 // Video Studio Phase 2 (docs/video-studio-prd.md §0/§8) — separate from GENERATION_ENABLED
-// on purpose: this one gates a real per-click Veo spend ($0.48-$3.20+/shot), not a few cents
-// of GPT text. Ships false: no GEMINI_API_KEY exists on the Railway worker yet (see
-// docs/video-studio-trd-phase2.md §2), so there is nothing for this to safely enable. Flip to
-// true once that credential is wired in and a real end-to-end render has been verified —
-// same "keep it false until a stage is actually being demoed/used" discipline as every other
-// credit-safety flag in this file.
-export const VIDEO_GENERATION_ENABLED = false
+// on purpose: this one gates a real per-click Veo spend (~$0.20-$3.20 a shot), not a few cents
+// of GPT text. Enabled 2026-09-08 after GEMINI_API_KEY was set on the Railway worker and a real
+// end-to-end generation was verified live (a 4s Veo 3.1 Lite clip at 720p, $0.20, correct
+// output). The real spend controls are PER_VIDEO_CEILING_USD (a hard $5 cap that disables the
+// button) plus a confirmation dialog stating the actual figure — not this flag, which is the
+// master off-switch if video generation ever needs to be stopped outright.
+export const VIDEO_GENERATION_ENABLED = true
 
 export type ContentType =
   | 'static_image' | 'carousel' | 'ugc_video' | 'motion_graphics' | 'product_video'

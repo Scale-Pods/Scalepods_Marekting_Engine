@@ -430,11 +430,75 @@ async function renderVideo({ slug, aspectRatio, logoPath, voiceoverPath, onProgr
 // resolution/codec.
 const TARGET_FPS = 30; // matches this app's own slide renders (gen.js/render.js's Phase 1 path)
 
-async function normalizeClip(clipPath, aspectRatio, outfile) {
+// Debian's fonts-liberation package, already installed in the Dockerfile for Chromium's sake.
+// Overridable so a non-container environment can point at whatever it has; when the file is
+// missing we skip the text overlay entirely rather than failing the whole render for a caption.
+const OVERLAY_FONT = process.env.OVERLAY_FONT || '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf';
+
+// ffmpeg filter arguments are colon-delimited and backslash-escaped, which makes Windows paths
+// ("G:\work\...") and any real sentence ("Here's the fix: automate it") a parsing minefield.
+// Passing the caption via `textfile=` sidesteps text escaping completely, and this handles the
+// remaining path escaping for both platforms.
+function escapeFilterPath(p) {
+  return p.replace(/\\/g, '/').replace(/:/g, '\\:');
+}
+
+// Veo cannot spell — it renders text as convincing-looking gibberish, which is worse than no text
+// at all on a brand asset. So every on-screen word in a Video Studio output is drawn HERE, by
+// ffmpeg, from the exact string the user reviewed. Same reasoning as the logo being burned in
+// rather than generated.
+//
+// Wrapped by hand because drawtext has no word-wrap: a long caption would otherwise run off both
+// edges of a 1080-wide frame.
+function wrapCaption(text, maxCharsPerLine = 26) {
+  const words = String(text).trim().split(/\s+/);
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    if (!line) line = word;
+    else if ((line + ' ' + word).length <= maxCharsPerLine) line += ' ' + word;
+    else { lines.push(line); line = word; }
+  }
+  if (line) lines.push(line);
+  return lines.slice(0, 4).join('\n'); // 4 lines is already a lot of frame; hard-stop rather than cover the video
+}
+
+async function normalizeClip(clipPath, aspectRatio, outfile, onScreenText) {
   const [tw, th] = TARGET_DIMENSIONS[aspectRatio] || TARGET_DIMENSIONS['9:16'];
+  const filters = [
+    `scale=${tw}:${th}:force_original_aspect_ratio=increase,crop=${tw}:${th}`,
+    `fps=${TARGET_FPS}`,
+  ];
+
+  const caption = onScreenText && String(onScreenText).trim();
+  if (caption && fs.existsSync(OVERLAY_FONT)) {
+    const textPath = `${outfile}.caption.txt`;
+    fs.writeFileSync(textPath, wrapCaption(caption), 'utf8');
+    const fontSize = Math.round(tw * 0.058);
+    const lineSpacing = Math.round(fontSize * 0.35);
+    filters.push(
+      [
+        `drawtext=fontfile='${escapeFilterPath(OVERLAY_FONT)}'`,
+        `textfile='${escapeFilterPath(textPath)}'`,
+        'fontcolor=white',
+        `fontsize=${fontSize}`,
+        `line_spacing=${lineSpacing}`,
+        'box=1',
+        'boxcolor=black@0.55',
+        `boxborderw=${Math.round(fontSize * 0.5)}`,
+        'x=(w-text_w)/2',
+        // Sits in the lower third but clear of the bottom-right logo, which finalizeVideo()
+        // places at 4% margin — keeping the caption above 0.72h stops the two overlapping.
+        'y=h*0.68',
+      ].join(':'),
+    );
+  } else if (caption) {
+    console.warn(`  overlay font missing at ${OVERLAY_FONT} — skipping on-screen text for this shot`);
+  }
+
   await runFfmpeg([
     '-y', '-i', clipPath,
-    '-vf', `scale=${tw}:${th}:force_original_aspect_ratio=increase,crop=${tw}:${th},fps=${TARGET_FPS}`,
+    '-vf', filters.join(','),
     '-an',
     '-c:v', 'libx264', '-threads', '2', '-pix_fmt', 'yuv420p',
     outfile,
@@ -442,13 +506,15 @@ async function normalizeClip(clipPath, aspectRatio, outfile) {
   return outfile;
 }
 
-async function normalizeAndConcatClips(clipPaths, aspectRatio, outDir) {
+// `clips` is [{ source, onScreenText }] — `source` is either a local path (freshly generated) or
+// a remote URL (a reused shot), which ffmpeg reads identically.
+async function normalizeAndConcatClips(clips, aspectRatio, outDir) {
   const normalizedDir = path.join(outDir, 'normalized');
   fs.mkdirSync(normalizedDir, { recursive: true });
   const normalized = [];
-  for (let i = 0; i < clipPaths.length; i++) {
+  for (let i = 0; i < clips.length; i++) {
     const outfile = path.join(normalizedDir, `shot-${String(i).padStart(2, '0')}.mp4`);
-    await normalizeClip(clipPaths[i], aspectRatio, outfile);
+    await normalizeClip(clips[i].source, aspectRatio, outfile, clips[i].onScreenText);
     normalized.push(outfile);
   }
   // Same concat-demuxer approach as concatSlides() — every normalized clip now shares codec/
@@ -499,13 +565,13 @@ async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, log
   const outDir = path.join(ROOT, 'output', jobId);
   fs.mkdirSync(outDir, { recursive: true });
 
-  const clipSources = [];
+  const clips = [];
   for (let i = 0; i < shots.length; i++) {
     const shot = shots[i];
     if (onProgress) onProgress({ phase: 'shot_generating', slideIndex: i + 1, slideTotal: shots.length });
 
     if (shot.status === 'done' && shot.clipUrl) {
-      clipSources.push(shot.clipUrl);
+      clips.push({ source: shot.clipUrl, onScreenText: shot.onScreenText });
       if (onShotDone) await onShotDone({ ...shot }, i);
       continue;
     }
@@ -514,6 +580,7 @@ async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, log
     try {
       const { localPath, costUsd } = await generateShot({
         prompt: shot.prompt,
+        negativePrompt: shot.negativePrompt,
         engine,
         aspectRatio,
         durationS: shot.durationS,
@@ -524,7 +591,7 @@ async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, log
         // instead of "generating..." frozen for minutes at a time.
         onPoll: () => { if (onProgress) onProgress({ phase: 'shot_polling', slideIndex: i + 1, slideTotal: shots.length }); },
       });
-      clipSources.push(localPath);
+      clips.push({ source: localPath, onScreenText: shot.onScreenText });
       if (onShotDone) await onShotDone({ ...shot, status: 'done', costUsd, localPath }, i);
     } catch (err) {
       if (onShotDone) await onShotDone({ ...shot, status: 'failed', errorDetail: err.message.slice(0, 300) }, i);
@@ -533,7 +600,7 @@ async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, log
   }
 
   if (onProgress) onProgress({ phase: 'stitching' });
-  const concatenated = await normalizeAndConcatClips(clipSources, aspectRatio, outDir);
+  const concatenated = await normalizeAndConcatClips(clips, aspectRatio, outDir);
   const outfile = path.join(outDir, 'final.mp4');
   await finalizeVideo({ concatenatedPath: concatenated, aspectRatio, logoPath, voiceoverPath, outfile });
 

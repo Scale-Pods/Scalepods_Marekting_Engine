@@ -431,6 +431,7 @@ async function runRegenerateShot(jobId, shotIndex, engine, shot, aspectRatio, re
     const outfile = path.join(ROOT, 'output', jobId, `shot-${String(shotIndex).padStart(2, '0')}-raw.mp4`);
     const { costUsd } = await generateShot({
       prompt: shot.prompt,
+      negativePrompt: shot.negativePrompt,
       engine,
       aspectRatio: aspectRatio || '9:16',
       durationS: shot.durationS,
