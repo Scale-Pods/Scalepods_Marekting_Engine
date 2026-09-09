@@ -635,6 +635,7 @@ const server = http.createServer(async (req, res) => {
     const generated = [];
     const skipped = [];
     const failed = [];
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     for (const voice of Object.keys(VOICES)) {
       const objectPath = `video-studio/voice-samples/${voice}.wav`;
       const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${VIDEO_STORAGE_BUCKET}/${objectPath}`;
@@ -643,7 +644,20 @@ const server = http.createServer(async (req, res) => {
         if (head.ok) { skipped.push(voice); continue; }
 
         const local = path.join(ROOT, 'output', 'voice-samples', `${voice}.wav`);
-        await generateVoiceSample({ voice, outfile: local });
+        // The TTS preview model's free-tier per-minute quota is far tighter than its per-day
+        // one — firing 30 of these back-to-back exhausts it a few calls in, well short of any
+        // real daily cap. So each call waits out a QUOTA_EXCEEDED with backoff (this endpoint
+        // is only ever called from this idempotent admin route, never per-user, so a slow batch
+        // costs nothing but time) instead of giving up on the remaining voices.
+        for (let attempt = 0; ; attempt++) {
+          try {
+            await generateVoiceSample({ voice, outfile: local });
+            break;
+          } catch (err) {
+            if (attempt >= 4 || !String(err.message).startsWith('QUOTA_EXCEEDED')) throw err;
+            await sleep(15000 * (attempt + 1));
+          }
+        }
         const data = fs.readFileSync(local);
         const up = await fetch(`${SUPABASE_URL}/storage/v1/object/${VIDEO_STORAGE_BUCKET}/${objectPath}`, {
           method: 'PUT',
@@ -658,6 +672,8 @@ const server = http.createServer(async (req, res) => {
         if (!up.ok) throw new Error(`upload ${up.status}: ${await up.text()}`);
         fs.unlinkSync(local);
         generated.push(voice);
+        // Paced, not fired back-to-back — same per-minute quota reason as the retry above.
+        await sleep(4000);
       } catch (err) {
         // One bad voice must not abort the rest — the picker degrades to "no preview" for that
         // entry rather than losing every sample.
