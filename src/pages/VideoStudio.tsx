@@ -651,7 +651,7 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                     <RefreshCw size={15} />{' '}
                     {nextRunCost > 0
                       ? `Regenerate video — ≈$${nextRunCost.toFixed(2)}`
-                      : 'Rebuild video — free'}
+                      : 'Rebuild video'}
                   </Button>
                 </>
               )}
