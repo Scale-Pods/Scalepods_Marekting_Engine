@@ -54,6 +54,11 @@ const { generateVoiceover, generateMusic, generateVoiceSample, VOICES } = requir
 const ROOT = __dirname;
 const PORT = process.env.PORT || 8080;
 const WORKER_SECRET = process.env.RENDER_WORKER_SECRET;
+// Separate, narrower credential for the one-off /voice-samples admin call — this route only
+// mints public, non-sensitive TTS preview clips (no job data, no user content), so it doesn't
+// need to share the same secret n8n uses to authorize real paid renders. Optional: unset means
+// that alternate header simply never matches.
+const VOICE_SAMPLES_ADMIN_KEY = process.env.VOICE_SAMPLES_ADMIN_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const STORAGE_BUCKET = process.env.CAROUSEL_STORAGE_BUCKET || 'carousel-media';
@@ -620,7 +625,9 @@ const server = http.createServer(async (req, res) => {
   // a voice already in storage is skipped, so re-running costs nothing for what is already
   // there. Safe to call again after Google adds voices to the list.
   if (req.method === 'POST' && req.url === '/voice-samples') {
-    if (WORKER_SECRET && req.headers['x-worker-secret'] !== WORKER_SECRET) {
+    const workerSecretOk = WORKER_SECRET && req.headers['x-worker-secret'] === WORKER_SECRET;
+    const adminKeyOk = VOICE_SAMPLES_ADMIN_KEY && req.headers['x-admin-key'] === VOICE_SAMPLES_ADMIN_KEY;
+    if (WORKER_SECRET && !workerSecretOk && !adminKeyOk) {
       res.writeHead(401, { 'Content-Type': 'text/plain' });
       return res.end('unauthorized');
     }
