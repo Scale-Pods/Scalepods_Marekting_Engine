@@ -49,6 +49,7 @@ const path = require('path');
 const { generateCarousel } = require('./gen');
 const { renderCarousel, renderVideo, generateAndAssembleVideo } = require('./render');
 const { generateShot } = require('./veo'); // Video Studio Phase 2 only
+const { generateVoiceover, generateMusic } = require('./audio');
 
 const ROOT = __dirname;
 const PORT = process.env.PORT || 8080;
@@ -155,6 +156,26 @@ async function uploadShotClip(jobId, shotIndex, localPath) {
       Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
       apikey: SUPABASE_SERVICE_ROLE_KEY,
       'Content-Type': 'video/mp4',
+      'x-upsert': 'true',
+    },
+    body: data,
+  });
+  if (!res.ok) throw new Error(`Storage upload failed (${res.status}): ${await res.text()}`);
+  return `${SUPABASE_URL}/storage/v1/object/public/${VIDEO_STORAGE_BUCKET}/${objectPath}`;
+}
+
+// Video Studio audio tracks (voiceover / music). Same bucket and job-scoped path convention as
+// the shot clips, so everything a job produced lives together and a public URL can be handed
+// straight to ffmpeg on a later re-assembly.
+async function uploadAudioTrack(jobId, name, localPath, contentType) {
+  const objectPath = `video-studio/${jobId}/audio/${name}`;
+  const data = fs.readFileSync(localPath);
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${VIDEO_STORAGE_BUCKET}/${objectPath}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      'Content-Type': contentType,
       'x-upsert': 'true',
     },
     body: data,
@@ -334,7 +355,7 @@ async function runVideoJob(jobId, outline, aspectRatio, voiceoverUrl) {
 // PATCHed incrementally as each shot finishes generating (not just the final render_progress),
 // so the FE's storyboard can show each shot going pending -> generating -> done/failed in near
 // real time, same discipline as Phase 1's per-slide slide_urls updates.
-async function runGenerateVideoJob(jobId, shots, engine, aspectRatio, voiceoverUrl, resolution) {
+async function runGenerateVideoJob(jobId, shots, engine, aspectRatio, voiceoverUrl, resolution, audio = {}) {
   const PROGRESS_THROTTLE_MS = 1200;
   let lastProgressAt = 0;
   let lastPhase = null;
@@ -365,13 +386,49 @@ async function runGenerateVideoJob(jobId, shots, engine, aspectRatio, voiceoverU
       render_progress: { phase: 'starting', slideIndex: 0, slideTotal: currentShots.length },
     });
 
+    // Audio is generated BEFORE the shots on purpose. It costs cents where the shots cost
+    // dollars, so if a track is going to fail (bad key, no credit, refused prompt) it is far
+    // better to find out before paying Veo for footage that would then be missing its
+    // soundtrack. An existing URL is reused rather than regenerated, same as a finished shot.
+    const audioDir = path.join(ROOT, 'output', jobId, 'audio');
+    let voPath = null;
+    let musicUrl = audio.musicUrl || null;
+    let resolvedVoiceoverUrl = voiceoverUrl || null;
+
+    if (audio.voiceoverScript && !resolvedVoiceoverUrl) {
+      reportProgress({ phase: 'audio_voiceover' });
+      const local = await generateVoiceover({
+        script: audio.voiceoverScript,
+        voice: audio.voice,
+        outfile: path.join(audioDir, 'voiceover.wav'),
+      });
+      resolvedVoiceoverUrl = await uploadAudioTrack(jobId, 'voiceover.wav', local, 'audio/wav');
+      await patchVideoJob(jobId, { voiceover_url: resolvedVoiceoverUrl });
+      voPath = local;
+    }
+
+    let musicPath = null;
+    if (audio.musicPrompt && !musicUrl) {
+      reportProgress({ phase: 'audio_music' });
+      const local = await generateMusic({
+        prompt: audio.musicPrompt,
+        outfile: path.join(audioDir, 'music.mp3'),
+      });
+      musicUrl = await uploadAudioTrack(jobId, 'music.mp3', local, 'audio/mpeg');
+      await patchVideoJob(jobId, { music_url: musicUrl });
+      musicPath = local;
+    }
+
     const { failed, finalVideoPath } = await generateAndAssembleVideo({
       jobId,
       shots: currentShots,
       engine,
       aspectRatio: aspectRatio || '9:16',
       logoPath: LOGO_PATH,
-      voiceoverPath: voiceoverUrl || null,
+      // A freshly generated track is already on local disk; a reused one is read straight from
+      // its public URL, which ffmpeg handles identically.
+      voiceoverPath: voPath || resolvedVoiceoverUrl || null,
+      musicPath: musicPath || musicUrl || null,
       resolution: resolution || '1080p',
       onProgress: reportProgress,
       onShotDone: async (updatedShot, i) => {
@@ -536,7 +593,7 @@ const server = http.createServer(async (req, res) => {
       return res.end('invalid JSON body');
     }
 
-    const { job_id, engine, shots, aspect_ratio, voiceover_url, resolution } = parsed;
+    const { job_id, engine, shots, aspect_ratio, voiceover_url, resolution, voiceover_script, voice, music_prompt, music_url } = parsed;
     if (!job_id || !engine || !Array.isArray(shots) || shots.length === 0) {
       res.writeHead(400, { 'Content-Type': 'text/plain' });
       return res.end('job_id (string), engine (string) and shots (non-empty array) are required');
@@ -548,7 +605,12 @@ const server = http.createServer(async (req, res) => {
     // `resolution` is optional and NOT yet exposed by the FE/n8n (still 1080p-only there as of
     // 2026-09-08, see veo.js's PRICE_PER_SECOND comment) — accepted here so a manual/direct test
     // call can request 720p; runGenerateVideoJob defaults to 1080p when omitted.
-    runGenerateVideoJob(job_id, shots, engine, aspect_ratio, voiceover_url, resolution).catch((err) =>
+    runGenerateVideoJob(job_id, shots, engine, aspect_ratio, voiceover_url, resolution, {
+      voiceoverScript: voiceover_script,
+      voice,
+      musicPrompt: music_prompt,
+      musicUrl: music_url,
+    }).catch((err) =>
       console.error(`Generate-video job ${job_id} crashed unexpectedly:`, err),
     );
     return;

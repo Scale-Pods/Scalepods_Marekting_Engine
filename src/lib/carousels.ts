@@ -33,7 +33,9 @@ export interface RenderProgress {
   // per Veo shot) — reuse slideIndex/slideTotal generically for "shot N of M", same convention
   // 'stitching' already established for reusing this one shared progress shape across both
   // Video Studio phases instead of a second parallel type.
-  phase: 'starting' | 'loading' | 'capturing' | 'retrying' | 'encoding' | 'uploading' | 'stitching' | 'shot_generating' | 'shot_polling' | 'slide_failed' | 'done' | 'failed'
+  // 'audio_voiceover'/'audio_music' are Phase 2-only, and run BEFORE the shots — audio costs
+  // cents where footage costs dollars, so a failing track surfaces before Veo is paid.
+  phase: 'starting' | 'loading' | 'capturing' | 'retrying' | 'encoding' | 'uploading' | 'stitching' | 'shot_generating' | 'shot_polling' | 'audio_voiceover' | 'audio_music' | 'slide_failed' | 'done' | 'failed'
   slideIndex?: number
   slideTotal?: number
   slideName?: string
@@ -69,6 +71,8 @@ export function describeProgress(p: RenderProgress | null | undefined): string {
     case 'encoding': return `${slide ?? 'Slide'} — encoding video…`
     case 'uploading': return `${slide ?? 'Slide'} — uploading…`
     case 'stitching': return 'Stitching slides, branding, and encoding the final video…'
+    case 'audio_voiceover': return 'Recording the voiceover…'
+    case 'audio_music': return 'Composing the music bed…'
     case 'shot_generating': return `${slide ?? 'Shot'} — sending to Veo…`
     case 'shot_polling': return `${slide ?? 'Shot'} — Veo is rendering (this can take a few minutes)…`
     case 'slide_failed': return `${slide ?? 'Slide'} failed — ${p.message ?? 'unknown error'}`

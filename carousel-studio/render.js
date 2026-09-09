@@ -361,7 +361,7 @@ async function concatSlides(slideFiles, outDir) {
 //         always on and already paid for. With a voiceover on top, the native track is ducked
 //         under the narration and mixed rather than thrown away, so ambience and SFX survive
 //         beneath the voice.
-async function finalizeVideo({ concatenatedPath, aspectRatio, logoPath, voiceoverPath, outfile, hasSourceAudio = false }) {
+async function finalizeVideo({ concatenatedPath, aspectRatio, logoPath, voiceoverPath, musicPath, outfile, hasSourceAudio = false }) {
   const [tw, th] = TARGET_DIMENSIONS[aspectRatio] || TARGET_DIMENSIONS['9:16'];
   const logoW = Math.round(tw * 0.22);
   const margin = Math.round(tw * 0.04);
@@ -374,29 +374,51 @@ async function finalizeVideo({ concatenatedPath, aspectRatio, logoPath, voiceove
     `[framed][logo]overlay=W-w-${margin}:H-h-${margin}[outv]`,
   ];
 
-  // Native audio ducked to 18% under the narration — loud enough that the scene still sounds
-  // alive, quiet enough that the voice stays the thing you hear. duration=first ties the mix to
-  // the video's own length, so an over-long VO is trimmed rather than extending the video.
-  const mixNativeWithVo = hasSourceAudio && voiceoverPath;
-  if (mixNativeWithVo) {
-    videoFilters.push('[0:a]volume=0.18[duck]');
-    videoFilters.push('[2:a]volume=1.0[vo]');
-    videoFilters.push('[duck][vo]amix=inputs=2:duration=first:dropout_transition=0[outa]');
+  // ---- Audio ------------------------------------------------------------------------------
+  // Up to three layers, mixed into one continuous track across the whole finished video:
+  //
+  //   voiceover  the message, always on top
+  //   music      a continuous bed. This is what actually fixes the discontinuity problem: Veo
+  //              generates each shot independently, so its per-shot room tone jumps at every cut.
+  //              A bed running the full length masks those seams instead of leaving them exposed.
+  //   native     Veo's own per-shot audio — real ambience and SFX, already paid for, kept low
+  //              underneath rather than discarded.
+  //
+  // Levels are set relative to whatever else is playing: the voice always wins, and the bed only
+  // comes forward when there is no voice to sit under.
+  const inputs = [concatenatedPath, logoPath];
+  const voIndex = voiceoverPath ? inputs.push(voiceoverPath) - 1 : -1;
+  const musicIndex = musicPath ? inputs.push(musicPath) - 1 : -1;
+
+  const nativeLevel = voiceoverPath ? 0.10 : musicPath ? 0.30 : 1.0;
+  const musicLevel = voiceoverPath ? 0.15 : 0.55;
+
+  const layers = [];
+  if (hasSourceAudio) { videoFilters.push(`[0:a]volume=${nativeLevel}[anative]`); layers.push('[anative]'); }
+  if (voIndex >= 0) { videoFilters.push(`[${voIndex}:a]volume=1.0[avo]`); layers.push('[avo]'); }
+  if (musicIndex >= 0) { videoFilters.push(`[${musicIndex}:a]volume=${musicLevel}[amusic]`); layers.push('[amusic]'); }
+
+  // Only the plain "keep exactly what Veo generated" case skips the filter graph entirely — it is
+  // the already-verified path and there is nothing to mix.
+  const nativeOnly = layers.length === 1 && hasSourceAudio;
+  if (layers.length > 0 && !nativeOnly) {
+    // apad runs the mix out with silence so a short voiceover or bed never truncates the video;
+    // `-shortest` below then ends the file at the video, so a long one never extends it either.
+    const mix = layers.length > 1
+      ? `${layers.join('')}amix=inputs=${layers.length}:duration=longest:dropout_transition=0,apad[outa]`
+      : `${layers[0]}apad[outa]`;
+    videoFilters.push(mix);
   }
 
-  const args = ['-y', '-i', concatenatedPath, '-i', logoPath];
-  if (voiceoverPath) args.push('-i', voiceoverPath);
+  const args = ['-y'];
+  for (const input of inputs) args.push('-i', input);
   args.push('-filter_complex', videoFilters.join(';'), '-map', '[outv]');
 
-  const hasAnyAudio = hasSourceAudio || Boolean(voiceoverPath);
-  if (mixNativeWithVo) {
-    args.push('-map', '[outa]');
-  } else if (voiceoverPath) {
-    // Phase 1: silent slides + a VO track. Unchanged from the original behaviour.
-    args.push('-map', '2:a', '-shortest');
-  } else if (hasSourceAudio) {
-    // Phase 2 with no VO: keep exactly what Veo generated.
+  const hasAnyAudio = layers.length > 0;
+  if (nativeOnly) {
     args.push('-map', '0:a');
+  } else if (hasAnyAudio) {
+    args.push('-map', '[outa]', '-shortest');
   }
 
   args.push(
@@ -620,7 +642,7 @@ async function normalizeAndConcatClips(clips, aspectRatio, outDir) {
 // shots_json incrementally, mirroring renderCarousel()'s onSlideDone. For a freshly generated
 // shot it receives `localPath` (server.js uploads it and writes the real clipUrl back); for a
 // reused shot there is nothing new to upload, so `localPath` is absent.
-async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, logoPath, voiceoverPath, onProgress, onShotDone, resolution = '1080p' }) {
+async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, logoPath, voiceoverPath, musicPath, onProgress, onShotDone, resolution = '1080p' }) {
   const outDir = path.join(ROOT, 'output', jobId);
   fs.mkdirSync(outDir, { recursive: true });
 
@@ -664,7 +686,7 @@ async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, log
   // hasSourceAudio: Veo generates audio on every clip (always on, all tiers), and
   // normalizeAndConcatClips() now preserves it end to end, so the assembled input really does
   // carry a soundtrack — unlike Phase 1's silent slides.
-  await finalizeVideo({ concatenatedPath: concatenated, aspectRatio, logoPath, voiceoverPath, outfile, hasSourceAudio: true });
+  await finalizeVideo({ concatenatedPath: concatenated, aspectRatio, logoPath, voiceoverPath, musicPath, outfile, hasSourceAudio: true });
 
   return { failed: [], outDir, finalVideoPath: outfile };
 }

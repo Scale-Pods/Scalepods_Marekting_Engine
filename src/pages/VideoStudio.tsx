@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Film, Sparkles, RefreshCw, Play, CheckCircle2, XCircle, Plus, Trash2, TrendingUp, Target, Type,
-  Mic, Download, Send, Clapperboard, Wand2, AlertTriangle, ExternalLink, Clock,
+  Mic, Download, Send, Clapperboard, Wand2, AlertTriangle, ExternalLink, Clock, Music,
 } from 'lucide-react'
 import { useProfile } from '../lib/queries'
 import { supabase } from '../lib/supabase'
@@ -14,6 +14,7 @@ import {
   markVideoJobUsed, regenerateVideoShot, describeProgress, overallProgress,
   estimateShotsCost, totalDurationS, ratePerSecond, formatUsdInr, describeVideoError,
   VIDEO_ENGINES, VIDEO_RESOLUTIONS, ENGINE_LABEL, ENGINE_BLURB, PER_VIDEO_CEILING_USD,
+  MUSIC_COST_USD, VOICE_OPTIONS, DEFAULT_VOICE,
   type VideoJob, type CarouselSlide, type VideoShot, type VideoEngine, type VideoType,
   type VideoResolution,
 } from '../lib/videoStudio'
@@ -61,13 +62,16 @@ function StatusBadge({ status }: { status: VideoJob['status'] }) {
  *  what it's charging per second, how many seconds, and the total in both currencies. Mirrors
  *  AI Studio's CostEstimate, but video costs 10-100x more per click so it gets more room. */
 function CostBar({
-  engine, resolution, seconds, shots, overCeiling,
+  engine, resolution, seconds, shots, overCeiling, music = false,
 }: {
   engine: VideoEngine
   resolution: VideoResolution
   seconds: number
   shots: number
   overCeiling: boolean
+  /** Adds the flat music charge. The voiceover is deliberately not itemised — it is token-priced
+   *  and lands in fractions of a cent, so listing it would imply a decision worth making. */
+  music?: boolean
 }) {
   const rate = ratePerSecond(engine, resolution)
   if (rate == null) {
@@ -77,7 +81,7 @@ function CostBar({
       </div>
     )
   }
-  const total = Math.round(rate * seconds * 100) / 100
+  const total = Math.round((rate * seconds + (music ? MUSIC_COST_USD : 0)) * 100) / 100
   return (
     <div
       className="rounded-lg px-3 py-2.5 flex items-center justify-between gap-3 flex-wrap"
@@ -85,6 +89,7 @@ function CostBar({
     >
       <div className="text-[11px] text-muted tabular-nums">
         {shots} shot{shots === 1 ? '' : 's'} · {seconds}s total · ${rate.toFixed(2)}/sec at {resolution}
+        {music && ` · +$${MUSIC_COST_USD.toFixed(2)} music`}
       </div>
       <div className={`text-sm font-bold tabular-nums ${overCeiling ? 'text-terracotta' : 'text-sage'}`}>
         ≈ {formatUsdInr(total)}
@@ -340,6 +345,8 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
   const [shots, setShots] = useState<VideoShot[]>(job.shots_json ?? [])
   const [copy, setCopy] = useState<StudioCopy>(job.copy_json ?? {})
   const [voScript, setVoScript] = useState(job.voiceover_script ?? '')
+  const [voice, setVoice] = useState(job.voice ?? DEFAULT_VOICE)
+  const [musicPrompt, setMusicPrompt] = useState(job.music_prompt ?? '')
   const [saving, setSaving] = useState(false)
   const [rendering, setRendering] = useState(false)
   const [sending, setSending] = useState(false)
@@ -357,6 +364,8 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
     setShots(job.shots_json ?? [])
     setCopy(job.copy_json ?? {})
     setVoScript(job.voiceover_script ?? '')
+    setVoice(job.voice ?? DEFAULT_VOICE)
+    setMusicPrompt(job.music_prompt ?? '')
   }, [job.id])
 
   // Live, not stale: recomputed on every duration change / shot removal, so the number on the
@@ -399,7 +408,22 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
     setSaving(true)
     try {
       if (isGeneratedClips) {
-        await updateVideoDraft(job.id, { shots_json: shots, estimated_cost_usd: liveCost, copy_json: copy, voiceover_script: voScript || null })
+        // Changing the script or the voice invalidates the recording that was made from the old
+        // one — clearing the URL is what makes the next run re-record it instead of silently
+        // reusing the previous take. Same rule as an edited shot prompt; both are cheap, so
+        // unlike a shot this costs essentially nothing to redo.
+        const voChanged = (voScript || null) !== (job.voiceover_script || null) || voice !== (job.voice ?? DEFAULT_VOICE)
+        const musicChanged = (musicPrompt || null) !== (job.music_prompt || null)
+        await updateVideoDraft(job.id, {
+          shots_json: shots,
+          estimated_cost_usd: liveCost,
+          copy_json: copy,
+          voiceover_script: voScript || null,
+          voice,
+          music_prompt: musicPrompt || null,
+          ...(voChanged ? { voiceover_url: null } : {}),
+          ...(musicChanged ? { music_url: null } : {}),
+        })
       } else {
         await updateVideoDraft(job.id, { outline_json: outline, copy_json: copy, voiceover_script: voScript || null })
       }
@@ -521,10 +545,30 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
             </div>
           )}
           <CopyEditor copy={copy} onChange={setCopy} />
-          {job.voiceover_script !== null && (
-            <Panel className="!p-4 space-y-2">
-              <div className="label flex items-center gap-1.5"><Mic size={13} /> Voiceover script</div>
-              <textarea className="input" rows={3} value={voScript} onChange={(e) => setVoScript(e.target.value)} />
+          {(job.voiceover_script !== null || job.music_prompt !== null) && (
+            <Panel className="!p-4 space-y-3">
+              <div className="label !mb-0">Audio</div>
+              {job.voiceover_script !== null && (
+                <>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-muted flex items-center gap-1.5"><Mic size={13} /> Voiceover</span>
+                    <select className="input !w-auto !py-1 text-xs" value={voice} onChange={(e) => setVoice(e.target.value)}>
+                      {VOICE_OPTIONS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+                    </select>
+                  </div>
+                  <textarea className="input" rows={3} value={voScript} onChange={(e) => setVoScript(e.target.value)} />
+                </>
+              )}
+              {job.music_prompt !== null && (
+                <>
+                  <div className="text-xs text-muted flex items-center gap-1.5"><Music size={13} /> Music bed</div>
+                  <input className="input" value={musicPrompt} onChange={(e) => setMusicPrompt(e.target.value)} placeholder="Describe the backing track" />
+                </>
+              )}
+              {job.music_url && <audio src={job.music_url} controls className="w-full" />}
+              <div className="text-[11px] text-muted">
+                Re-recording the voiceover or the music costs essentially nothing — only the shots carry a real price.
+              </div>
             </Panel>
           )}
 
@@ -621,10 +665,30 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
               ))}
 
               <CopyEditor copy={copy} onChange={setCopy} />
-              {job.voiceover_script !== null && (
-                <Panel className="!p-4 space-y-2">
-                  <div className="label flex items-center gap-1.5"><Mic size={13} /> Voiceover script</div>
-                  <textarea className="input" rows={3} value={voScript} onChange={(e) => setVoScript(e.target.value)} disabled={!editable} />
+              {(job.voiceover_script !== null || job.music_prompt !== null) && (
+                <Panel className="!p-4 space-y-3">
+                  <div className="label !mb-0">Audio</div>
+                  {job.voiceover_script !== null && (
+                    <>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-muted flex items-center gap-1.5"><Mic size={13} /> Voiceover</span>
+                        <select className="input !w-auto !py-1 text-xs" value={voice} onChange={(e) => setVoice(e.target.value)} disabled={!editable}>
+                          {VOICE_OPTIONS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+                        </select>
+                      </div>
+                      <textarea className="input" rows={3} value={voScript} onChange={(e) => setVoScript(e.target.value)} disabled={!editable} />
+                    </>
+                  )}
+                  {job.music_prompt !== null && (
+                    <>
+                      <div className="text-xs text-muted flex items-center gap-1.5"><Music size={13} /> Music bed</div>
+                      <input className="input" value={musicPrompt} onChange={(e) => setMusicPrompt(e.target.value)} disabled={!editable} placeholder="Describe the backing track" />
+                    </>
+                  )}
+                  {job.music_url && <audio src={job.music_url} controls className="w-full" />}
+                  <div className="text-[11px] text-muted">
+                    Re-recording the voiceover or the music costs essentially nothing — only the shots carry a real price.
+                  </div>
                 </Panel>
               )}
 
@@ -719,6 +783,8 @@ export default function VideoStudio() {
   const [shotCount, setShotCount] = useState(3)
   const [durationS, setDurationS] = useState<4 | 6 | 8>(4)
   const [wantsVoiceover, setWantsVoiceover] = useState(false)
+  const [wantsMusic, setWantsMusic] = useState(false)
+  const [voice, setVoice] = useState(DEFAULT_VOICE)
   const [generating, setGenerating] = useState(false)
   const toast = useToast()
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -816,6 +882,7 @@ export default function VideoStudio() {
         platform,
         aspectRatio: ratio,
         wantsVoiceover,
+        wantsMusic: isClips ? wantsMusic : false,
         videoType,
         slideCount: isClips ? undefined : slideCount,
         engine: isClips ? engine : undefined,
@@ -1100,14 +1167,34 @@ export default function VideoStudio() {
           )}
         </div>
 
-        <label className="flex items-center gap-2 text-xs text-secondary cursor-pointer">
-          <input type="checkbox" checked={wantsVoiceover} onChange={(e) => setWantsVoiceover(e.target.checked)} />
-          <Mic size={13} /> Write a voiceover script with the brief
-        </label>
+        {/* --- Audio -------------------------------------------------------- */}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-xs text-secondary cursor-pointer">
+            <input type="checkbox" checked={wantsVoiceover} onChange={(e) => setWantsVoiceover(e.target.checked)} />
+            <Mic size={13} /> Add a voiceover
+          </label>
+          {wantsVoiceover && (
+            <div className="flex items-center gap-2 flex-wrap pl-6">
+              <span className="text-xs text-muted">Voice</span>
+              <select className="input !w-auto !py-1 text-xs" value={voice} onChange={(e) => setVoice(e.target.value)}>
+                {VOICE_OPTIONS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+              </select>
+            </div>
+          )}
+          {isClips && (
+            <label className="flex items-center gap-2 text-xs text-secondary cursor-pointer">
+              <input type="checkbox" checked={wantsMusic} onChange={(e) => setWantsMusic(e.target.checked)} />
+              <Music size={13} /> Add background music
+              <span className="text-[11px] text-muted">
+                +${MUSIC_COST_USD.toFixed(2)} · also smooths the audio between shots
+              </span>
+            </label>
+          )}
+        </div>
 
         {/* --- Price -------------------------------------------------------- */}
         {isClips && (
-          <CostBar engine={engine} resolution={resolution} seconds={plannedSeconds} shots={shotCount} overCeiling={plannedOverCeiling} />
+          <CostBar engine={engine} resolution={resolution} seconds={plannedSeconds} shots={shotCount} overCeiling={plannedOverCeiling} music={wantsMusic} />
         )}
 
         <div className="flex items-center gap-3 flex-wrap">

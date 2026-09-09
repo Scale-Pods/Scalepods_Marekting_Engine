@@ -54,6 +54,29 @@ export const PRICE_PER_SECOND: Record<VideoEngine, Record<VideoResolution, numbe
  *  unlikely" is the PRD's own bar. */
 export const PER_VIDEO_CEILING_USD = 5
 
+/**
+ * Audio layers, both generated through the SAME Gemini key the video already uses — no extra
+ * vendor and no extra credential (checked against ElevenLabs, which is excellent but needs its
+ * own account; at these volumes the quality difference did not justify a second vendor).
+ *
+ * Music is a real flat charge worth showing. Voiceover is token-priced and lands in fractions of
+ * a cent for a short script — genuinely rounding error against a $1-3 video — so it is presented
+ * as included rather than itemised, which is honest and avoids implying a decision worth making.
+ */
+export const MUSIC_COST_USD = 0.04
+
+/** Prebuilt Gemini TTS voices, mirrored from carousel-studio/audio.js's VOICES. Kept to a short
+ *  narration-friendly set on purpose — 30 options is a worse picker than 6 good ones. */
+export const VOICE_OPTIONS: { id: string; label: string }[] = [
+  { id: 'Charon', label: 'Charon — measured, low' },
+  { id: 'Kore', label: 'Kore — warm, even' },
+  { id: 'Puck', label: 'Puck — bright, energetic' },
+  { id: 'Enceladus', label: 'Enceladus — soft, close-mic' },
+  { id: 'Zephyr', label: 'Zephyr — light, quick' },
+  { id: 'Fenrir', label: 'Fenrir — deep, deliberate' },
+]
+export const DEFAULT_VOICE = 'Charon'
+
 /** Mid-market rate as of 2026-09-08 (wise.com). Only ever used to render an INR figure alongside
  *  the USD one — every real charge is in USD, so this is a courtesy conversion, not an
  *  authoritative amount. Update by hand; being a few percent stale is harmless here. */
@@ -184,6 +207,10 @@ export interface VideoJob {
   video_style_id: string | null
   shots_json: VideoShot[] | null
   estimated_cost_usd: number | null
+  /** Description of the backing track, written with the brief. Null means no music bed. */
+  music_prompt: string | null
+  music_url: string | null
+  voice: string | null
   created_at: string
   updated_at: string
 }
@@ -222,6 +249,9 @@ export async function generateVideoBrief(params: {
   platform: string
   aspectRatio: AspectRatio
   wantsVoiceover: boolean
+  /** Adds a continuous music bed — the layer that actually masks Veo's shot-to-shot ambience
+   *  jumps, since each shot is generated with no knowledge of the others. */
+  wantsMusic?: boolean
   videoType: VideoType
   /** motion_graphics only */
   slideCount?: number
@@ -250,6 +280,7 @@ export async function generateVideoBrief(params: {
     platform: params.platform,
     aspectRatio: params.aspectRatio,
     wantsVoiceover: params.wantsVoiceover,
+    wantsMusic: params.wantsMusic ?? false,
     videoType: params.videoType,
     slideCount: params.slideCount,
     engine: params.engine,
@@ -274,6 +305,12 @@ export async function updateVideoDraft(
     resolution?: VideoResolution
     copy_json?: StudioCopy
     voiceover_script?: string | null
+    music_prompt?: string | null
+    voice?: string | null
+    /** Cleared when the script or voice changes, so the next run regenerates the track instead
+     *  of silently reusing the old recording — same invalidation rule as an edited shot. */
+    voiceover_url?: string | null
+    music_url?: string | null
   },
 ): Promise<void> {
   const { error } = await supabase.from('video_jobs').update(patch).eq('id', jobId)
