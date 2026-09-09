@@ -65,17 +65,68 @@ export const PER_VIDEO_CEILING_USD = 5
  */
 export const MUSIC_COST_USD = 0.04
 
-/** Prebuilt Gemini TTS voices, mirrored from carousel-studio/audio.js's VOICES. Kept to a short
- *  narration-friendly set on purpose — 30 options is a worse picker than 6 good ones. */
-export const VOICE_OPTIONS: { id: string; label: string }[] = [
-  { id: 'Charon', label: 'Charon — measured, low' },
-  { id: 'Kore', label: 'Kore — warm, even' },
-  { id: 'Puck', label: 'Puck — bright, energetic' },
-  { id: 'Enceladus', label: 'Enceladus — soft, close-mic' },
-  { id: 'Zephyr', label: 'Zephyr — light, quick' },
-  { id: 'Fenrir', label: 'Fenrir — deep, deliberate' },
+/**
+ * All 30 prebuilt Gemini TTS voices, with Google's own one-word characteristic for each
+ * (ai.google.dev/gemini-api/docs/speech-generation). These descriptors are quoted from the
+ * vendor rather than invented here — a made-up description of how a voice sounds is worse than
+ * none, because it sets an expectation the audio then fails.
+ *
+ * `recommended` flags the handful that suit a measured B2B read; the picker surfaces those first
+ * but every voice is selectable and previewable.
+ */
+export interface VoiceOption {
+  id: string
+  /** Google's own characteristic for this voice. */
+  tone: string
+  recommended?: boolean
+}
+
+export const VOICE_OPTIONS: VoiceOption[] = [
+  { id: 'Charon', tone: 'Informative', recommended: true },
+  { id: 'Rasalgethi', tone: 'Informative', recommended: true },
+  { id: 'Sadaltager', tone: 'Knowledgeable', recommended: true },
+  { id: 'Schedar', tone: 'Even', recommended: true },
+  { id: 'Alnilam', tone: 'Firm', recommended: true },
+  { id: 'Gacrux', tone: 'Mature', recommended: true },
+  { id: 'Iapetus', tone: 'Clear' },
+  { id: 'Erinome', tone: 'Clear' },
+  { id: 'Kore', tone: 'Firm' },
+  { id: 'Orus', tone: 'Firm' },
+  { id: 'Sulafat', tone: 'Warm' },
+  { id: 'Achird', tone: 'Friendly' },
+  { id: 'Algieba', tone: 'Smooth' },
+  { id: 'Despina', tone: 'Smooth' },
+  { id: 'Vindemiatrix', tone: 'Gentle' },
+  { id: 'Achernar', tone: 'Soft' },
+  { id: 'Enceladus', tone: 'Breathy' },
+  { id: 'Aoede', tone: 'Breezy' },
+  { id: 'Callirrhoe', tone: 'Easy-going' },
+  { id: 'Umbriel', tone: 'Easy-going' },
+  { id: 'Zubenelgenubi', tone: 'Casual' },
+  { id: 'Algenib', tone: 'Gravelly' },
+  { id: 'Zephyr', tone: 'Bright' },
+  { id: 'Autonoe', tone: 'Bright' },
+  { id: 'Puck', tone: 'Upbeat' },
+  { id: 'Laomedeia', tone: 'Upbeat' },
+  { id: 'Sadachbia', tone: 'Lively' },
+  { id: 'Fenrir', tone: 'Excitable' },
+  { id: 'Leda', tone: 'Youthful' },
+  { id: 'Pulcherrima', tone: 'Forward' },
 ]
 export const DEFAULT_VOICE = 'Charon'
+
+/**
+ * Where a voice's preview clip lives once generated — a fixed public path, NOT job-scoped, so
+ * one sample per voice is generated once and then served to everyone for free forever.
+ *
+ * Deliberately a plain public URL rather than a generate-on-click call: a preview you wait two
+ * seconds for is a preview nobody uses, and re-synthesising the same sentence on every click
+ * would pay for identical audio over and over.
+ */
+export function voiceSampleUrl(voiceId: string): string {
+  const base = import.meta.env.VITE_SUPABASE_URL ?? ''
+  return `${base}/storage/v1/object/public/content-media/video-studio/voice-samples/${voiceId}.wav`
+}
 
 /** Mid-market rate as of 2026-09-08 (wise.com). Only ever used to render an INR figure alongside
  *  the USD one — every real charge is in USD, so this is a courtesy conversion, not an

@@ -49,7 +49,7 @@ const path = require('path');
 const { generateCarousel } = require('./gen');
 const { renderCarousel, renderVideo, generateAndAssembleVideo } = require('./render');
 const { generateShot } = require('./veo'); // Video Studio Phase 2 only
-const { generateVoiceover, generateMusic } = require('./audio');
+const { generateVoiceover, generateMusic, generateVoiceSample, VOICES } = require('./audio');
 
 const ROOT = __dirname;
 const PORT = process.env.PORT || 8080;
@@ -614,6 +614,52 @@ const server = http.createServer(async (req, res) => {
       console.error(`Generate-video job ${job_id} crashed unexpectedly:`, err),
     );
     return;
+  }
+
+  // Fills in any missing voice previews and reports which ones exist. Idempotent and cheap:
+  // a voice already in storage is skipped, so re-running costs nothing for what is already
+  // there. Safe to call again after Google adds voices to the list.
+  if (req.method === 'POST' && req.url === '/voice-samples') {
+    if (WORKER_SECRET && req.headers['x-worker-secret'] !== WORKER_SECRET) {
+      res.writeHead(401, { 'Content-Type': 'text/plain' });
+      return res.end('unauthorized');
+    }
+
+    const generated = [];
+    const skipped = [];
+    const failed = [];
+    for (const voice of Object.keys(VOICES)) {
+      const objectPath = `video-studio/voice-samples/${voice}.wav`;
+      const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${VIDEO_STORAGE_BUCKET}/${objectPath}`;
+      try {
+        const head = await fetch(publicUrl, { method: 'HEAD' });
+        if (head.ok) { skipped.push(voice); continue; }
+
+        const local = path.join(ROOT, 'output', 'voice-samples', `${voice}.wav`);
+        await generateVoiceSample({ voice, outfile: local });
+        const data = fs.readFileSync(local);
+        const up = await fetch(`${SUPABASE_URL}/storage/v1/object/${VIDEO_STORAGE_BUCKET}/${objectPath}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            'Content-Type': 'audio/wav',
+            'x-upsert': 'true',
+          },
+          body: data,
+        });
+        if (!up.ok) throw new Error(`upload ${up.status}: ${await up.text()}`);
+        fs.unlinkSync(local);
+        generated.push(voice);
+      } catch (err) {
+        // One bad voice must not abort the rest — the picker degrades to "no preview" for that
+        // entry rather than losing every sample.
+        failed.push({ voice, error: String(err.message).slice(0, 200) });
+      }
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ generated, skipped, failed }));
   }
 
   if (req.method === 'POST' && req.url === '/regenerate-shot') {

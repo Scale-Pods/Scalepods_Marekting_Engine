@@ -36,17 +36,29 @@ const PCM_SAMPLE_RATE = 24000;
 const PCM_CHANNELS = 1;
 const PCM_BITS = 16;
 
-/** A handful of the prebuilt Gemini voices, chosen for narration rather than character work.
- *  Kept small on purpose — 30 options is a worse picker than 6 good ones. */
+/**
+ * All 30 prebuilt Gemini voices, with Google's own one-word characteristic for each
+ * (ai.google.dev/gemini-api/docs/speech-generation). Kept as the vendor states them rather than
+ * re-described here — an invented description of how a voice sounds is worse than none.
+ *
+ * Mirrored in src/lib/videoStudio.ts's VOICE_OPTIONS; this copy is what validates an incoming
+ * request, so an unknown voice falls back to the default instead of erroring a paid job.
+ */
 const VOICES = {
-  Charon: 'Measured and low — a considered B2B read',
-  Kore: 'Warm and even',
-  Puck: 'Brighter, more energetic',
-  Enceladus: 'Soft and close-mic',
-  Zephyr: 'Light and quick',
-  Fenrir: 'Deep and deliberate',
+  Zephyr: 'Bright', Puck: 'Upbeat', Charon: 'Informative', Kore: 'Firm',
+  Fenrir: 'Excitable', Leda: 'Youthful', Orus: 'Firm', Aoede: 'Breezy',
+  Callirrhoe: 'Easy-going', Autonoe: 'Bright', Enceladus: 'Breathy', Iapetus: 'Clear',
+  Umbriel: 'Easy-going', Algieba: 'Smooth', Despina: 'Smooth', Erinome: 'Clear',
+  Algenib: 'Gravelly', Rasalgethi: 'Informative', Laomedeia: 'Upbeat', Achernar: 'Soft',
+  Alnilam: 'Firm', Schedar: 'Even', Gacrux: 'Mature', Pulcherrima: 'Forward',
+  Achird: 'Friendly', Zubenelgenubi: 'Casual', Vindemiatrix: 'Gentle', Sadachbia: 'Lively',
+  Sadaltager: 'Knowledgeable', Sulafat: 'Warm',
 };
 const DEFAULT_VOICE = 'Charon';
+
+/** The line every voice reads for its preview. On-brand, one sentence, and long enough to hear
+ *  pacing and warmth rather than just timbre. */
+const SAMPLE_LINE = 'Manual work does not scale. Here is what we automated instead.';
 
 function apiKey() {
   const key = process.env.GEMINI_API_KEY;
@@ -188,4 +200,32 @@ async function generateMusic({ prompt, outfile }) {
 // effectively free next to the video; music has a real flat per-song price worth surfacing.
 const MUSIC_COST_USD = 0.04;
 
-module.exports = { generateVoiceover, generateMusic, VOICES, DEFAULT_VOICE, MUSIC_COST_USD };
+/**
+ * One short sample per voice, used by the picker so a voice can be heard before it is chosen.
+ *
+ * Generated once and then served as a static public file forever — not synthesised per click,
+ * which would both add a wait to every preview and pay repeatedly for identical audio. The whole
+ * set is ~30 very short TTS calls, a fraction of a cent in total.
+ *
+ * `existing` is the set of voice ids already in storage, so a re-run only fills the gaps and
+ * costs nothing for what is already there.
+ */
+async function generateVoiceSample({ voice, outfile }) {
+  const chosen = VOICES[voice] ? voice : DEFAULT_VOICE;
+  const body = await callInteractions({
+    model: TTS_MODEL,
+    input: 'Read this naturally, as a voiceover for a short business video:\n\n' + SAMPLE_LINE,
+    response_format: { type: 'audio' },
+    generation_config: { speech_config: [{ voice: chosen }] },
+  }, 'Voice sample for ' + chosen);
+
+  const pcm = Buffer.from(extractAudioBase64(body), 'base64');
+  fs.mkdirSync(path.dirname(outfile), { recursive: true });
+  fs.writeFileSync(outfile, pcmToWav(pcm));
+  return outfile;
+}
+
+module.exports = {
+  generateVoiceover, generateMusic, generateVoiceSample,
+  VOICES, DEFAULT_VOICE, MUSIC_COST_USD, SAMPLE_LINE,
+};

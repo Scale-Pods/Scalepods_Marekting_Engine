@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Film, Sparkles, RefreshCw, Play, CheckCircle2, XCircle, Plus, Trash2, TrendingUp, Target, Type,
-  Mic, Download, Send, Clapperboard, Wand2, AlertTriangle, ExternalLink, Clock, Music,
+  Mic, Download, Send, Clapperboard, Wand2, AlertTriangle, ExternalLink, Clock, Music, Pause,
 } from 'lucide-react'
 import { useProfile } from '../lib/queries'
 import { supabase } from '../lib/supabase'
@@ -14,7 +14,7 @@ import {
   markVideoJobUsed, regenerateVideoShot, describeProgress, overallProgress,
   estimateShotsCost, totalDurationS, ratePerSecond, formatUsdInr, describeVideoError,
   VIDEO_ENGINES, VIDEO_RESOLUTIONS, ENGINE_LABEL, ENGINE_BLURB, PER_VIDEO_CEILING_USD,
-  MUSIC_COST_USD, VOICE_OPTIONS, DEFAULT_VOICE,
+  MUSIC_COST_USD, VOICE_OPTIONS, DEFAULT_VOICE, voiceSampleUrl,
   type VideoJob, type CarouselSlide, type VideoShot, type VideoEngine, type VideoType,
   type VideoResolution,
 } from '../lib/videoStudio'
@@ -99,6 +99,89 @@ function CostBar({
           Over the ${PER_VIDEO_CEILING_USD} per-video limit — remove a shot, shorten one, or pick a cheaper engine.
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Voice picker with an audible preview — you should not have to generate a video to find out
+ * what a voice sounds like.
+ *
+ * Samples are static files generated once per voice, so playback is instant and costs nothing.
+ * A voice whose sample has not been generated yet still selects fine; only its play button goes
+ * quiet, which is why a missing file is treated as a normal state rather than an error.
+ */
+function VoicePicker({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  const [playing, setPlaying] = useState<string | null>(null)
+  const [unavailable, setUnavailable] = useState<Set<string>>(new Set())
+  const [showAll, setShowAll] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Only ever one preview at a time — clicking a second voice should replace the first, not
+  // talk over it.
+  useEffect(() => () => { audioRef.current?.pause() }, [])
+
+  function preview(voiceId: string) {
+    audioRef.current?.pause()
+    if (playing === voiceId) { setPlaying(null); return }
+    const audio = new Audio(voiceSampleUrl(voiceId))
+    audioRef.current = audio
+    audio.onended = () => setPlaying(null)
+    audio.onerror = () => {
+      setUnavailable((prev) => new Set(prev).add(voiceId))
+      setPlaying(null)
+    }
+    audio.play().then(() => setPlaying(voiceId)).catch(() => {
+      setUnavailable((prev) => new Set(prev).add(voiceId))
+      setPlaying(null)
+    })
+  }
+
+  const shown = showAll ? VOICE_OPTIONS : VOICE_OPTIONS.filter((v) => v.recommended || v.id === value)
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+        {shown.map((v) => {
+          const active = value === v.id
+          return (
+            <div
+              key={v.id}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5"
+              style={{
+                background: active ? 'var(--fill-secondary)' : 'var(--bg-card)',
+                border: `1.5px solid ${active ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => preview(v.id)}
+                title={unavailable.has(v.id) ? 'No preview generated for this voice yet' : `Hear ${v.id}`}
+                className="shrink-0 text-muted hover:text-sage disabled:opacity-30"
+                disabled={unavailable.has(v.id)}
+              >
+                {playing === v.id ? <Pause size={14} /> : <Play size={14} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange(v.id)}
+                disabled={disabled}
+                className="flex-1 text-left disabled:opacity-40"
+              >
+                <div className={`text-xs font-semibold ${active ? 'text-sage' : 'text-ink'}`}>{v.id}</div>
+                <div className="text-[10px] text-muted">{v.tone}</div>
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      <button
+        type="button"
+        onClick={() => setShowAll((s) => !s)}
+        className="text-[11px] text-sage"
+      >
+        {showAll ? 'Show fewer' : `Show all ${VOICE_OPTIONS.length} voices`}
+      </button>
     </div>
   )
 }
@@ -550,12 +633,8 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
               <div className="label !mb-0">Audio</div>
               {job.voiceover_script !== null && (
                 <>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-muted flex items-center gap-1.5"><Mic size={13} /> Voiceover</span>
-                    <select className="input !w-auto !py-1 text-xs" value={voice} onChange={(e) => setVoice(e.target.value)}>
-                      {VOICE_OPTIONS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
-                    </select>
-                  </div>
+                  <div className="text-xs text-muted flex items-center gap-1.5"><Mic size={13} /> Voiceover</div>
+                  <VoicePicker value={voice} onChange={setVoice} />
                   <textarea className="input" rows={3} value={voScript} onChange={(e) => setVoScript(e.target.value)} />
                 </>
               )}
@@ -670,12 +749,8 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                   <div className="label !mb-0">Audio</div>
                   {job.voiceover_script !== null && (
                     <>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-muted flex items-center gap-1.5"><Mic size={13} /> Voiceover</span>
-                        <select className="input !w-auto !py-1 text-xs" value={voice} onChange={(e) => setVoice(e.target.value)} disabled={!editable}>
-                          {VOICE_OPTIONS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
-                        </select>
-                      </div>
+                      <div className="text-xs text-muted flex items-center gap-1.5"><Mic size={13} /> Voiceover</div>
+                      <VoicePicker value={voice} onChange={setVoice} disabled={!editable} />
                       <textarea className="input" rows={3} value={voScript} onChange={(e) => setVoScript(e.target.value)} disabled={!editable} />
                     </>
                   )}
@@ -1174,11 +1249,8 @@ export default function VideoStudio() {
             <Mic size={13} /> Add a voiceover
           </label>
           {wantsVoiceover && (
-            <div className="flex items-center gap-2 flex-wrap pl-6">
-              <span className="text-xs text-muted">Voice</span>
-              <select className="input !w-auto !py-1 text-xs" value={voice} onChange={(e) => setVoice(e.target.value)}>
-                {VOICE_OPTIONS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
-              </select>
+            <div className="pl-6">
+              <VoicePicker value={voice} onChange={setVoice} />
             </div>
           )}
           {isClips && (
