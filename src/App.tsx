@@ -34,6 +34,7 @@ const Blog = lazy(() => import('./pages/Blog'))
 const BlogPostEditor = lazy(() => import('./pages/BlogPostEditor'))
 const UserManual = lazy(() => import('./pages/UserManual'))
 const TeamAccess = lazy(() => import('./pages/TeamAccess'))
+const Board = lazy(() => import('./pages/Board'))
 
 function FullScreenLoader() {
   return (
@@ -126,6 +127,10 @@ export default function App() {
               <Route path="/video-studio" element={<Protected feature="video_studio"><VideoStudio /></Protected>} />
               <Route path="/studio" element={<Protected feature="studio"><AIStudio /></Protected>} />
               <Route path="/review" element={<Protected feature="review"><CreativeReview /></Protected>} />
+              {/* /board/:key deep-links a single ticket — the same board with its drawer open,
+                  so a ticket can be pasted into chat and land somewhere useful. */}
+              <Route path="/board" element={<Protected feature="board"><Board /></Protected>} />
+              <Route path="/board/:key" element={<Protected feature="board"><Board /></Protected>} />
               <Route path="/calendar" element={<Protected feature="calendar"><Calendar /></Protected>} />
               <Route path="/publishing" element={<Protected feature="publishing"><Publishing /></Protected>} />
               <Route path="/blog" element={<Protected feature="blog"><Blog /></Protected>} />

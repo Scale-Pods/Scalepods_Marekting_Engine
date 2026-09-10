@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   BookOpen, Building2, TrendingUp, Target, Wand2, Clapperboard, Film, CheckSquare,
   CalendarDays, Send, Newspaper, BarChart3, BrainCircuit, Settings as SettingsIcon,
-  ArrowRight, ShieldCheck, Lightbulb, LogIn, Users,
+  ArrowRight, ShieldCheck, Lightbulb, LogIn, Users, KanbanSquare,
 } from 'lucide-react'
 import { PageHeader, Badge, Panel } from '../components/ui'
 
@@ -147,6 +147,28 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'Wrong image? Edit it in place, or replace it — including importing a design straight from Canva or Figma.',
         ],
         tip: 'Approved items appear immediately in Publishing under "Ready to publish".',
+      },
+    ],
+  },
+  {
+    section: 'Team',
+    blurb: 'Hand work out, track it, and check it when it comes back.',
+    entries: [
+      {
+        id: 'board',
+        label: 'Board',
+        to: '/board',
+        icon: <KanbanSquare size={17} />,
+        what: 'The Jira-style board: every task the team is working on, and who it belongs to.',
+        steps: [
+          '"Create" raises a ticket. Give it a summary, a type, a priority, an assignee (who does the work) and a reviewer (who checks it).',
+          'Drag a card between columns to move it. Click one to open it — description, people, dates, comments and full history.',
+          'Click any avatar along the top to see only that person’s tickets. Click it again to clear.',
+          'When the assignee finishes, they press "Submit for review" — the ticket moves to In Review and the reviewer is notified.',
+          'The reviewer then presses "Accept", which moves it to Done, or "Send back" with a note saying what needs to change. Either way the assignee is told.',
+          'Anyone with Board access can raise their own tickets, not just admins.',
+        ],
+        tip: 'An assignee cannot drag their own work into Done — that is the whole point of the reviewer. The rule lives in the database, so it holds however the move is attempted. Only the named reviewer (or an admin) can close a ticket.',
       },
     ],
   },

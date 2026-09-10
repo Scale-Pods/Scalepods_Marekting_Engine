@@ -3,7 +3,7 @@ import { NavLink, Link } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target,
   CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
-  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion, Users,
+  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion, Users, KanbanSquare,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
@@ -63,6 +63,12 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
       { to: '/carousel-studio', label: 'Carousel Studio', icon: <Clapperboard size={18} />, feature: 'carousel_studio' },
       { to: '/video-studio', label: 'Video Studio', icon: <Film size={18} />, feature: 'video_studio' },
       { to: '/review', label: 'Creative Review', icon: <CheckSquare size={18} />, feature: 'review' },
+    ],
+  },
+  {
+    section: 'Team',
+    items: [
+      { to: '/board', label: 'Board', icon: <KanbanSquare size={18} />, feature: 'board' },
     ],
   },
   {

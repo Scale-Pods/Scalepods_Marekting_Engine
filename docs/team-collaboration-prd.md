@@ -1,13 +1,14 @@
 # Team Collaboration & Access Control — PRD + Implementation Plan
 
-**Status:** Approved · **Phases 0–3 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
+**Status:** Approved · **Phases 0–4 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
 
 > **Progress:** Phases 0 (identity), 1 (Users & Access), 2 (UI enforcement) and 3 (the RLS
 > rewrite) are built and verified. **Permissions are now enforced by Postgres**, not just by the
 > interface — the constraint that held since Phase 0 is lifted, and the team can be activated.
 > §13 records the decisions that changed during the build.
 >
-> **Next up — Phase 4, the Kanban board.** Phases 5–7 (notifications, spend caps, docs) follow.
+> **Next up — Phase 5 (email notifications + digests), then 6 (spend caps) and 7 (docs).** The
+> in-app half of notifications shipped early, with Phase 4 — see §13.20.
 
 Covers: real multi-user identity, per-feature access control, a Jira-style Kanban board with a
 maker–checker gate, per-user notifications (in-app + email), and per-user spend caps.
@@ -761,3 +762,44 @@ which now carry real `settings: full` policies.
 `notifications` keeps its `auth_all` policy. It has no `user_id` column yet, so there is nothing
 to scope "own rows" to — Phase 5 adds the column and the policy together rather than inventing
 half of it now. Every signed-in user can currently read the whole notification feed.
+
+### 13.19 Phase 4: the board
+
+Seven columns, seeded as data rather than an enum: the six from the Jira screenshot plus
+**In Review**. Two boolean flags (`is_review`, `is_terminal`) are what the maker–checker gate
+keys off, so renaming or reordering a column is a data change and the rules still hold.
+
+`tickets_workflow_guard` refuses a move into a terminal column by anyone but the ticket's
+reviewer (or `board: full`), stamps `submitted_at` on entering review and `accepted_at` on
+acceptance, and clears `submitted_at` when work leaves review unaccepted — a send-back.
+`tickets_log_activity` writes the history; `ticket_activity` has SELECT but no INSERT/UPDATE/
+DELETE policy at all, so the audit trail is append-only and cannot be rewritten from the app.
+
+Positions are fractional, so a drag writes one row instead of renumbering a column.
+
+Verified end to end twice: in SQL with simulated JWTs (a designer was refused Done, submitted,
+was sent back, resubmitted and was accepted — 11 checks), and then through the UI, producing
+`created → assigned → moved → submitted → sent back "…" → submitted → accepted`.
+
+### 13.20 Phase 4: in-app notifications pulled forward from Phase 5
+
+A board where assigning work tells nobody is half a feature, so `notifications.user_id` and the
+`tickets_notify` trigger shipped here. Assignment notifies the assignee, submission notifies the
+reviewer, acceptance and send-back notify the assignee. **Nobody is ever notified of their own
+action** — being told about your own click is noise, and noise is how people learn to ignore the
+bell.
+
+This also let `notifications` lose its `auth_all` policy, the last table still carrying one. Each
+person now sees only rows addressed to them, plus broadcasts (`user_id is null`), which keeps the
+31 pre-existing rows valid.
+
+Phase 5 still owns the email side (`sp-team-notify`), the @-mention path, and the due/overdue
+digests.
+
+### 13.21 Phase 4: invited teammates are assignable
+
+The assignee picker first filtered to `status = 'active'`, which left an admin looking at a
+dropdown containing only themselves and nothing explaining why — everyone else is still
+`invited`. It now lists everyone except suspended accounts, labelling the rest
+"— not activated yet". Work gets handed out while onboarding is still in progress, and they see
+it the moment they are switched on.
