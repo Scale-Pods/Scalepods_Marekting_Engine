@@ -1,5 +1,7 @@
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../lib/auth'
 import { FEATURES, LEVEL_LABEL, type AccessLevel, type FeatureKey } from '../lib/permissions'
+import { myMonthSpend, MONTH_SPEND_KEY } from '../lib/spend'
 
 /**
  * The permission check for a single control.
@@ -36,4 +38,38 @@ export function useGate(feature: FeatureKey, level: AccessLevel = 'full') {
 export function useCan(feature: FeatureKey, level: AccessLevel = 'full'): boolean {
   const { can } = useAuth()
   return can(feature, level)
+}
+
+/**
+ * The dollar half of Phase 6 (spend caps) — sits alongside `useGate`, not instead of it: a
+ * generate button needs both `studio:full` (this is the right kind of action) and this (there's
+ * still budget for it). `estimatedCostUsd` is whatever the page is already showing next to the
+ * button, so this never re-derives pricing on its own.
+ *
+ * `spend_events_guard` in Postgres is what actually refuses an over-cap spend — this hook exists
+ * so the button already explains why before anyone clicks it, same courtesy `useGate` gives
+ * permissions.
+ */
+export function useBudgetGate(estimatedCostUsd: number) {
+  const { appUser } = useAuth()
+  const { data: spent = 0 } = useQuery({
+    queryKey: MONTH_SPEND_KEY,
+    queryFn: myMonthSpend,
+    staleTime: 15_000,
+  })
+  const cap = appUser?.monthly_spend_cap_usd ?? null
+  const projected = spent + Math.max(0, estimatedCostUsd)
+  const wouldExceed = cap !== null && projected > cap
+
+  return {
+    allowed: !wouldExceed,
+    spent,
+    cap,
+    props: wouldExceed
+      ? {
+          disabled: true,
+          title: `This would put you at $${projected.toFixed(2)} this month, over your $${cap} monthly cap. Ask an admin to raise it in Team & access.`,
+        }
+      : {},
+  }
 }

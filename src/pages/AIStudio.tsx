@@ -21,7 +21,7 @@ import {
 import { createManualItem, GENERATION_ENABLED, type ContentSlide } from '../lib/content'
 import { stampAndUpload } from '../lib/brandStamp'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
-import { useGate } from '../components/Gate'
+import { useGate, useBudgetGate } from '../components/Gate'
 import { PlatformBadge } from '../components/mediaUi'
 import { PostPreviewModal } from '../components/postPreview'
 import AssetUploader from '../components/AssetUploader'
@@ -87,6 +87,20 @@ function CostEstimate({
     >
       ≈ {formatUsdInr(usd)} for {count} {count === 1 ? label : `${label}s`} (est.)
     </span>
+  )
+}
+
+/** "You've spent $32 of your $50 monthly budget" — only rendered for someone who actually has a
+ *  cap (owner/admin never do), and only once there's something to say. Sits above the estimate
+ *  and the Generate button rather than only surfacing once the button is already disabled. */
+function BudgetLine({ spent, cap }: { spent: number; cap: number | null }) {
+  if (cap === null) return null
+  const over = spent >= cap
+  return (
+    <p className="text-xs mb-2" style={{ color: over ? 'var(--accent-orange)' : 'var(--text-muted)' }}>
+      ${spent.toFixed(2)} of your ${cap} monthly budget used.
+      {over && ' Ask an admin to raise it in Team & access.'}
+    </p>
   )
 }
 
@@ -246,6 +260,14 @@ export default function AIStudio() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeModel = getModel(model)
   const activeStyle = getStyle(styleId)
+
+  // The dollar half of the same gate — mirrors exactly what onGenerate is about to persist and
+  // spend, so this reads true/false the same way triggerStudioGenerate's own check will.
+  const draftCostUsd = (job?.post_type === 'carousel'
+    ? estimateCarouselCost(activeModel, ratio, draftSlides.length)
+    : estimateStudioCost(activeModel, ratio, variantCount)
+  ).usd ?? 0
+  const budgetGate = useBudgetGate(draftCostUsd)
 
   // Deep-linked here rather than running a separate one-shot generator, so there's exactly one
   // generation engine — from Trends' "Create Post" (a specific trend) or from a strategy's
@@ -898,6 +920,8 @@ export default function AIStudio() {
             </div>
           </Panel>
 
+          <BudgetLine spent={budgetGate.spent} cap={budgetGate.cap} />
+
           {isCarousel ? (
             <Panel>
               <div className="label mb-1">Slides</div>
@@ -908,7 +932,7 @@ export default function AIStudio() {
               <SlideEditor slides={draftSlides} onChange={updateSlideDraft} />
               <div className="flex items-center justify-end gap-3 mt-3">
                 <CostEstimate model={activeModel} ratio={ratio} count={draftSlides.length} label="slide" carousel />
-                <Button onClick={onGenerate} loading={generating || isGenerating} disabled={draftSlides.length === 0} {...spendGate.props}>
+                <Button onClick={onGenerate} loading={generating || isGenerating} disabled={draftSlides.length === 0} {...spendGate.props} {...budgetGate.props}>
                   <Wand2 size={15} /> Generate {draftSlides.length} {draftSlides.length === 1 ? 'slide' : 'slides'}
                 </Button>
               </div>
@@ -922,7 +946,7 @@ export default function AIStudio() {
               <textarea className="input" rows={5} value={draftPrompt} onChange={(e) => setDraftPrompt(e.target.value)} />
               <div className="flex items-center justify-end gap-3 mt-3">
                 <CostEstimate model={activeModel} ratio={ratio} count={variantCount} />
-                <Button onClick={onGenerate} loading={generating || isGenerating} disabled={!draftPrompt.trim()} {...spendGate.props}>
+                <Button onClick={onGenerate} loading={generating || isGenerating} disabled={!draftPrompt.trim()} {...spendGate.props} {...budgetGate.props}>
                   <Wand2 size={15} /> Generate {variantCount} {variantCount === 1 ? 'image' : 'images'}
                 </Button>
               </div>

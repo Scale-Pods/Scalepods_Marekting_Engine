@@ -1,5 +1,6 @@
 import { supabase, fireWebhook } from './supabase'
 import { GENERATION_ENABLED } from './content'
+import { recordSpend } from './spend'
 import type { AspectRatio } from './studioStyles'
 
 /** Shared feedback shape — a shot, a slide, a single image, a voiceover, or a music bed can all
@@ -391,16 +392,36 @@ export async function updateStudioDraft(
 }
 
 /** Fires the generation workflow. Returns immediately — poll getStudioJob() and watch
- *  status/image_urls (single) or slides_json (carousel). */
+ *  status/image_urls (single) or slides_json (carousel).
+ *
+ *  Logs the spend and enforces the caller's monthly cap (Phase 6) BEFORE firing — a refused
+ *  `recordSpend` means the webhook that actually costs money never goes out. Reads the job's own
+ *  persisted model/ratio/slide-or-variant-count rather than taking them as parameters, so this
+ *  works unchanged for every existing call site. */
 export async function triggerStudioGenerate(jobId: string): Promise<void> {
   if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
+  const job = await getStudioJob(jobId)
+  if (job) {
+    const model = getModel(job.model)
+    const ratio = job.aspect_ratio as AspectRatio
+    const count = job.post_type === 'carousel' ? (job.slide_count ?? 1) : job.variant_count
+    const { usd } = job.post_type === 'carousel' ? estimateCarouselCost(model, ratio, count) : estimateStudioCost(model, ratio, count)
+    if (usd) await recordSpend('studio', jobId, usd)
+  }
   await fireWebhook('sp-studio-generate', { jobId })
 }
 
 /** Re-fires just ONE slide of a carousel job — the whole point of "one shot per slide" is that a
- *  bad slide doesn't mean regenerating (and paying for) every other slide again too. */
+ *  bad slide doesn't mean regenerating (and paying for) every other slide again too. Still a real
+ *  image generation, so it still counts against the cap — one shot's worth (estimateStudioCost
+ *  with a count of 1), not the whole carousel's. */
 export async function regenerateStudioSlide(jobId: string, slideIdx: number): Promise<void> {
   if (!GENERATION_ENABLED) throw new Error('Content generation is disabled (GENERATION_ENABLED=false)')
+  const job = await getStudioJob(jobId)
+  if (job) {
+    const { usd } = estimateStudioCost(getModel(job.model), job.aspect_ratio as AspectRatio, 1)
+    if (usd) await recordSpend('studio', jobId, usd)
+  }
   await fireWebhook('sp-studio-regenerate-slide', { jobId, slideIdx })
 }
 

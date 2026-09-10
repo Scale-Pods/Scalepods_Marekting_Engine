@@ -15,6 +15,7 @@ import {
   savePermissions, createTeamUser, isCustomised,
   type AccessLevel, type FeatureKey, type PermissionMap,
 } from '../lib/permissions'
+import { monthSpendFor } from '../lib/spend'
 import { PageHeader, Panel, Button, Badge, Spinner, Modal, EmptyState } from '../components/ui'
 import { useToast, toastMessage } from '../components/Toast'
 
@@ -291,6 +292,11 @@ function MemberDetail({ member, onBack, isMe }: { member: AppUser; onBack: () =>
     queryFn: () => fetchPermissions(member.id),
   })
 
+  const { data: spentThisMonth } = useQuery({
+    queryKey: ['spend', 'month', member.id],
+    queryFn: () => monthSpendFor(member.id),
+  })
+
   // Draft state, seeded once the saved map arrives and re-seeded only when a different person is
   // opened — the same pattern the studios use for their editable drafts, so a background refetch
   // can't wipe what an admin is halfway through changing.
@@ -442,7 +448,12 @@ function MemberDetail({ member, onBack, isMe }: { member: AppUser; onBack: () =>
                 onChange={(e) => setCap(e.target.value)}
               />
             </div>
-            <p className="text-muted text-xs mt-2">Leave empty for no cap. Enforced in Phase 6.</p>
+            <p className="text-muted text-xs mt-2">
+              Leave empty for no cap.
+              {spentThisMonth != null && (
+                <> <Wallet size={11} className="inline -mt-0.5" /> ${spentThisMonth.toFixed(2)} spent this month.</>
+              )}
+            </p>
           </div>
 
           <div className="card !p-5">

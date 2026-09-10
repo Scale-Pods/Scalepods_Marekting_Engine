@@ -1,5 +1,6 @@
 import { supabase, fireWebhook } from './supabase'
 import { GENERATION_ENABLED, VIDEO_GENERATION_ENABLED } from './content'
+import { recordSpend } from './spend'
 import type { StudioSourceKind, StudioCopy, ItemFeedback } from './studio'
 import { foldFeedbackIntoText } from './studio'
 import type { CarouselSlide, RenderProgress } from './carousels'
@@ -407,15 +408,28 @@ export async function triggerVideoRender(
         `This video would cost ${formatUsdInr(estimatedCostUsd)}, over the $${PER_VIDEO_CEILING_USD} per-video limit. Remove a shot, shorten one, or pick a cheaper engine.`,
       )
     }
+    // Motion graphics has no AI model and no per-video cost, so nothing to log or gate there —
+    // only generated_clips ever spends real money (Phase 6).
+    await recordSpend('video_studio', jobId, estimatedCostUsd)
   }
   await fireWebhook('sp-video-render', { jobId })
 }
 
 /** Re-generates exactly ONE shot. The worker uploads the regenerated clip and the next full
  *  render reuses it rather than paying for it again — the whole reason per-shot regenerate is
- *  cheaper than re-rendering, mirroring AI Studio's per-slide regenerate economics. */
+ *  cheaper than re-rendering, mirroring AI Studio's per-slide regenerate economics.
+ *
+ *  Still a real Veo call, so it still counts against the monthly cap (Phase 6) — just that one
+ *  shot's cost (its own duration at the job's engine+resolution rate), not the whole video's. */
 export async function regenerateVideoShot(jobId: string, shotIndex: number): Promise<void> {
   if (!VIDEO_GENERATION_ENABLED) throw new Error('AI video generation is disabled (VIDEO_GENERATION_ENABLED=false)')
+  const job = await getVideoJob(jobId)
+  const shot = job?.shots_json?.[shotIndex]
+  if (job?.engine && job.resolution && shot) {
+    const rate = ratePerSecond(job.engine, job.resolution) ?? 0
+    const usd = shot.durationS * rate
+    if (usd) await recordSpend('video_studio', jobId, usd)
+  }
   await fireWebhook('sp-video-regenerate-shot', { jobId, shotIndex })
 }
 

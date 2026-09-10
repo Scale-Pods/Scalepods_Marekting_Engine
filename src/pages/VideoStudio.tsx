@@ -21,7 +21,7 @@ import {
 } from '../lib/videoStudio'
 import { createManualItem, GENERATION_ENABLED, VIDEO_GENERATION_ENABLED } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
-import { useGate } from '../components/Gate'
+import { useGate, useBudgetGate } from '../components/Gate'
 import { PostTile } from '../components/postPreview'
 import { useToast, toastMessage } from '../components/Toast'
 
@@ -542,6 +542,7 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
     ? Math.round(pendingShots.reduce((sum, s) => sum + s.durationS * (ratePerSecond(engine, resolution) ?? 0), 0) * 100) / 100
     : 0
   const nextRunOverCeiling = isGeneratedClips && nextRunCost > PER_VIDEO_CEILING_USD
+  const budgetGate = useBudgetGate(nextRunCost)
   const hasFinished = job.status === 'done' && Boolean(job.final_video_url)
 
   /**
@@ -802,12 +803,19 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
           {isGeneratedClips && (
             <CostBar engine={engine} resolution={resolution} seconds={seconds} shots={shots.length} overCeiling={overCeiling} />
           )}
+          {isGeneratedClips && budgetGate.cap !== null && (
+            <p className="text-xs mb-2" style={{ color: budgetGate.allowed ? 'var(--text-muted)' : 'var(--accent-orange)' }}>
+              ${budgetGate.spent.toFixed(2)} of your ${budgetGate.cap} monthly budget used.
+              {!budgetGate.allowed && ' Ask an admin to raise it in Team & access.'}
+            </p>
+          )}
 
           <Button
             onClick={onApprove}
             loading={saving || rendering}
             disabled={!GENERATION_ENABLED || (isGeneratedClips && (!VIDEO_GENERATION_ENABLED || overCeiling))}
             {...spendGate.props}
+            {...budgetGate.props}
           >
             <Play size={15} /> {isGeneratedClips ? `Generate video — ≈$${liveCost.toFixed(2)}` : 'Approve & Render'}
           </Button>
@@ -1011,6 +1019,7 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                 loading={saving || rendering}
                 onClick={async () => { setConfirmOpen(false); await doRender() }}
                 {...spendGate.props}
+                {...budgetGate.props}
               >
                 <Play size={15} /> Yes, generate
               </Button>

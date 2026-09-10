@@ -94,7 +94,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'Single image: click an image to see it full size, click the checkmark in its corner to pick it. Carousel: every slide generates once — click "Regenerate this slide" on any tile that came out wrong, no need to redo the rest. Rate a slide with the thumbs beneath it and optionally say what is wrong; the note gets folded into that slide\'s own prompt the next time you regenerate it.',
           'Click "Send to Review" — the image (or every slide) gets brand-stamped automatically and lands in Creative Review.',
         ],
-        tip: 'The "Recent" grid keeps every past job with its date, the model used and what it cost. Video is never generated automatically — that stays manual on purpose.',
+        tip: 'The "Recent" grid keeps every past job with its date, the model used and what it cost. Video is never generated automatically — that stays manual on purpose. If you have a monthly generation budget, it shows next to Generate and the button greys out with an explanation once a click would go over it — an admin raises it from Team & access.',
       },
       {
         id: 'carousel-studio',
@@ -132,7 +132,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'Rate a finished shot, voiceover, or music bed with the thumbs next to it, and optionally say what is wrong. The rating alone is a record for later; the note goes further — the next time you regenerate that specific shot or redo that audio, your note is folded straight into its prompt or script as a revision instruction, then cleared, so the same click that flags the problem also tries to fix it. The same rating-and-note works on AI Studio\'s carousel slides.',
           'When you are happy with it, click "Send to Review" to hand it to Creative Review like any other post.',
         ],
-        tip: 'Recent videos sit in an Instagram-style grid at the top of the page, with "New video" opposite the heading — click any past video to open its full storyboard on its own rather than merging it into the create form. If Google runs out of credits the page tells you plainly and links straight to the top-up page; nothing is charged when a generation fails.',
+        tip: 'Recent videos sit in an Instagram-style grid at the top of the page, with "New video" opposite the heading — click any past video to open its full storyboard on its own rather than merging it into the create form. If Google runs out of credits the page tells you plainly and links straight to the top-up page; nothing is charged when a generation fails. Same monthly-budget line and greyed-out button as AI Studio if you have a cap — it is a second, per-person limit on top of the $5-per-video ceiling, not instead of it.',
       },
       {
         id: 'creative-review',
@@ -253,7 +253,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         steps: [
           'Settings → Team & access, or "Team & access" in the sidebar. Only Owners and Admins see it.',
           '"Add person" creates someone from their @scalepods.co email. Pick a role to give them a starting set of permissions, then adjust any of them individually.',
-          'Open anyone to change their name, role, monthly generation budget, or any single permission.',
+          'Open anyone to change their name, role, monthly generation budget, or any single permission. Their spend so far this month shows right there too, so you know whether raising the cap is actually warranted before you do it.',
           'Each feature has four levels and each one includes the ones before it: None (hidden entirely), View (read-only), Edit (change drafts and prompts — nothing that costs money), Full (the consequential action: spend, publish, approve).',
           'A new person stays "Invited" until you press "Activate account". Until then they can sign in but only see the "Almost there" screen.',
           'Suspend keeps someone\'s history and blocks them; Remove deletes their team record.',

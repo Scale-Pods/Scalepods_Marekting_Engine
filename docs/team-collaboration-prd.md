@@ -1,15 +1,14 @@
 # Team Collaboration & Access Control — PRD + Implementation Plan
 
-**Status:** Approved · **Phases 0–5 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
+**Status:** Approved · **Phases 0–6 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
 
-> **Progress:** Phases 0 (identity), 1 (Users & Access), 2 (UI enforcement), 3 (the RLS rewrite),
-> 4 (Kanban + maker-checker) and 5 (email notifications, @-mentions, digests) are built and
-> verified. **Permissions are enforced by Postgres**, tickets carry the maker-checker gate, and
-> every notification — assignment, submission, acceptance, send-back, @-mention, a new sign-in
-> awaiting approval, and a daily due/overdue digest — now reaches the right person by email too.
-> §13 records the decisions that changed during the build.
+> **Progress:** All of Phases 0–6 are built and verified. Identity, per-feature permissions, the
+> RLS rewrite, the Kanban board with its maker-checker gate, email notifications, and now per-user
+> monthly spend caps on AI Studio and Video Studio — enforced in Postgres, not just the UI, the
+> same way every other rule in this project has been. §13 records the decisions that changed
+> during the build.
 >
-> **Next up — Phase 6 (spend caps), then 7 (docs).**
+> **Next up — Phase 7 (final docs sweep).**
 
 Covers: real multi-user identity, per-feature access control, a Jira-style Kanban board with a
 maker–checker gate, per-user notifications (in-app + email), and per-user spend caps.
@@ -468,18 +467,29 @@ and break a working page, so it gets tested first and explicitly.
 
 ### 7.7 Spend caps
 
-`spend_events` is written at the same moment a generation is fired, from the three functions that
-already exist for the purpose — `triggerVideoRender`, the AI Studio generate path, and the Carousel
-render path. Before firing, each checks the current calendar month's sum for that user against
-`monthly_spend_cap_usd` and refuses with a clear message naming the cap and the current total.
+`spend_events` is written at the same moment a generation is fired, from `triggerStudioGenerate` +
+`regenerateStudioSlide` (AI Studio, single image or carousel-post mode) and `triggerVideoRender` +
+`regenerateVideoShot` (Video Studio, `generated_clips` only — motion graphics has no AI model and
+no cost). The write goes through a Postgres trigger, `spend_events_guard`, which sums the current
+calendar month's total for that user against `monthly_spend_cap_usd` and refuses the insert itself
+if it would clear the cap — the webhook that actually spends money is never fired for a refused
+spend, and the message names both the projected total and the cap.
 
-The check is repeated in a Postgres trigger on the job tables, so it holds even if a request is
-made outside the UI. The existing `PER_VIDEO_CEILING_USD` ($5) and the real-cost confirmation
-dialog stay exactly as they are — this is a second, per-person ceiling stacked on top, not a
-replacement.
+**The enforcement point is the spend record itself, not the job tables** — see §13.29 for why: the
+job tables (`studio_jobs`/`carousel_jobs`/`video_jobs`) are written by n8n via the service-role
+key, which carries no JWT, so a trigger there could never know which person fired a given
+generation. `spend_events` is written directly by the browser instead, with the real user's
+session, at the exact moment it is about to fire the paid webhook — which is also earlier and
+more useful: the spend is refused before the money is spent, not logged as over afterward.
+
+The existing `PER_VIDEO_CEILING_USD` ($5) and the real-cost confirmation dialog stay exactly as
+they are — this is a second, per-person ceiling stacked on top, not a replacement. The separate
+`/carousel-studio` page (Puppeteer + ffmpeg rendering, no per-call AI billing) is deliberately not
+wired to `spend_events` — see §13.30.
 
 Defaults: Owner and Admin uncapped; Designer $50/month; Writer $20/month; Client none. All
-editable per user.
+editable per user, with a live "$X spent this month" line next to the cap in Team & access
+(`month_spend_for`) and next to the Generate button in both studios (`useBudgetGate`).
 
 ---
 
@@ -517,8 +527,9 @@ Phase 4 can run in parallel with 5–6 if useful; it shares no files with them.
   open it, and either Accept — which can approve the linked content item in the same click — or
   Send back with a note, which lands in her inbox.
 - Pratham raises his own ticket for a blog piece; it appears in Backlog with him as reporter.
-- Priya hits her $50 cap mid-month; her generate buttons explain why and you get told. You raise
-  it from her user page in two clicks.
+- Priya hits her $50 cap mid-month; her generate buttons grey out and explain why on hover. She
+  tells you, or you notice on her Team & access page ("$50.00 spent this month") — there is no
+  admin notification for this yet (§13.28). You raise the cap from her page in two clicks.
 
 ---
 
@@ -883,3 +894,65 @@ digest row (§7.5) — only the assignee's own overdue/due-tomorrow digest exist
 surfaced for a reviewer-side one. Amazon SES's sandbox status (§10 item 3) reads as resolved by
 observation — two real sends to `@scalepods.co` addresses came back `200` from n8n with no bounce
 — but nobody has confirmed this from the SES console itself.
+
+### 13.29 Phase 6: the job tables can't tell you who spent the money
+
+The PRD originally described the enforcement point as "a Postgres trigger on the job tables." That
+turned out to be unworkable: `studio_jobs`, `carousel_jobs` and `video_jobs` are all written by
+n8n through the service-role key (`fireWebhook` is a plain unauthenticated POST straight to the
+n8n webhook URL — no Supabase session ever reaches it), and service-role has no `auth.uid()`. A
+trigger on those tables checking who's signed in would see `null` on every single write, always —
+there would be nobody to attribute the spend to and nothing to gate.
+
+`spend_events` is written by the browser directly instead, while it still has the real user's
+session, in the moment between "the FE has decided to fire the generate webhook" and "the webhook
+is actually fired." `spend_events_guard` (`BEFORE INSERT`) does two things no client can get
+around: it overwrites `user_id` from the JWT regardless of what the insert claims (verified live —
+a forged `user_id` for another real teammate landed under the caller's own id instead, both under
+cap and over it), and it sums this month's total for that real id before allowing the row to
+exist. A refused insert means `recordSpend` throws and the calling code (both studio libraries)
+never reaches the `fireWebhook` line below it.
+
+One honest, deliberately accepted limit: `amount_usd` is computed client-side from the same
+pricing tables the page already shows on screen (`estimateStudioCost`/`estimateCarouselCost` for
+AI Studio, `ratePerSecond × durationS` for a video shot), not independently re-derived from the
+job's own columns server-side. A tampered client could in principle claim a lower cost than a
+generation actually represents. This is the same trust model `PER_VIDEO_CEILING_USD`'s own check
+already accepted for the per-video ceiling — not a new weaker guarantee, just the existing one
+extended to the monthly total. Re-deriving real provider pricing in SQL and keeping it in sync
+with `IMAGE_MODELS`/`PRICE_PER_SECOND` would be real, ongoing maintenance for a soft internal
+guardrail; not worth it unless abuse is actually observed.
+
+Verified with real JWT impersonation (Priya's own account has never signed in, so a cap test
+needed a real `auth_user_id` — the owner's cap was set to $50 for the duration of the test, then
+restored to `null`): $30 logged, a further $25 refused with the exact cap message, a further $20
+landed exactly at $50 with no refusal (over means over, not at-or-over), and a forged `user_id`
+for another real teammate was silently corrected to the caller's own id — twice, once under cap
+and once over it, both times attributing correctly rather than to whoever was named in the insert.
+
+### 13.30 Phase 6: Carousel Studio was deliberately left out
+
+The PRD named "the Carousel render path" as one of three enforcement points. `/carousel-studio`
+(`carousel_jobs`, `triggerCarouselRender`) turned out to have no metered cost to enforce against:
+it's a Puppeteer capture + ffmpeg render on the Railway worker, not a paid per-call AI model —
+`CarouselJob` has no `model`/`aspect_ratio` fields and there's no existing cost-estimate function
+for it anywhere in the codebase (`estimateCarouselCost` in `studio.ts` is AI Studio's own
+carousel-*post* mode on `studio_jobs`, a different feature that happens to share a name). Wiring
+a fake cost to `spend_events` just to satisfy the letter of the PRD would mean inventing a number
+nothing actually bills. `source` on `spend_events` still includes `'carousel_studio'` as a valid
+value, so the day this page gains a real paid step (a different render engine, a paid stock-asset
+call), the same plumbing extends to it with no schema change.
+
+### 13.31 Phase 6: verified without ever clicking Generate
+
+`GENERATION_ENABLED`/`VIDEO_GENERATION_ENABLED` are `true` on this project — real, billed
+generation — so live UI verification stopped short of actually clicking Generate/Brief on either
+studio page, per the standing rule to never fire real generation without asking first (see
+memory: ask-before-generating). Verification instead combined: the SQL-level trigger tests in
+§13.29 (the actual guarantee), a real committed `spend_events` row inserted directly via
+impersonation to prove `month_spend_for()` end-to-end (confirmed live on the Team & access page:
+"$3.20 spent this month"), and loading both studio pages to confirm the new hooks introduce no
+console errors or render failures. The cap-exceeded *button* state (disabled, tooltip explaining
+why) was verified by code review and the underlying data path, not by seeing it rendered live —
+reaching that screen state honestly would have required either a real generation or driving a
+job into a state no real user action produces.
