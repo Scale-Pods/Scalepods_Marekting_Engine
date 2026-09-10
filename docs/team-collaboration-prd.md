@@ -1,10 +1,13 @@
 # Team Collaboration & Access Control — PRD + Implementation Plan
 
-**Status:** Approved · **Phase 0 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
+**Status:** Approved · **Phases 0–1 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
 
-> **Progress:** Phase 0 (identity) is built and verified — see §8 for what that covers and
-> §13 for the two schema decisions that changed during the build. Phases 1–7 are still as
-> specified below.
+> **Progress:** Phase 0 (identity) and Phase 1 (Users & Access) are built and verified against
+> the live database. Google sign-in is enabled and working end to end. §13 records the
+> decisions that changed during the build. Phases 2–7 are still as specified below.
+>
+> **Next up — Phase 2 (UI enforcement), then Phase 3 (the RLS rewrite).** Until Phase 3 lands,
+> permissions are recorded but not enforced: activating anyone still grants them everything.
 
 Covers: real multi-user identity, per-feature access control, a Jira-style Kanban board with a
 maker–checker gate, per-user notifications (in-app + email), and per-user spend caps.
@@ -633,3 +636,27 @@ they are currently readable only by `service_role`), the `instagram_connection_s
 leaked-password protection is off in Auth. Phase 3 is the natural place to resolve the first
 three; the fourth is a one-click Auth setting.
 
+### 13.6 Phase 1: `users` is not a permission, it follows from the role
+
+PRD §5.2 listed `users` as a row in the permission matrix. Built without it: access to the Users
+screen follows from `app_users.role` being owner/admin instead. A role *and* a users-permission
+would be two switches for one thing, free to contradict each other (`role='designer'` with
+`users='full'`?), and `app_is_admin()` already keys off the role for every database check. The
+matrix therefore has 16 features, not 17.
+
+### 13.7 Phase 1: Google identity linking skipped the profile sync
+
+Signing in with Google as `marketing@scalepods.co` did **not** create a second auth user —
+Supabase merged the Google identity into the existing email account (`auth.identities` now holds
+both `email` and `google`). Good, but it meant `handle_new_auth_user()` never fired, because that
+is an INSERT trigger and no row was inserted. The name and photo were never copied across.
+
+The same gap would have applied to everyone forever: a trigger that only runs at account creation
+cannot notice a photo somebody changes later. Fixed on the client instead — `syncFromProvider()`
+compares the session's provider metadata against the directory row on each sign-in and patches
+the difference, which needed a new `app_users_update_self` RLS policy. Scope is split
+deliberately: the *policy* decides which row you may touch (your own), the `app_users_guard`
+trigger decides which *columns* (role, status, email and spend cap stay admin-only). RLS alone
+cannot express a column restriction, and a column GRANT would have applied to admins too.
+
+Verified live: the owner's `avatar_url` is now the real Google photo.

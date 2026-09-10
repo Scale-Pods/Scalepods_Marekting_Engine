@@ -31,6 +31,7 @@ const Settings = lazy(() => import('./pages/Settings'))
 const Blog = lazy(() => import('./pages/Blog'))
 const BlogPostEditor = lazy(() => import('./pages/BlogPostEditor'))
 const UserManual = lazy(() => import('./pages/UserManual'))
+const TeamAccess = lazy(() => import('./pages/TeamAccess'))
 
 function FullScreenLoader() {
   return (
@@ -70,6 +71,15 @@ function Protected({ children }: { children: ReactNode }) {
   )
 }
 
+/** Wraps a route that only an owner/admin may open. Mirrors app_is_admin() in Postgres, which
+ *  is what actually protects the underlying tables — this just avoids rendering a screen that
+ *  would come back empty. */
+function AdminOnly({ children }: { children: ReactNode }) {
+  const { appUser } = useAuth()
+  if (appUser?.role !== 'owner' && appUser?.role !== 'admin') return <Navigate to="/settings" replace />
+  return <>{children}</>
+}
+
 function PublicOnly({ children }: { children: ReactNode }) {
   const { session, loading } = useAuth()
   if (loading) return <FullScreenLoader />
@@ -107,6 +117,9 @@ export default function App() {
               <Route path="/blog/:id" element={<Protected><BlogPostEditor /></Protected>} />
               <Route path="/analytics" element={<Protected><Analytics /></Protected>} />
               <Route path="/settings" element={<Protected><Settings /></Protected>} />
+              {/* Admin-only, guarded by <AdminOnly> rather than by permissions: managing people
+                  follows from the role, not from a feature grant. See permissions.ts. */}
+              <Route path="/settings/team" element={<Protected><AdminOnly><TeamAccess /></AdminOnly></Protected>} />
               <Route path="/manual" element={<Protected><UserManual /></Protected>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />

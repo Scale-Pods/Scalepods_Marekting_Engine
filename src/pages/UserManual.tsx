@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   BookOpen, Building2, TrendingUp, Target, Wand2, Clapperboard, Film, CheckSquare,
   CalendarDays, Send, Newspaper, BarChart3, BrainCircuit, Settings as SettingsIcon,
-  ArrowRight, ShieldCheck, Lightbulb, LogIn,
+  ArrowRight, ShieldCheck, Lightbulb, LogIn, Users,
 } from 'lucide-react'
 import { PageHeader, Badge, Panel } from '../components/ui'
 
@@ -220,6 +220,22 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'It runs on its own every time the business profile is saved — there is no separate button to press.',
           'Open the latest report to read it, or use History to compare it against older runs.',
         ],
+      },
+      {
+        id: 'team',
+        label: 'Team & access',
+        to: '/settings/team',
+        icon: <Users size={17} />,
+        what: 'Admin only. Who is on the team, and exactly which screens each person can reach.',
+        steps: [
+          'Settings → Team & access, or "Team & access" in the sidebar. Only Owners and Admins see it.',
+          '"Add person" creates someone from their @scalepods.co email. Pick a role to give them a starting set of permissions, then adjust any of them individually.',
+          'Open anyone to change their name, role, monthly generation budget, or any single permission.',
+          'Each feature has four levels and each one includes the ones before it: None (hidden entirely), View (read-only), Edit (change drafts and prompts — nothing that costs money), Full (the consequential action: spend, publish, approve).',
+          'A new person stays "Invited" until you press "Activate account". Until then they can sign in but only see the "Almost there" screen.',
+          'Suspend keeps someone\'s history and blocks them; Remove deletes their team record.',
+        ],
+        tip: 'The owner account cannot be demoted, suspended or deleted, you cannot strip your own admin access or suspend yourself, and the last remaining admin cannot be removed. Those rules live in the database, not just in this screen — so they hold no matter how the change is attempted.',
       },
       {
         id: 'signing-in',

@@ -1,19 +1,18 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Settings as SettingsIcon, User, ShieldCheck, Sun, Moon, LogOut, Building2, Sparkles, Send, Instagram, Link2, Unlink, RefreshCw, MessageCircle, Power, CheckCircle2 } from 'lucide-react'
+import { Settings as SettingsIcon, User, ShieldCheck, Sun, Moon, LogOut, Building2, Sparkles, Send, Instagram, Link2, Unlink, RefreshCw, MessageCircle, Power, CheckCircle2, Users, ArrowRight } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useProfile } from '../lib/queries'
 import { GENERATION_ENABLED, PUBLISHING_ENABLED, listCommentAutomations, setCommentAutomationEnabled, type ContentItem } from '../lib/content'
-import { toggleTheme, getCurrentTheme, type Theme, ROLE_ACCENT } from '../lib/theme'
+import { toggleTheme, getCurrentTheme, type Theme } from '../lib/theme'
+import { isAdminRole, ROLE_LABEL as TEAM_ROLE_LABEL, ROLE_ACCENT as TEAM_ROLE_ACCENT } from '../lib/team'
 import { connectInstagram, disconnectInstagram, getInstagramConnectionStatus, type InstagramConnectionStatus } from '../lib/instagramConnection'
 import { trackExternalPost, type TrackExternalPostResult } from '../lib/instagramTracking'
 import { PageHeader, Badge, Panel, Button } from '../components/ui'
 import AssetUploader from '../components/AssetUploader'
 
-const ROLE_LABEL = { admin: 'Admin', client: 'Client', designer: 'Designer' } as const
-
 export default function Settings() {
-  const { user, role, signOut } = useAuth()
+  const { user, appUser, signOut } = useAuth()
   const { data: profile } = useProfile()
   const [theme, setTheme] = useState<Theme>(getCurrentTheme())
   const [igStatus, setIgStatus] = useState<InstagramConnectionStatus | null>(null)
@@ -113,15 +112,25 @@ export default function Settings() {
           </div>
           <div className="space-y-3 text-sm">
             <div>
+              <div className="label">Name</div>
+              <div className="mt-0.5">{appUser?.full_name ?? '—'}</div>
+            </div>
+            <div>
               <div className="label">Email</div>
               <div className="mt-0.5">{user?.email}</div>
             </div>
             <div>
               <div className="label">Role</div>
               <div className="mt-1 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full" style={{ background: ROLE_ACCENT[role] }} />
-                {ROLE_LABEL[role]}
-                <span className="text-muted text-xs">(switch from the sidebar)</span>
+                {appUser ? (
+                  <>
+                    <span className="h-2 w-2 rounded-full" style={{ background: TEAM_ROLE_ACCENT[appUser.role] }} />
+                    {TEAM_ROLE_LABEL[appUser.role]}
+                    <span className="text-muted text-xs">(set by an admin)</span>
+                  </>
+                ) : (
+                  <span className="text-muted">—</span>
+                )}
               </div>
             </div>
           </div>
@@ -140,6 +149,21 @@ export default function Settings() {
           </Button>
         </Panel>
       </div>
+
+      {isAdminRole(appUser?.role) && (
+        <Panel className="mb-4">
+          <div className="flex items-center gap-2 mb-2 font-medium">
+            <Users size={16} className="text-sage" /> Team &amp; access
+          </div>
+          <p className="text-secondary text-sm mb-3">
+            Add people, set what each of them can reach, and switch accounts on or off. Everyone signs in with
+            their @scalepods.co Google account.
+          </p>
+          <Link to="/settings/team" className="btn-ghost w-fit !py-1.5 !px-3 text-xs">
+            Manage the team <ArrowRight size={13} />
+          </Link>
+        </Panel>
+      )}
 
       <Panel className="mb-4">
         <div className="flex items-center gap-2 mb-4 font-medium">

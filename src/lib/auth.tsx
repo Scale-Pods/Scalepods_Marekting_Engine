@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import { getRole, setRole as persistRole, type Role } from './theme'
-import { fetchMe, touchLastSeen, ME_KEY, type AppUser } from './team'
+import { fetchMe, touchLastSeen, syncFromProvider, ME_KEY, type AppUser } from './team'
 
 interface AuthState {
   session: Session | null
@@ -64,9 +64,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Presence stamp, once per mount of a signed-in session. Deliberately not awaited and never
   // surfaced — "last seen" is a nicety in the Users screen, not something worth a failed render.
+  //
+  // The provider sync rides along here for the same reason: a stale avatar is not worth an error
+  // toast, and refetching only when something actually changed keeps this from looping.
+  const providerMeta = session?.user?.user_metadata as
+    | { full_name?: string; name?: string; avatar_url?: string; picture?: string }
+    | undefined
   useEffect(() => {
-    if (appUser?.id) touchLastSeen(appUser.id).catch(() => {})
-  }, [appUser?.id])
+    if (!appUser?.id) return
+    touchLastSeen(appUser.id).catch(() => {})
+    syncFromProvider(appUser, providerMeta)
+      .then((changed) => { if (changed) void refetch() })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appUser?.id, providerMeta?.avatar_url, providerMeta?.picture])
 
   const setRole = (r: Role) => {
     persistRole(r)

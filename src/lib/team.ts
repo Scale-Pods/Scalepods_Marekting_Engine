@@ -91,6 +91,35 @@ export async function listTeam(): Promise<AppUser[]> {
   return data as AppUser[]
 }
 
+/**
+ * Copies the name and photo Google holds onto the directory row when they differ.
+ *
+ * handle_new_auth_user() captures these, but only fires on INSERT into auth.users — so it
+ * never runs when Google is *linked* to an account that already exists (Supabase merges the
+ * identity instead of creating a second user), and it would never notice a photo somebody
+ * changed later either. Running it on sign-in covers both.
+ *
+ * Only fills a blank name; an admin who deliberately set someone's display name should not have
+ * it overwritten by whatever that person calls themselves in Google.
+ */
+export async function syncFromProvider(
+  me: AppUser,
+  meta: { full_name?: string; name?: string; avatar_url?: string; picture?: string } | undefined,
+): Promise<boolean> {
+  if (!meta) return false
+  const avatar = (meta.avatar_url ?? meta.picture ?? '').trim() || null
+  const name = (meta.full_name ?? meta.name ?? '').trim()
+
+  const patch: { avatar_url?: string | null; full_name?: string } = {}
+  if (avatar && avatar !== me.avatar_url) patch.avatar_url = avatar
+  if (name && !me.full_name.trim()) patch.full_name = name
+  if (Object.keys(patch).length === 0) return false
+
+  const { error } = await supabase.from('app_users').update(patch).eq('id', me.id)
+  if (error) throw error
+  return true
+}
+
 /** Fire-and-forget presence stamp — powers "last seen" in the Users screen (Phase 1). Never
  *  allowed to break a page load, same reasoning as pushNotification in notifications.ts. */
 export async function touchLastSeen(appUserId: string): Promise<void> {

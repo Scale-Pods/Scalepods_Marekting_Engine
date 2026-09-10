@@ -3,18 +3,27 @@ import { NavLink, Link, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target,
   CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
-  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion, Eye,
+  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion, Eye, Users,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { useRealtimeSync, useNavCounts, useProfile, useProfiles, useSetActiveProfile } from '../lib/queries'
 import NotificationBell from './NotificationBell'
 import { toggleTheme, getCurrentTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
-import { initialsOf, ROLE_LABEL as TEAM_ROLE_LABEL, ROLE_ACCENT as TEAM_ROLE_ACCENT } from '../lib/team'
+import { initialsOf, isAdminRole, ROLE_LABEL as TEAM_ROLE_LABEL, ROLE_ACCENT as TEAM_ROLE_ACCENT } from '../lib/team'
 
 // `external: true` items link off-app (target="_blank") instead of routing internally — `to`
 // holds the full URL in that case, and the render loop below branches to a plain <a> for them.
-type NavItem = { to: string; label: string; icon: ReactNode; roles: Role[]; external?: boolean }
+type NavItem = {
+  to: string
+  label: string
+  icon: ReactNode
+  roles: Role[]
+  external?: boolean
+  /** Hidden unless the signed-in person's real role (app_users.role) is owner/admin. Distinct
+   *  from `roles`, which is the legacy localStorage preview toggle. */
+  adminOnly?: boolean
+}
 
 // SupportAI is a separate tool (no code/API integration on either side) — this is just its
 // documented "Add the button in your other tools" link pattern: a plain link to its home page
@@ -67,6 +76,9 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
       { to: '/analytics', label: 'Analytics', icon: <BarChart3 size={18} />, roles: ['admin', 'client'] },
       { to: '/intelligence', label: 'Intelligence', icon: <BrainCircuit size={18} />, roles: ['admin', 'client'] },
       { to: '/settings', label: 'Settings', icon: <Settings size={18} />, roles: ['admin'] },
+      // Rendered only for a real owner/admin — see the adminOnly filter below. The `roles`
+      // field here is the old localStorage view toggle and is not an access decision.
+      { to: '/settings/team', label: 'Team & access', icon: <Users size={18} />, roles: ['admin'], adminOnly: true },
       // Every role, unlike the rest of this section — a designer or client landing here for the
       // first time needs the manual more than an admin does.
       { to: '/manual', label: 'User Manual', icon: <BookOpen size={18} />, roles: ['admin', 'client', 'designer'] },
@@ -195,7 +207,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-4">
           {NAV_GROUPS.map((group) => {
-            const items = group.items.filter((n) => n.roles.includes(role))
+            const items = group.items.filter((n) => n.roles.includes(role) && (!n.adminOnly || isAdminRole(appUser?.role)))
             if (items.length === 0) return null
             return (
               <div key={group.section || 'ungrouped'}>
