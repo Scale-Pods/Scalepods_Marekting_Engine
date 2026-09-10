@@ -1,17 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sun, Moon, Sparkles, ArrowRight, ShieldCheck, User, Palette, Send, Eye, EyeOff } from 'lucide-react'
+import { Sun, Moon, Sparkles, ArrowRight, Send, Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { useAuth } from '../lib/auth'
-import { toggleTheme, getCurrentTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
+import { toggleTheme, getCurrentTheme, type Theme } from '../lib/theme'
 
-const ROLES: { id: Role; label: string; icon: typeof User; blurb: string }[] = [
-  { id: 'admin', label: 'Admin', icon: ShieldCheck, blurb: 'Run every engine' },
-  { id: 'client', label: 'Client', icon: User, blurb: 'Review & approve' },
-  { id: 'designer', label: 'Designer', icon: Palette, blurb: 'Edit creative' },
-]
+/** Google's four-colour mark. Inlined rather than loaded from a CDN because their brand
+ *  guidelines require the official artwork on the button, and lucide has no Google icon. */
+function GoogleMark() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+      <path fill="none" d="M0 0h48v48H0z" />
+    </svg>
+  )
+}
 
 export default function Login() {
-  const { signIn, role, setRole, sendReset } = useAuth()
+  const { signIn, signInWithGoogle, sendReset } = useAuth()
   const [theme, setTheme] = useState<Theme>(getCurrentTheme())
   const [email, setEmail] = useState('marketing@scalepods.co')
   const [password, setPassword] = useState('')
@@ -22,9 +30,41 @@ export default function Login() {
   const [resetBusy, setResetBusy] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+  const [googleBusy, setGoogleBusy] = useState(false)
+  const [oauthError, setOauthError] = useState<string | null>(null)
   const navigate = useNavigate()
 
   const logo = theme === 'dark' ? '/brand/logo-white.png' : '/brand/logo-black.png'
+
+  // A rejected Google sign-in comes back as an OAuth error in the URL, not as something we could
+  // catch from signInWithOAuth. The domain trigger on auth.users surfaces through Supabase as the
+  // generic "Database error saving new user", which tells the person nothing useful — translate
+  // that one case into the real reason, then scrub the URL so a refresh doesn't re-show it.
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const query = new URLSearchParams(window.location.search)
+    const desc = hash.get('error_description') ?? query.get('error_description')
+    const code = hash.get('error') ?? query.get('error')
+    if (!desc && !code) return
+    const d = (desc ?? '').toLowerCase()
+    setOauthError(
+      d.includes('database error') || d.includes('saving new user')
+        ? 'That Google account cannot be used. The Growth OS is limited to @scalepods.co addresses — sign in with your work account, or ask an admin to invite you.'
+        : (desc ?? 'Google sign-in failed. Please try again.'),
+    )
+    window.history.replaceState({}, '', window.location.pathname)
+  }, [])
+
+  async function onGoogle() {
+    setGoogleBusy(true)
+    setOauthError(null)
+    const { error } = await signInWithGoogle()
+    // On success the browser is already navigating away to Google, so this only runs on failure.
+    if (error) {
+      setOauthError(error)
+      setGoogleBusy(false)
+    }
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -146,27 +186,32 @@ export default function Login() {
             </div>
           ) : (
             <>
-              {/* Role selector */}
-              <div className="grid grid-cols-3 gap-2 mb-6">
-                {ROLES.map((r) => {
-                  const active = role === r.id
-                  const Icon = r.icon
-                  return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => setRole(r.id)}
-                      className={`panel !p-3 flex flex-col items-center gap-1 text-center transition-all ${
-                        active ? 'ring-2' : 'opacity-70 hover:opacity-100'
-                      }`}
-                      style={active ? ({ '--tw-ring-color': ROLE_ACCENT[r.id] } as React.CSSProperties) : undefined}
-                    >
-                      <Icon size={18} style={{ color: ROLE_ACCENT[r.id] }} />
-                      <span className="text-xs font-medium">{r.label}</span>
-                      <span className="text-[10px] text-muted">{r.blurb}</span>
-                    </button>
-                  )
-                })}
+              {oauthError && (
+                <div
+                  className="flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm mb-5"
+                  style={{
+                    background: 'rgb(var(--accent-orange-rgb) / 0.12)',
+                    border: '1px solid rgb(var(--accent-orange-rgb) / 0.3)',
+                    color: 'var(--accent-orange)',
+                  }}
+                >
+                  <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                  <span>{oauthError}</span>
+                </div>
+              )}
+
+              {/* The primary path for the team: everyone has a @scalepods.co Google account, so
+                  there are no passwords to issue, rotate or forget. The email form below stays as a
+                  fallback so a misconfigured OAuth client can't lock everybody out at once. */}
+              <button type="button" onClick={onGoogle} disabled={googleBusy} className="btn-ghost w-full !py-3 !font-semibold">
+                <GoogleMark />
+                {googleBusy ? 'Redirecting to Google…' : 'Continue with Google'}
+              </button>
+
+              <div className="flex items-center gap-3 my-6">
+                <div className="flex-1 h-px" style={{ background: 'var(--border-subtle)' }} />
+                <span className="text-muted text-[11px] uppercase tracking-wide">or</span>
+                <div className="flex-1 h-px" style={{ background: 'var(--border-subtle)' }} />
               </div>
 
               <form onSubmit={onSubmit} className="space-y-4">

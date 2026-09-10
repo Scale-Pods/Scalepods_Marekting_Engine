@@ -3,13 +3,14 @@ import { NavLink, Link, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target,
   CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
-  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion,
+  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion, Eye,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { useRealtimeSync, useNavCounts, useProfile, useProfiles, useSetActiveProfile } from '../lib/queries'
 import NotificationBell from './NotificationBell'
 import { toggleTheme, getCurrentTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
+import { initialsOf, ROLE_LABEL as TEAM_ROLE_LABEL, ROLE_ACCENT as TEAM_ROLE_ACCENT } from '../lib/team'
 
 // `external: true` items link off-app (target="_blank") instead of routing internally — `to`
 // holds the full URL in that case, and the render loop below branches to a plain <a> for them.
@@ -85,7 +86,7 @@ const NAV_COUNT: Record<string, 'profiles' | 'pendingReview'> = {
 }
 
 export default function AppShell({ children }: { children: ReactNode }) {
-  const { user, role, setRole, signOut } = useAuth()
+  const { user, appUser, role, setRole, signOut } = useAuth()
   const [theme, setTheme] = useState<Theme>(getCurrentTheme())
   const [roleOpen, setRoleOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -107,7 +108,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [pinned])
 
   const logo = theme === 'dark' ? '/brand/logo-white.png' : '/brand/logo-black.png'
-  const initials = (user?.email || 'U').slice(0, 2).toUpperCase()
+  const initials = initialsOf(appUser?.full_name, user?.email)
 
   // One Realtime subscription for the whole authenticated session — every page's queries
   // invalidate off it, which is what replaces the per-page polling.
@@ -255,17 +256,25 @@ export default function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        {/* Role switcher (single-login demo — switches which workspace view is active) */}
+        {/* Preview switcher — NOT identity. This is the old localStorage Role (theme.ts) and it
+            only changes which nav items render; the signed-in person's real role is in the top
+            bar. Labelled "View as" so the two can't be confused while both exist. Phase 2 of the
+            team-collaboration PRD removes this entirely, once the sidebar filters on real
+            permissions instead. */}
         <div className="p-3 shrink-0" style={{ borderTop: '1px solid var(--border-subtle)' }}>
           <div className="relative">
             <button
               onClick={() => setRoleOpen((o) => !o)}
               className={`w-full flex items-center rounded-lg panel text-sm ${expanded ? 'justify-between px-3 py-2' : 'justify-center py-2'}`}
-              title={expanded ? undefined : `${ROLE_LABEL[role]} — click to switch`}
+              title={expanded ? undefined : `Previewing the ${ROLE_LABEL[role]} view — click to switch`}
             >
-              <span className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: ROLE_ACCENT[role] }} />
-                {expanded && <span className="whitespace-nowrap">{ROLE_LABEL[role]}</span>}
+              <span className="flex items-center gap-2 min-w-0">
+                <Eye size={14} className="shrink-0 text-muted" />
+                {expanded && (
+                  <span className="whitespace-nowrap truncate">
+                    <span className="text-muted">View as</span> {ROLE_LABEL[role]}
+                  </span>
+                )}
               </span>
               {expanded && <ChevronDown size={15} className={`transition-transform ${roleOpen ? 'rotate-180' : ''}`} />}
             </button>
@@ -306,15 +315,30 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </button>
           <div className="flex items-center gap-2.5">
             <div className="text-right leading-tight hidden sm:block">
-              <div className="text-sm font-medium truncate max-w-[180px]">{user?.email}</div>
-              <span className="text-muted text-[11px] capitalize">{ROLE_LABEL[role]}</span>
+              <div className="text-sm font-medium truncate max-w-[180px]">
+                {appUser?.full_name || user?.email}
+              </div>
+              {appUser && (
+                <span className="text-[11px]" style={{ color: TEAM_ROLE_ACCENT[appUser.role] }}>
+                  {TEAM_ROLE_LABEL[appUser.role]}
+                </span>
+              )}
             </div>
-            <div
-              className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 text-white"
-              style={{ background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-green))' }}
-            >
-              {initials}
-            </div>
+            {appUser?.avatar_url ? (
+              <img
+                src={appUser.avatar_url}
+                alt={appUser.full_name}
+                referrerPolicy="no-referrer"
+                className="h-9 w-9 rounded-full object-cover shrink-0"
+              />
+            ) : (
+              <div
+                className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 text-white"
+                style={{ background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-green))' }}
+              >
+                {initials}
+              </div>
+            )}
           </div>
           <button onClick={signOut} className="btn-ghost !p-2.5" aria-label="Sign out" title="Sign out">
             <LogOut size={16} />

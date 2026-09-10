@@ -301,6 +301,7 @@
   }
   .btn-ghost:hover { background: var(--fill-secondary); }
   .btn-ghost:active { transform: scale(0.97); }
+  .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .input {
     width: 100%; padding: 0.625rem 0.875rem; border-radius: 10px;

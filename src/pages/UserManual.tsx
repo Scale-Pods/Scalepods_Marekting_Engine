@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   BookOpen, Building2, TrendingUp, Target, Wand2, Clapperboard, Film, CheckSquare,
   CalendarDays, Send, Newspaper, BarChart3, BrainCircuit, Settings as SettingsIcon,
-  ArrowRight, ShieldCheck, Lightbulb,
+  ArrowRight, ShieldCheck, Lightbulb, LogIn,
 } from 'lucide-react'
 import { PageHeader, Badge, Panel } from '../components/ui'
 
@@ -222,13 +222,27 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         ],
       },
       {
+        id: 'signing-in',
+        label: 'Signing in',
+        to: '/settings',
+        icon: <LogIn size={17} />,
+        what: 'How you and the rest of the team get into the Growth OS.',
+        steps: [
+          'Use "Continue with Google" with your @scalepods.co account. There is no password to remember.',
+          'Only @scalepods.co addresses can create an account. A personal Gmail is refused at the door, not after signing in.',
+          'Signing in is not the same as being let in: a new account has to be switched on by an admin before it can reach anything. Until then you land on an "Almost there" screen.',
+          'Your name, photo and role come from your Google account and the team directory. An admin sets the role; you cannot pick your own.',
+        ],
+        tip: 'The email and password box is still there as a fallback for the original marketing@scalepods.co account. Everyone else should use the Google button.',
+      },
+      {
         id: 'settings',
         label: 'Settings',
         to: '/settings',
         icon: <SettingsIcon size={17} />,
         what: 'Your account, the look of the app, connected platforms, and the safety switches.',
         steps: [
-          'See which account and role you are signed in as.',
+          'See which account and role you are signed in as. Your name and role come from the team directory now — they are set by an admin, not chosen by you.',
           'Switch between the dark and light theme.',
           'Connect Instagram, and check whether each platform is live.',
           'Manage comment automations — auto-DM anyone who comments a keyword — and track an existing Instagram post by pasting its URL.',

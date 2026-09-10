@@ -8,6 +8,7 @@ import { Spinner } from './components/ui'
 import AppShell from './components/AppShell'
 import Login from './pages/Login'
 import ResetPassword from './pages/ResetPassword'
+import AccountPending, { type AccountBlockReason } from './pages/AccountPending'
 
 // Route-level code splitting — keeps the initial bundle small; each page
 // (and its heavy deps like Recharts or react-easy-crop) loads on navigation.
@@ -40,10 +41,28 @@ function FullScreenLoader() {
 }
 
 function Protected({ children }: { children: ReactNode }) {
-  const { session, loading } = useAuth()
+  const { session, loading, appUser, appUserLoading, appUserError } = useAuth()
   const location = useLocation()
   if (loading) return <FullScreenLoader />
   if (!session) return <Navigate to="/login" replace state={{ from: location }} />
+
+  // Authenticated is not the same as authorised. Signing in with Google only proves the address
+  // is real and on the @scalepods.co domain (enforced by a trigger on auth.users); an admin
+  // still has to switch the account on. Anything short of an active team record stops here.
+  //
+  // The failure case denies rather than allows: if the directory lookup errors we show a retry
+  // wall instead of falling through, because guessing "probably fine" on an access check is how
+  // an outage turns into an open door.
+  if (appUserLoading) return <FullScreenLoader />
+  const block: AccountBlockReason | null = appUserError
+    ? 'lookup-failed'
+    : !appUser
+      ? 'no-record'
+      : appUser.status !== 'active'
+        ? (appUser.status as AccountBlockReason)
+        : null
+  if (block) return <AccountPending reason={block} />
+
   return (
     <AppShell>
       <Suspense fallback={<div className="flex justify-center py-16"><Spinner size={24} /></div>}>{children}</Suspense>
