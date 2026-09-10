@@ -10,17 +10,21 @@ import { type BusinessProfile } from '../lib/clients'
 import { ACTIVE_PLATFORMS } from '../lib/content'
 import { useProfile } from '../lib/queries'
 import { PageHeader, Badge, Panel } from '../components/ui'
+import type { FeatureKey } from '../lib/permissions'
 import { PlatformBadge } from '../components/mediaUi'
 
+// `feature` keeps these cards in step with the sidebar — without it the dashboard advertises
+// screens the person will only be refused at, which is a worse first impression than the card
+// simply not being there.
 const PIPELINE = [
-  { to: '/clients', label: 'Business Profile', icon: Building2, desc: 'Brand knowledge base' },
-  { to: '/intelligence', label: 'Intelligence', icon: BrainCircuit, desc: 'AI business analysis' },
-  { to: '/trends', label: 'Trends', icon: TrendingUp, desc: '8-source signal scan' },
-  { to: '/strategy', label: 'Strategy', icon: Target, desc: '7-part plan + approve' },
-  { to: '/content', label: 'Content Factory', icon: Sparkles, desc: 'Copy + image + brand' },
-  { to: '/publishing', label: 'Publishing', icon: Send, desc: 'IG · YT · FB · LinkedIn' },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3, desc: 'Insights + learning loop' },
-]
+  { to: '/clients', label: 'Business Profile', icon: Building2, desc: 'Brand knowledge base', feature: 'business' },
+  { to: '/intelligence', label: 'Intelligence', icon: BrainCircuit, desc: 'AI business analysis', feature: 'intelligence' },
+  { to: '/trends', label: 'Trends', icon: TrendingUp, desc: '8-source signal scan', feature: 'trends' },
+  { to: '/strategy', label: 'Strategy', icon: Target, desc: '7-part plan + approve', feature: 'strategy' },
+  { to: '/content', label: 'Content Factory', icon: Sparkles, desc: 'Copy + image + brand', feature: 'content' },
+  { to: '/publishing', label: 'Publishing', icon: Send, desc: 'IG · YT · FB · LinkedIn', feature: 'publishing' },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3, desc: 'Insights + learning loop', feature: 'analytics' },
+] satisfies { to: string; label: string; icon: typeof Building2; desc: string; feature: FeatureKey }[]
 
 const PLATFORMS = ['instagram', 'facebook', 'linkedin', 'youtube'] as const
 
@@ -210,7 +214,7 @@ export default function Dashboard() {
       )}
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
-        {PIPELINE.map((s) => {
+        {PIPELINE.filter((s) => can(s.feature, 'view')).map((s) => {
           const Icon = s.icon
           return (
             <Link key={s.to} to={s.to} className="card p-5 group">

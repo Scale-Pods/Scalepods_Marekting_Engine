@@ -12,7 +12,7 @@ import {
 import { connectCanva, listCanvaDesigns, importCanvaDesign, importFigmaFrame, type CanvaDesign } from '../lib/designer'
 import { useToast, toastMessage } from '../components/Toast'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
-import { useGate } from '../components/Gate'
+import { useGate, useCan } from '../components/Gate'
 import { PLATFORM_OPTIONS } from '../components/mediaUi'
 import { PostTile, PostPreviewModal, ContentTypeChip } from '../components/postPreview'
 import AssetUploader from '../components/AssetUploader'
@@ -273,6 +273,9 @@ function ReviewPreviewActions({
 }
 
 export default function CreativeReview() {
+  const pageReviewGate = useGate('review')
+  const canStudio = useCan('studio', 'view')
+  const canPublish = useCan('publishing', 'full')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [approvingAll, setApprovingAll] = useState(false)
   const [platformFilter, setPlatformFilter] = useState('all')
@@ -384,16 +387,23 @@ export default function CreativeReview() {
               />
             )}
             {selected.size > 0 && (
-              <Button onClick={onApproveAll} loading={approvingAll}>
+              <Button onClick={onApproveAll} loading={approvingAll} {...pageReviewGate.props}>
                 <CheckCircle2 size={15} /> Approve {selected.size} selected
               </Button>
             )}
-            <Link to="/studio" className="btn-ghost">
-              <Wand2 size={15} /> Create Post
-            </Link>
-            <Button variant="ghost" onClick={() => setComposerOpen(true)}>
-              <Plus size={15} /> Publish Now
-            </Button>
+            {canStudio && (
+              <Link to="/studio" className="btn-ghost">
+                <Wand2 size={15} /> Create Post
+              </Link>
+            )}
+            {/* Composes and posts immediately, so it needs Publishing at full — not merely the
+                right to be on this page. Hidden rather than disabled: it is a link to a whole
+                other workflow, not an action on the item in front of you. */}
+            {canPublish && (
+              <Button variant="ghost" onClick={() => setComposerOpen(true)}>
+                <Plus size={15} /> Publish Now
+              </Button>
+            )}
           </div>
         }
       />

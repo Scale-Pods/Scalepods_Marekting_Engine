@@ -31,3 +31,9 @@ export function useGate(feature: FeatureKey, level: AccessLevel = 'full') {
         },
   }
 }
+
+/** The bare boolean, for deciding whether to render something at all rather than disable it. */
+export function useCan(feature: FeatureKey, level: AccessLevel = 'full'): boolean {
+  const { can } = useAuth()
+  return can(feature, level)
+}
