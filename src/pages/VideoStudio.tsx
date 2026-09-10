@@ -430,11 +430,17 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
   const [voScript, setVoScript] = useState(job.voiceover_script ?? '')
   const [voice, setVoice] = useState(job.voice ?? DEFAULT_VOICE)
   const [musicPrompt, setMusicPrompt] = useState(job.music_prompt ?? '')
+  // Whether the audio editor's two fields are open — separate from whether they already have
+  // content, so a job made before this job ever had a script/prompt (or made before the music
+  // feature existed at all) can still turn either on now, not just edit what's already there.
+  const [wantsVoiceoverEdit, setWantsVoiceoverEdit] = useState(job.voiceover_script !== null)
+  const [wantsMusicEdit, setWantsMusicEdit] = useState(job.music_prompt !== null)
   const [saving, setSaving] = useState(false)
   const [rendering, setRendering] = useState(false)
   const [sending, setSending] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [regeneratingShot, setRegeneratingShot] = useState<number | null>(null)
+  const [regeneratingAudio, setRegeneratingAudio] = useState<'voiceover' | 'music' | null>(null)
   const toast = useToast()
 
   const isGeneratedClips = job.video_type === 'generated_clips'
@@ -449,6 +455,8 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
     setVoScript(job.voiceover_script ?? '')
     setVoice(job.voice ?? DEFAULT_VOICE)
     setMusicPrompt(job.music_prompt ?? '')
+    setWantsVoiceoverEdit(job.voiceover_script !== null)
+    setWantsMusicEdit(job.music_prompt !== null)
   }, [job.id])
 
   // Live, not stale: recomputed on every duration change / shot removal, so the number on the
@@ -494,16 +502,21 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
         // Changing the script or the voice invalidates the recording that was made from the old
         // one — clearing the URL is what makes the next run re-record it instead of silently
         // reusing the previous take. Same rule as an edited shot prompt; both are cheap, so
-        // unlike a shot this costs essentially nothing to redo.
-        const voChanged = (voScript || null) !== (job.voiceover_script || null) || voice !== (job.voice ?? DEFAULT_VOICE)
-        const musicChanged = (musicPrompt || null) !== (job.music_prompt || null)
+        // unlike a shot this costs essentially nothing to redo. The toggle, not just the text,
+        // decides what actually gets saved — unchecking clears it back to null (worker skips
+        // generating it), and checking it on a job that never had it invalidates nothing because
+        // there was never a URL to begin with, it just starts generating on the next run.
+        const effectiveVoScript = wantsVoiceoverEdit ? (voScript || null) : null
+        const effectiveMusicPrompt = wantsMusicEdit ? (musicPrompt || null) : null
+        const voChanged = effectiveVoScript !== (job.voiceover_script || null) || (wantsVoiceoverEdit && voice !== (job.voice ?? DEFAULT_VOICE))
+        const musicChanged = effectiveMusicPrompt !== (job.music_prompt || null)
         await updateVideoDraft(job.id, {
           shots_json: shots,
           estimated_cost_usd: liveCost,
           copy_json: copy,
-          voiceover_script: voScript || null,
+          voiceover_script: effectiveVoScript,
           voice,
-          music_prompt: musicPrompt || null,
+          music_prompt: effectiveMusicPrompt,
           ...(voChanged ? { voiceover_url: null } : {}),
           ...(musicChanged ? { music_url: null } : {}),
         })
@@ -550,6 +563,25 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
       toast.error(toastMessage(err, 'Could not regenerate this shot'))
     } finally {
       setRegeneratingShot(null)
+    }
+  }
+
+  /** Redo a take with the SAME script/prompt — for "the words are right, I just don't like how
+   *  it sounds." Editing the text already invalidates and re-records; this covers the case where
+   *  nothing changed but the take itself did not land. Nulling the url and re-firing the full
+   *  render is cheap: shots are already done and reused, so the worker only redoes audio +
+   *  re-assembly. */
+  async function onRegenerateAudio(kind: 'voiceover' | 'music') {
+    setRegeneratingAudio(kind)
+    try {
+      await updateVideoDraft(job.id, kind === 'voiceover' ? { voiceover_url: null } : { music_url: null })
+      await triggerVideoRender(job.id, job.video_type, 0)
+      toast.info(kind === 'voiceover' ? 'Re-recording the voiceover…' : 'Re-composing the music bed — $0.04.')
+      onChanged()
+    } catch (err) {
+      toast.error(toastMessage(err, `Could not regenerate the ${kind}`))
+    } finally {
+      setRegeneratingAudio(null)
     }
   }
 
@@ -628,23 +660,32 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
             </div>
           )}
           <CopyEditor copy={copy} onChange={setCopy} />
-          {(job.voiceover_script !== null || job.music_prompt !== null) && (
+          {isGeneratedClips && (
             <Panel className="!p-4 space-y-3">
               <div className="label !mb-0">Audio</div>
-              {job.voiceover_script !== null && (
+              <div className="flex items-center gap-4 flex-wrap">
+                <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                  <input type="checkbox" checked={wantsVoiceoverEdit} onChange={(e) => setWantsVoiceoverEdit(e.target.checked)} />
+                  <Mic size={13} /> Voiceover
+                </label>
+                <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                  <input type="checkbox" checked={wantsMusicEdit} onChange={(e) => setWantsMusicEdit(e.target.checked)} />
+                  <Music size={13} /> Background music
+                </label>
+              </div>
+              {wantsVoiceoverEdit && (
                 <>
-                  <div className="text-xs text-muted flex items-center gap-1.5"><Mic size={13} /> Voiceover</div>
                   <VoicePicker value={voice} onChange={setVoice} />
-                  <textarea className="input" rows={3} value={voScript} onChange={(e) => setVoScript(e.target.value)} />
+                  <textarea className="input" rows={3} placeholder="What the narrator says over the whole video" value={voScript} onChange={(e) => setVoScript(e.target.value)} />
+                  {job.voiceover_url && <audio src={job.voiceover_url} controls className="w-full" />}
                 </>
               )}
-              {job.music_prompt !== null && (
+              {wantsMusicEdit && (
                 <>
-                  <div className="text-xs text-muted flex items-center gap-1.5"><Music size={13} /> Music bed</div>
                   <input className="input" value={musicPrompt} onChange={(e) => setMusicPrompt(e.target.value)} placeholder="Describe the backing track" />
+                  {job.music_url && <audio src={job.music_url} controls className="w-full" />}
                 </>
               )}
-              {job.music_url && <audio src={job.music_url} controls className="w-full" />}
               <div className="text-[11px] text-muted">
                 Re-recording the voiceover or the music costs essentially nothing — only the shots carry a real price.
               </div>
@@ -744,23 +785,46 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
               ))}
 
               <CopyEditor copy={copy} onChange={setCopy} />
-              {(job.voiceover_script !== null || job.music_prompt !== null) && (
+              {isGeneratedClips && (
                 <Panel className="!p-4 space-y-3">
                   <div className="label !mb-0">Audio</div>
-                  {job.voiceover_script !== null && (
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input type="checkbox" checked={wantsVoiceoverEdit} onChange={(e) => setWantsVoiceoverEdit(e.target.checked)} disabled={!editable} />
+                      <Mic size={13} /> Voiceover
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input type="checkbox" checked={wantsMusicEdit} onChange={(e) => setWantsMusicEdit(e.target.checked)} disabled={!editable} />
+                      <Music size={13} /> Background music
+                    </label>
+                  </div>
+                  {wantsVoiceoverEdit && (
                     <>
-                      <div className="text-xs text-muted flex items-center gap-1.5"><Mic size={13} /> Voiceover</div>
-                      <VoicePicker value={voice} onChange={setVoice} disabled={!editable} />
-                      <textarea className="input" rows={3} value={voScript} onChange={(e) => setVoScript(e.target.value)} disabled={!editable} />
+                      <div className="flex items-center justify-between gap-2">
+                        <VoicePicker value={voice} onChange={setVoice} disabled={!editable} />
+                        {editable && job.voiceover_url && (
+                          <button onClick={() => onRegenerateAudio('voiceover')} disabled={regeneratingAudio === 'voiceover'} className="text-muted hover:text-sage disabled:opacity-40 shrink-0" title="Not happy with this take? Re-record the same script.">
+                            {regeneratingAudio === 'voiceover' ? <Spinner size={13} /> : <RefreshCw size={13} />}
+                          </button>
+                        )}
+                      </div>
+                      <textarea className="input" rows={3} placeholder="What the narrator says over the whole video" value={voScript} onChange={(e) => setVoScript(e.target.value)} disabled={!editable} />
+                      {job.voiceover_url && <audio src={job.voiceover_url} controls className="w-full" />}
                     </>
                   )}
-                  {job.music_prompt !== null && (
+                  {wantsMusicEdit && (
                     <>
-                      <div className="text-xs text-muted flex items-center gap-1.5"><Music size={13} /> Music bed</div>
-                      <input className="input" value={musicPrompt} onChange={(e) => setMusicPrompt(e.target.value)} disabled={!editable} placeholder="Describe the backing track" />
+                      <div className="flex items-center gap-2">
+                        <input className="input" value={musicPrompt} onChange={(e) => setMusicPrompt(e.target.value)} disabled={!editable} placeholder="Describe the backing track" />
+                        {editable && job.music_url && (
+                          <button onClick={() => onRegenerateAudio('music')} disabled={regeneratingAudio === 'music'} className="text-muted hover:text-sage disabled:opacity-40 shrink-0" title="Not happy with this take? Re-compose the same brief.">
+                            {regeneratingAudio === 'music' ? <Spinner size={13} /> : <RefreshCw size={13} />}
+                          </button>
+                        )}
+                      </div>
+                      {job.music_url && <audio src={job.music_url} controls className="w-full" />}
                     </>
                   )}
-                  {job.music_url && <audio src={job.music_url} controls className="w-full" />}
                   <div className="text-[11px] text-muted">
                     Re-recording the voiceover or the music costs essentially nothing — only the shots carry a real price.
                   </div>
