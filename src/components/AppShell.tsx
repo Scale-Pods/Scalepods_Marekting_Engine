@@ -3,7 +3,7 @@ import { NavLink, Link, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target,
   CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
-  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film,
+  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
@@ -11,7 +11,15 @@ import { useRealtimeSync, useNavCounts, useProfile, useProfiles, useSetActivePro
 import NotificationBell from './NotificationBell'
 import { toggleTheme, getCurrentTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
 
-type NavItem = { to: string; label: string; icon: ReactNode; roles: Role[] }
+// `external: true` items link off-app (target="_blank") instead of routing internally — `to`
+// holds the full URL in that case, and the render loop below branches to a plain <a> for them.
+type NavItem = { to: string; label: string; icon: ReactNode; roles: Role[]; external?: boolean }
+
+// SupportAI is a separate tool (no code/API integration on either side) — this is just its
+// documented "Add the button in your other tools" link pattern: a plain link to its home page
+// with ?source=<toolName> so it knows which tool the user came from. Nothing else changes on
+// our side if SupportAI's URL or behavior changes later.
+const SUPPORT_AI_URL = 'https://support-ai-woad.vercel.app/?source=scalepods-growth-os'
 
 // Grouped by pipeline stage: Marketing Strategy (plan) -> Content Generation (make) ->
 // Publishing Engine (ship) -> Insight (Analytics/Intelligence/Settings read/interpret data the
@@ -61,6 +69,7 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
       // Every role, unlike the rest of this section — a designer or client landing here for the
       // first time needs the manual more than an admin does.
       { to: '/manual', label: 'User Manual', icon: <BookOpen size={18} />, roles: ['admin', 'client', 'designer'] },
+      { to: SUPPORT_AI_URL, label: 'Support AI', icon: <MessageCircleQuestion size={18} />, roles: ['admin', 'client', 'designer'], external: true },
     ],
   },
 ]
@@ -196,6 +205,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 )}
                 <div className="space-y-1">
                   {items.map((n) => {
+                    if (n.external) {
+                      return (
+                        <a
+                          key={n.to}
+                          href={n.to}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={expanded ? undefined : n.label}
+                          className={`nav-item relative ${expanded ? '' : 'justify-center'}`}
+                        >
+                          {n.icon}
+                          {expanded && <span className="flex-1 whitespace-nowrap">{n.label}</span>}
+                        </a>
+                      )
+                    }
                     const countKey = NAV_COUNT[n.to]
                     const count = countKey ? counts[countKey] : 0
                     return (
