@@ -495,21 +495,25 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
     }))
   }
 
+  // Changing the script or the voice invalidates the recording that was made from the old one —
+  // clearing the URL is what makes the next run re-record it instead of silently reusing the
+  // previous take. Same rule as an edited shot prompt; both are cheap, so unlike a shot this
+  // costs essentially nothing to redo. The toggle, not just the text, decides what actually gets
+  // saved — unchecking clears it back to null (worker skips generating it), and checking it on a
+  // job that never had it invalidates nothing because there was never a URL to begin with, it
+  // just starts generating on the next run. Hoisted above doRender so the post-render toast can
+  // tell "audio is (re)generating" apart from "nothing but reused shots and on-screen text" —
+  // both look identical from pendingShots alone.
+  const effectiveVoScript = wantsVoiceoverEdit ? (voScript || null) : null
+  const effectiveMusicPrompt = wantsMusicEdit ? (musicPrompt || null) : null
+  const voChanged = effectiveVoScript !== (job.voiceover_script || null) || (wantsVoiceoverEdit && voice !== (job.voice ?? DEFAULT_VOICE))
+  const musicChanged = effectiveMusicPrompt !== (job.music_prompt || null)
+  const audioChanged = voChanged || musicChanged
+
   async function doRender() {
     setSaving(true)
     try {
       if (isGeneratedClips) {
-        // Changing the script or the voice invalidates the recording that was made from the old
-        // one — clearing the URL is what makes the next run re-record it instead of silently
-        // reusing the previous take. Same rule as an edited shot prompt; both are cheap, so
-        // unlike a shot this costs essentially nothing to redo. The toggle, not just the text,
-        // decides what actually gets saved — unchecking clears it back to null (worker skips
-        // generating it), and checking it on a job that never had it invalidates nothing because
-        // there was never a URL to begin with, it just starts generating on the next run.
-        const effectiveVoScript = wantsVoiceoverEdit ? (voScript || null) : null
-        const effectiveMusicPrompt = wantsMusicEdit ? (musicPrompt || null) : null
-        const voChanged = effectiveVoScript !== (job.voiceover_script || null) || (wantsVoiceoverEdit && voice !== (job.voice ?? DEFAULT_VOICE))
-        const musicChanged = effectiveMusicPrompt !== (job.music_prompt || null)
         await updateVideoDraft(job.id, {
           shots_json: shots,
           estimated_cost_usd: liveCost,
@@ -530,9 +534,11 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
       await triggerVideoRender(job.id, job.video_type, nextRunCost)
       toast.info(
         isGeneratedClips
-          ? (pendingShots.length === 0
-            ? 'Re-assembling with your new on-screen text — no new generation, no extra cost.'
-            : `Generating ${pendingShots.length} shot${pendingShots.length === 1 ? '' : 's'} — Veo takes a few minutes each.`)
+          ? (pendingShots.length > 0
+            ? `Generating ${pendingShots.length} shot${pendingShots.length === 1 ? '' : 's'} — Veo takes a few minutes each.`
+            : audioChanged
+              ? 'Recording the audio and re-assembling — shots are reused, so this only costs the audio itself.'
+              : 'Re-assembling with your new on-screen text — no new generation, no extra cost.')
           : 'Render started — this takes several minutes.',
       )
       onChanged()

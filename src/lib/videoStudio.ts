@@ -155,6 +155,29 @@ export interface VideoShot {
   clipUrl: string | null
   costUsd: number | null
   errorDetail?: string | null
+  /** A thumbs up/down and an optional revision note — logged so quality issues have a record,
+   *  and folded straight into `prompt` the next time this shot is regenerated (see
+   *  `applyShotFeedback`) rather than being a separate signal nothing ever reads. */
+  feedback?: ItemFeedback | null
+}
+
+/** Shared shape for the feedback attached to a shot, a slide, or an audio track. `rating` alone
+ *  is the lightweight log; `note`, once a regenerate is fired, gets folded into the actual prompt
+ *  text so the same click that logs the problem also tries to fix it. */
+export interface ItemFeedback {
+  rating: 'up' | 'down' | null
+  note: string
+}
+
+/** Appends a feedback note to a prompt/script as an explicit revision instruction, once — calling
+ *  it again with the same note is a no-op rather than stacking duplicates, since "regenerate with
+ *  feedback" can be clicked more than once before the note is cleared. */
+export function foldFeedbackIntoText(text: string, note: string): string {
+  const trimmed = note.trim()
+  if (!trimmed) return text
+  const marker = `Revision note — address this: ${trimmed}`
+  if (text.includes(marker)) return text
+  return `${text}\n\n${marker}`
 }
 
 /** Cost of a shot list at a given engine+resolution. Uses each shot's REAL recorded cost once it
@@ -262,6 +285,8 @@ export interface VideoJob {
   music_prompt: string | null
   music_url: string | null
   voice: string | null
+  voiceover_feedback: ItemFeedback | null
+  music_feedback: ItemFeedback | null
   created_at: string
   updated_at: string
 }
@@ -362,6 +387,8 @@ export async function updateVideoDraft(
      *  of silently reusing the old recording — same invalidation rule as an edited shot. */
     voiceover_url?: string | null
     music_url?: string | null
+    voiceover_feedback?: ItemFeedback | null
+    music_feedback?: ItemFeedback | null
   },
 ): Promise<void> {
   const { error } = await supabase.from('video_jobs').update(patch).eq('id', jobId)

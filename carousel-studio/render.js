@@ -327,6 +327,30 @@ function hasAudioStream(input) {
   });
 }
 
+// Real seconds, not a guess — the audio mix in finalizeVideo() needs the video's actual duration
+// to cap `apad`. A bare, unbounded `apad` pads with silence forever; `-shortest` on the final map
+// is supposed to cut that off at the video, but a live run proved it does not reliably do so on a
+// complex filter_complex — a 17.85s voiceover (a script written slightly too long for a 12.05s
+// video) produced an audio filter chain that never terminated, ffmpeg ran for a simulated 15+
+// hours before failing outright. Bounding `apad` directly removes the need to rely on
+// `-shortest` catching it after the fact.
+function probeDuration(input) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', input],
+      (err, stdout) => {
+        if (err) return reject(new Error(`ffprobe duration failed for ${input}: ${err.message}`));
+        const seconds = parseFloat(String(stdout).trim());
+        if (!Number.isFinite(seconds) || seconds <= 0) {
+          return reject(new Error(`ffprobe returned an unusable duration for ${input}: ${JSON.stringify(String(stdout).trim())}`));
+        }
+        resolve(seconds);
+      },
+    );
+  });
+}
+
 // Step 1: join same-codec MP4s with the concat DEMUXER (`-c copy`, no re-encode) — the standard
 // way to join clips that already share codec/resolution/framerate, which every slide here does,
 // since they all come from the identical ffmpegEncode() above. Re-encoding filters (scale/crop/
@@ -402,11 +426,18 @@ async function finalizeVideo({ concatenatedPath, aspectRatio, logoPath, voiceove
   // the already-verified path and there is nothing to mix.
   const nativeOnly = layers.length === 1 && hasSourceAudio;
   if (layers.length > 0 && !nativeOnly) {
-    // apad runs the mix out with silence so a short voiceover or bed never truncates the video;
-    // `-shortest` below then ends the file at the video, so a long one never extends it either.
+    // apad runs a short track out with silence so it never truncates the video; atrim then cuts
+    // anything still longer than the video down to exactly its length. Both bounded to the
+    // video's own real duration, not left to `-shortest` alone — that LOOKS equivalent (both are
+    // meant to end the file at the video) but is not reliable in practice: a voiceover longer
+    // than the video (an over-length script is an easy mistake, not an edge case) fed into a bare
+    // unbounded `apad` produced a filter graph that never terminated — ffmpeg ran for a simulated
+    // 15+ hours of "time=" before failing outright. `-shortest` stays on below as a second line
+    // of defence, not the only one.
+    const videoDurationS = await probeDuration(concatenatedPath);
     const mix = layers.length > 1
-      ? `${layers.join('')}amix=inputs=${layers.length}:duration=longest:dropout_transition=0,apad[outa]`
-      : `${layers[0]}apad[outa]`;
+      ? `${layers.join('')}amix=inputs=${layers.length}:duration=longest:dropout_transition=0,apad=whole_dur=${videoDurationS},atrim=duration=${videoDurationS}[outa]`
+      : `${layers[0]}apad=whole_dur=${videoDurationS},atrim=duration=${videoDurationS}[outa]`;
     videoFilters.push(mix);
   }
 
