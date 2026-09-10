@@ -103,7 +103,7 @@ function Tile({ icon: Icon, label, value, accent }: { icon: typeof Zap; label: s
 }
 
 export default function Dashboard() {
-  const { role } = useAuth()
+  const { can } = useAuth()
   const { data: profile } = useProfile()
   const [data, setData] = useState<DashboardData | null>(null)
 
@@ -123,7 +123,7 @@ export default function Dashboard() {
         subtitle="ScalePods running its own marketing on the exact system it sells — end to end, one screen at a time."
       />
 
-      {profile === null && role === 'admin' && (
+      {profile === null && can('business', 'full') && (
         <div className="card p-5 mb-6 flex items-center justify-between gap-4">
           <div>
             <div className="font-medium">Start here — create the ScalePods business profile.</div>

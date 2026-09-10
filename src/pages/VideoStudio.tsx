@@ -21,6 +21,7 @@ import {
 } from '../lib/videoStudio'
 import { createManualItem, GENERATION_ENABLED, VIDEO_GENERATION_ENABLED } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
+import { useGate } from '../components/Gate'
 import { PostTile } from '../components/postPreview'
 import { useToast, toastMessage } from '../components/Toast'
 
@@ -481,6 +482,9 @@ function CopyEditor({ copy, onChange }: { copy: StudioCopy; onChange: (c: Studio
 }
 
 function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void }) {
+  // Video Studio's `full` is the most expensive right in the app — a single run can reach the
+  // $5 per-video ceiling. Editing shots, the script and the voice stays available at `edit`.
+  const spendGate = useGate('video_studio')
   const { data: profile } = useProfile()
   const [outline, setOutline] = useState<CarouselSlide[]>(job.outline_json ?? [])
   const [shots, setShots] = useState<VideoShot[]>(job.shots_json ?? [])
@@ -803,6 +807,7 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
             onClick={onApprove}
             loading={saving || rendering}
             disabled={!GENERATION_ENABLED || (isGeneratedClips && (!VIDEO_GENERATION_ENABLED || overCeiling))}
+            {...spendGate.props}
           >
             <Play size={15} /> {isGeneratedClips ? `Generate video — ≈$${liveCost.toFixed(2)}` : 'Approve & Render'}
           </Button>
@@ -1005,6 +1010,7 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                 className="flex-1"
                 loading={saving || rendering}
                 onClick={async () => { setConfirmOpen(false); await doRender() }}
+                {...spendGate.props}
               >
                 <Play size={15} /> Yes, generate
               </Button>

@@ -21,6 +21,7 @@ import {
 import { createManualItem, GENERATION_ENABLED, type ContentSlide } from '../lib/content'
 import { stampAndUpload } from '../lib/brandStamp'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
+import { useGate } from '../components/Gate'
 import { PlatformBadge } from '../components/mediaUi'
 import { PostPreviewModal } from '../components/postPreview'
 import AssetUploader from '../components/AssetUploader'
@@ -197,6 +198,9 @@ async function sendCarouselToReview(
 }
 
 export default function AIStudio() {
+  // `full` on a studio is specifically the right to spend. Everything else here — editing the
+  // prompt, the copy, the slide plan — stays available at `edit`.
+  const spendGate = useGate('studio')
   const { data: profile, isLoading: profileLoading } = useProfile()
   const toast = useToast()
   const navigate = useNavigate()
@@ -803,7 +807,7 @@ export default function AIStudio() {
           </Panel>
 
           <div className="flex justify-end">
-            <Button onClick={onBrief} loading={briefing} disabled={!canBrief}>
+            <Button onClick={onBrief} loading={briefing} disabled={!canBrief} {...spendGate.props}>
               <Sparkles size={15} /> Write the brief
             </Button>
           </div>
@@ -904,7 +908,7 @@ export default function AIStudio() {
               <SlideEditor slides={draftSlides} onChange={updateSlideDraft} />
               <div className="flex items-center justify-end gap-3 mt-3">
                 <CostEstimate model={activeModel} ratio={ratio} count={draftSlides.length} label="slide" carousel />
-                <Button onClick={onGenerate} loading={generating || isGenerating} disabled={draftSlides.length === 0}>
+                <Button onClick={onGenerate} loading={generating || isGenerating} disabled={draftSlides.length === 0} {...spendGate.props}>
                   <Wand2 size={15} /> Generate {draftSlides.length} {draftSlides.length === 1 ? 'slide' : 'slides'}
                 </Button>
               </div>
@@ -918,7 +922,7 @@ export default function AIStudio() {
               <textarea className="input" rows={5} value={draftPrompt} onChange={(e) => setDraftPrompt(e.target.value)} />
               <div className="flex items-center justify-end gap-3 mt-3">
                 <CostEstimate model={activeModel} ratio={ratio} count={variantCount} />
-                <Button onClick={onGenerate} loading={generating || isGenerating} disabled={!draftPrompt.trim()}>
+                <Button onClick={onGenerate} loading={generating || isGenerating} disabled={!draftPrompt.trim()} {...spendGate.props}>
                   <Wand2 size={15} /> Generate {variantCount} {variantCount === 1 ? 'image' : 'images'}
                 </Button>
               </div>

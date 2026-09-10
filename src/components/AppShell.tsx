@@ -1,16 +1,17 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { NavLink, Link, useNavigate } from 'react-router-dom'
+import { NavLink, Link } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target,
   CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
-  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion, Eye, Users,
+  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion, Users,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { useRealtimeSync, useNavCounts, useProfile, useProfiles, useSetActiveProfile } from '../lib/queries'
 import NotificationBell from './NotificationBell'
-import { toggleTheme, getCurrentTheme, type Theme, type Role, ROLE_ACCENT } from '../lib/theme'
+import { toggleTheme, getCurrentTheme, type Theme } from '../lib/theme'
 import { initialsOf, isAdminRole, ROLE_LABEL as TEAM_ROLE_LABEL, ROLE_ACCENT as TEAM_ROLE_ACCENT } from '../lib/team'
+import type { FeatureKey } from '../lib/permissions'
 
 // `external: true` items link off-app (target="_blank") instead of routing internally — `to`
 // holds the full URL in that case, and the render loop below branches to a plain <a> for them.
@@ -18,10 +19,12 @@ type NavItem = {
   to: string
   label: string
   icon: ReactNode
-  roles: Role[]
+  /** Which feature permission this item needs at `view` to appear at all. Omitted means the
+   *  item is ungated — the manual and Support AI, which everyone keeps. */
+  feature?: FeatureKey
   external?: boolean
-  /** Hidden unless the signed-in person's real role (app_users.role) is owner/admin. Distinct
-   *  from `roles`, which is the legacy localStorage preview toggle. */
+  /** Owner/admin only, independent of the permission map — managing people follows from the
+   *  role rather than from a feature grant. See permissions.ts. */
   adminOnly?: boolean
 }
 
@@ -40,56 +43,52 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
   {
     section: '',
     items: [
-      { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={18} />, roles: ['admin', 'client', 'designer'] },
+      { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={18} />, feature: 'dashboard' },
     ],
   },
   {
     section: 'Marketing Strategy',
     items: [
-      { to: '/clients', label: 'Business', icon: <Building2 size={18} />, roles: ['admin'] },
-      { to: '/trends', label: 'Trends', icon: <TrendingUp size={18} />, roles: ['admin', 'client'] },
-      { to: '/strategy', label: 'Strategy', icon: <Target size={18} />, roles: ['admin', 'client'] },
+      { to: '/clients', label: 'Business', icon: <Building2 size={18} />, feature: 'business' },
+      { to: '/trends', label: 'Trends', icon: <TrendingUp size={18} />, feature: 'trends' },
+      { to: '/strategy', label: 'Strategy', icon: <Target size={18} />, feature: 'strategy' },
     ],
   },
   {
     section: 'Content Generation',
     items: [
-      { to: '/studio', label: 'AI Studio', icon: <Wand2 size={18} />, roles: ['admin'] },
+      { to: '/studio', label: 'AI Studio', icon: <Wand2 size={18} />, feature: 'studio' },
       // Content Factory hidden from nav 2026-09-03 — superseded by AI Studio for now. Route and
       // page are untouched, just not linked from the sidebar; see the "Content Factory" memory.
-      { to: '/carousel-studio', label: 'Carousel Studio', icon: <Clapperboard size={18} />, roles: ['admin'] },
-      { to: '/video-studio', label: 'Video Studio', icon: <Film size={18} />, roles: ['admin'] },
-      { to: '/review', label: 'Creative Review', icon: <CheckSquare size={18} />, roles: ['admin', 'client', 'designer'] },
+      { to: '/carousel-studio', label: 'Carousel Studio', icon: <Clapperboard size={18} />, feature: 'carousel_studio' },
+      { to: '/video-studio', label: 'Video Studio', icon: <Film size={18} />, feature: 'video_studio' },
+      { to: '/review', label: 'Creative Review', icon: <CheckSquare size={18} />, feature: 'review' },
     ],
   },
   {
     section: 'Publishing Engine',
     items: [
-      { to: '/calendar', label: 'Calendar', icon: <CalendarDays size={18} />, roles: ['admin', 'client'] },
-      { to: '/publishing', label: 'Publishing', icon: <Send size={18} />, roles: ['admin'] },
-      { to: '/blog', label: 'Blog', icon: <Newspaper size={18} />, roles: ['admin', 'client'] },
+      { to: '/calendar', label: 'Calendar', icon: <CalendarDays size={18} />, feature: 'calendar' },
+      { to: '/publishing', label: 'Publishing', icon: <Send size={18} />, feature: 'publishing' },
+      { to: '/blog', label: 'Blog', icon: <Newspaper size={18} />, feature: 'blog' },
     ],
   },
   {
     section: 'Insight',
     items: [
-      { to: '/analytics', label: 'Analytics', icon: <BarChart3 size={18} />, roles: ['admin', 'client'] },
-      { to: '/intelligence', label: 'Intelligence', icon: <BrainCircuit size={18} />, roles: ['admin', 'client'] },
-      { to: '/settings', label: 'Settings', icon: <Settings size={18} />, roles: ['admin'] },
-      // Rendered only for a real owner/admin — see the adminOnly filter below. The `roles`
-      // field here is the old localStorage view toggle and is not an access decision.
-      { to: '/settings/team', label: 'Team & access', icon: <Users size={18} />, roles: ['admin'], adminOnly: true },
-      // Every role, unlike the rest of this section — a designer or client landing here for the
-      // first time needs the manual more than an admin does.
-      { to: '/manual', label: 'User Manual', icon: <BookOpen size={18} />, roles: ['admin', 'client', 'designer'] },
-      { to: SUPPORT_AI_URL, label: 'Support AI', icon: <MessageCircleQuestion size={18} />, roles: ['admin', 'client', 'designer'], external: true },
+      { to: '/analytics', label: 'Analytics', icon: <BarChart3 size={18} />, feature: 'analytics' },
+      { to: '/intelligence', label: 'Intelligence', icon: <BrainCircuit size={18} />, feature: 'intelligence' },
+      { to: '/settings', label: 'Settings', icon: <Settings size={18} />, feature: 'settings' },
+      { to: '/settings/team', label: 'Team & access', icon: <Users size={18} />, adminOnly: true },
+      // Ungated, unlike everything else here — somebody who has just been given a narrow slice of
+      // the app needs the manual more than an admin does, and hiding it would be perverse.
+      { to: '/manual', label: 'User Manual', icon: <BookOpen size={18} /> },
+      { to: SUPPORT_AI_URL, label: 'Support AI', icon: <MessageCircleQuestion size={18} />, external: true },
     ],
   },
 ]
 
 const SIDEBAR_PINNED_KEY = 'sp-sidebar-pinned'
-
-const ROLE_LABEL: Record<Role, string> = { admin: 'Admin', client: 'Client', designer: 'Designer' }
 
 // Live count badges shown next to a nav item — path → which counter to read.
 const NAV_COUNT: Record<string, 'profiles' | 'pendingReview'> = {
@@ -98,11 +97,9 @@ const NAV_COUNT: Record<string, 'profiles' | 'pendingReview'> = {
 }
 
 export default function AppShell({ children }: { children: ReactNode }) {
-  const { user, appUser, role, setRole, signOut } = useAuth()
+  const { user, appUser, can, signOut } = useAuth()
   const [theme, setTheme] = useState<Theme>(getCurrentTheme())
-  const [roleOpen, setRoleOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
-  const navigate = useNavigate()
 
   const { data: profile } = useProfile()
   const { data: profiles = [] } = useProfiles()
@@ -207,7 +204,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-4">
           {NAV_GROUPS.map((group) => {
-            const items = group.items.filter((n) => n.roles.includes(role) && (!n.adminOnly || isAdminRole(appUser?.role)))
+            const items = group.items.filter(
+              (n) => (!n.feature || can(n.feature, 'view')) && (!n.adminOnly || isAdminRole(appUser?.role)),
+            )
             if (items.length === 0) return null
             return (
               <div key={group.section || 'ungrouped'}>
@@ -268,48 +267,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        {/* Preview switcher — NOT identity. This is the old localStorage Role (theme.ts) and it
-            only changes which nav items render; the signed-in person's real role is in the top
-            bar. Labelled "View as" so the two can't be confused while both exist. Phase 2 of the
-            team-collaboration PRD removes this entirely, once the sidebar filters on real
-            permissions instead. */}
-        <div className="p-3 shrink-0" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-          <div className="relative">
-            <button
-              onClick={() => setRoleOpen((o) => !o)}
-              className={`w-full flex items-center rounded-lg panel text-sm ${expanded ? 'justify-between px-3 py-2' : 'justify-center py-2'}`}
-              title={expanded ? undefined : `Previewing the ${ROLE_LABEL[role]} view — click to switch`}
-            >
-              <span className="flex items-center gap-2 min-w-0">
-                <Eye size={14} className="shrink-0 text-muted" />
-                {expanded && (
-                  <span className="whitespace-nowrap truncate">
-                    <span className="text-muted">View as</span> {ROLE_LABEL[role]}
-                  </span>
-                )}
-              </span>
-              {expanded && <ChevronDown size={15} className={`transition-transform ${roleOpen ? 'rotate-180' : ''}`} />}
-            </button>
-            {roleOpen && (
-              <div className="absolute bottom-full mb-2 left-0 w-48 card p-1 z-10">
-                {(['admin', 'client', 'designer'] as Role[]).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => {
-                      setRole(r)
-                      setRoleOpen(false)
-                      navigate('/')
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-panel text-left"
-                  >
-                    <span className="h-2 w-2 rounded-full" style={{ background: ROLE_ACCENT[r] }} />
-                    {ROLE_LABEL[r]}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
       </aside>
 
       {/* Main */}

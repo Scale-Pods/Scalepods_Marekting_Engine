@@ -1,13 +1,14 @@
 # Team Collaboration & Access Control — PRD + Implementation Plan
 
-**Status:** Approved · **Phases 0–1 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
+**Status:** Approved · **Phases 0–2 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
 
-> **Progress:** Phase 0 (identity) and Phase 1 (Users & Access) are built and verified against
-> the live database. Google sign-in is enabled and working end to end. §13 records the
-> decisions that changed during the build. Phases 2–7 are still as specified below.
+> **Progress:** Phases 0 (identity), 1 (Users & Access) and 2 (UI enforcement) are built.
+> Google sign-in is enabled and working end to end. §13 records the decisions that changed
+> during the build. Phases 3–7 are still as specified below.
 >
-> **Next up — Phase 2 (UI enforcement), then Phase 3 (the RLS rewrite).** Until Phase 3 lands,
-> permissions are recorded but not enforced: activating anyone still grants them everything.
+> **Next up — Phase 3, the RLS rewrite.** Until it lands, permissions shape the UI but do not
+> protect the data: every table is still `USING (true)`, so a determined user could reach the
+> API directly. Do not tell the team to sign in yet.
 
 Covers: real multi-user identity, per-feature access control, a Jira-style Kanban board with a
 maker–checker gate, per-user notifications (in-app + email), and per-user spend caps.
@@ -660,3 +661,33 @@ trigger decides which *columns* (role, status, email and spend cap stay admin-on
 cannot express a column restriction, and a column GRANT would have applied to admins too.
 
 Verified live: the owner's `avatar_url` is now the real Google photo.
+
+### 13.8 Phase 2: `/` is deliberately left ungated
+
+Every route carries the feature it guards except the Dashboard. A person with `dashboard: none`
+would otherwise land on a wall at the root of the app with nowhere to go — the redirect target
+for every other refusal is `/` itself. It stays reachable; the KPI content inside it is what a
+`dashboard` grant governs.
+
+### 13.9 Phase 2: refusals explain rather than redirect
+
+A route the person lacks renders `NoAccess` — naming the screen and pointing at Settings → Team
+& access — instead of bouncing them to the dashboard. A silent redirect is indistinguishable
+from a broken link, and generates a support question rather than answering one. Action buttons
+follow the same rule: they stay visible but disabled, with the required level in the tooltip.
+The one exception is the danger zone in Team & access, which hides outright.
+
+### 13.10 Phase 2: admins short-circuit the permission map
+
+`can()` returns true for owner/admin without consulting `user_permissions`, matching what
+`app_can()` will do in Phase 3 so the UI and the database agree. It also means an admin cannot
+lock themselves out of their own app by mangling a permission row.
+
+The side effect is that **Phase 2 cannot be verified from an admin account** — every gate answers
+true. Proving it needs either a temporary self-demotion in SQL or a second real login.
+
+### 13.11 Phase 2: first paint waits for permissions
+
+`Protected` holds the spinner until the permission map has loaded, not just the directory row.
+Rendering earlier showed the ungated sidebar items (manual, Support AI) alone for a beat before
+the rest appeared, which reads as the app deciding you have no access.

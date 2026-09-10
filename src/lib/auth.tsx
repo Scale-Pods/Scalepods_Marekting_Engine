@@ -1,9 +1,10 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import { getRole, setRole as persistRole, type Role } from './theme'
-import { fetchMe, touchLastSeen, syncFromProvider, ME_KEY, type AppUser } from './team'
+
+import { fetchMe, touchLastSeen, syncFromProvider, isAdminRole, ME_KEY, type AppUser } from './team'
+import { fetchPermissions, can as canDo, type AccessLevel, type FeatureKey, type PermissionMap } from './permissions'
 
 interface AuthState {
   session: Session | null
@@ -15,12 +16,16 @@ interface AuthState {
   appUserLoading: boolean
   appUserError: Error | null
   refetchAppUser: () => void
-  /** @deprecated Phase 0 of the team-collaboration PRD replaced this with `appUser.role`. It is
-   *  still a localStorage-backed *view* switcher (any user can pick any value), so it must never
-   *  be used for an access decision. Phase 2 deletes it along with the sidebar switcher. */
-  role: Role
+  /** What this person may reach, by feature. Empty while loading — `can()` answers false until
+   *  it arrives, so a permission-gated control is never briefly clickable on a slow connection. */
+  permissions: PermissionMap
+  permissionsLoading: boolean
+  /** "At least this level." The single access question the whole UI asks:
+   *  `can('studio', 'full')` for a spend button, `can('studio', 'view')` for the nav item.
+   *  Mirrors app_can() in Postgres, which is what actually protects the data in Phase 3 — this
+   *  only decides what is worth rendering. */
+  can: (feature: FeatureKey, level: AccessLevel) => boolean
   loading: boolean
-  setRole: (r: Role) => void
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signInWithGoogle: () => Promise<{ error: string | null }>
   signOut: () => Promise<void>
@@ -29,9 +34,11 @@ interface AuthState {
 
 const AuthCtx = createContext<AuthState | undefined>(undefined)
 
+// Stable identity so `can` isn't rebuilt on every render while permissions are still loading.
+const EMPTY_PERMISSIONS: PermissionMap = {}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
-  const [role, setRoleState] = useState<Role>(getRole())
   const [loading, setLoading] = useState(true)
   const qc = useQueryClient()
 
@@ -79,10 +86,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appUser?.id, providerMeta?.avatar_url, providerMeta?.picture])
 
-  const setRole = (r: Role) => {
-    persistRole(r)
-    setRoleState(r)
-  }
+  // Only fetched once there is a directory row to fetch them for. A suspended or unknown
+  // account never gets this far — the wall in App.tsx stops it — but the query is keyed on the
+  // row id anyway so switching accounts can't serve the previous person's permissions.
+  const { data: permissions = EMPTY_PERMISSIONS, isLoading: permsLoading } = useQuery({
+    queryKey: ['permissions', appUser?.id],
+    queryFn: () => fetchPermissions(appUser!.id),
+    enabled: !!appUser?.id,
+    staleTime: 60_000,
+  })
+
+  const permissionsLoading = !!appUser?.id && permsLoading
+
+  // Owners and admins always answer true, without consulting the map. app_can() in Postgres will
+  // do the same in Phase 3, so the UI and the database agree — and it means an admin can never
+  // lock themselves out of their own app by mangling a permission row.
+  const can = useCallback(
+    (feature: FeatureKey, level: AccessLevel) => {
+      if (isAdminRole(appUser?.role)) return true
+      if (permissionsLoading) return false
+      return canDo(permissions, feature, level)
+    },
+    [appUser?.role, permissions, permissionsLoading],
+  )
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -127,9 +153,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         appUserLoading: !!authUserId && appUserLoading,
         appUserError: (appUserError as Error) ?? null,
         refetchAppUser: () => void refetch(),
-        role,
+        permissions,
+        permissionsLoading,
+        can,
         loading,
-        setRole,
         signIn,
         signInWithGoogle,
         signOut,

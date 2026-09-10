@@ -12,6 +12,7 @@ import {
 import { connectCanva, listCanvaDesigns, importCanvaDesign, importFigmaFrame, type CanvaDesign } from '../lib/designer'
 import { useToast, toastMessage } from '../components/Toast'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
+import { useGate } from '../components/Gate'
 import { PLATFORM_OPTIONS } from '../components/mediaUi'
 import { PostTile, PostPreviewModal, ContentTypeChip } from '../components/postPreview'
 import AssetUploader from '../components/AssetUploader'
@@ -202,6 +203,9 @@ function ReviewPreviewActions({
   onEdit: () => void
   onReplace: () => void
 }) {
+  // Approving and sending back are the two decisions that move somebody else's work forward,
+  // which is what `full` means here. Editing copy and replacing media stay open at `edit`.
+  const reviewGate = useGate('review')
   const [busy, setBusy] = useState<string | null>(null)
   const [showNotes, setShowNotes] = useState(false)
   const [notes, setNotes] = useState('')
@@ -227,10 +231,10 @@ function ReviewPreviewActions({
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
-        <Button className="!py-1.5 !px-3 text-xs" loading={busy === 'approve'} onClick={() => run('approve', () => approveItem(item.id), true)}>
+        <Button className="!py-1.5 !px-3 text-xs" loading={busy === 'approve'} onClick={() => run('approve', () => approveItem(item.id), true)} {...reviewGate.props}>
           <CheckCircle2 size={13} /> Approve
         </Button>
-        <Button variant="ghost" className="!py-1.5 !px-3 text-xs" onClick={() => setShowNotes((s) => !s)}>
+        <Button variant="ghost" className="!py-1.5 !px-3 text-xs" onClick={() => setShowNotes((s) => !s)} {...reviewGate.props}>
           <Undo2 size={13} /> Send back
         </Button>
         {(isImage || isVideo) && (

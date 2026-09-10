@@ -9,6 +9,7 @@ import {
 } from '../lib/carousels'
 import { GENERATION_ENABLED } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
+import { useGate } from '../components/Gate'
 import { useToast, toastMessage } from '../components/Toast'
 
 const POSES = ['casual', 'pointing', 'victory', 'arms-crossed', 'phone'] as const
@@ -115,6 +116,7 @@ function SlideEditor({ slide, onChange, onRemove }: { slide: CarouselSlide; onCh
 }
 
 function JobDetail({ job, onChanged }: { job: CarouselJob; onChanged: () => void }) {
+  const spendGate = useGate('carousel_studio')
   const [outline, setOutline] = useState<CarouselSlide[]>(job.outline_json ?? [])
   const [saving, setSaving] = useState(false)
   const [rendering, setRendering] = useState(false)
@@ -167,7 +169,7 @@ function JobDetail({ job, onChanged }: { job: CarouselJob; onChanged: () => void
               />
             ))}
           </div>
-          <Button onClick={onApproveAndRender} loading={saving || rendering} disabled={!GENERATION_ENABLED}>
+          <Button onClick={onApproveAndRender} loading={saving || rendering} disabled={!GENERATION_ENABLED} {...spendGate.props}>
             <Play size={15} /> Approve &amp; Render
           </Button>
         </>
@@ -211,7 +213,7 @@ function JobDetail({ job, onChanged }: { job: CarouselJob; onChanged: () => void
                   {doneSlides} slide{doneSlides === 1 ? '' : 's'} finished before the failure — shown below and still usable.
                 </div>
               )}
-              <Button variant="ghost" className="!py-1.5 text-xs mt-3" onClick={onApproveAndRender} loading={saving || rendering}>
+              <Button variant="ghost" className="!py-1.5 text-xs mt-3" onClick={onApproveAndRender} loading={saving || rendering} {...spendGate.props}>
                 <Play size={13} /> Retry render
               </Button>
             </Panel>
@@ -236,6 +238,7 @@ function JobDetail({ job, onChanged }: { job: CarouselJob; onChanged: () => void
 }
 
 export default function CarouselStudio() {
+  const spendGate = useGate('carousel_studio')
   const { data: profile, isLoading: profileLoading } = useProfile()
   const [jobs, setJobs] = useState<CarouselJob[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -365,7 +368,7 @@ export default function CarouselStudio() {
             value={keyword}
             onChange={(e) => setKeyword(e.target.value.toUpperCase())}
           />
-          <Button onClick={onGenerate} loading={generating} disabled={!topic.trim() || !GENERATION_ENABLED}>
+          <Button onClick={onGenerate} loading={generating} disabled={!topic.trim() || !GENERATION_ENABLED} {...spendGate.props}>
             <Sparkles size={15} /> Draft outline
           </Button>
         </div>
