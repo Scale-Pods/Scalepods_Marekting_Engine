@@ -245,7 +245,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         what: 'How you and the rest of the team get into the Growth OS.',
         steps: [
           'Use "Continue with Google" with your @scalepods.co account. There is no password to remember.',
-          'What you can see depends on your access. Screens you have not been given simply are not in the sidebar, and opening one by URL shows a short explanation rather than the page.',
+          'What you can see depends on your access. Screens you have not been given simply are not in the sidebar, opening one by URL shows a short explanation rather than the page, and the data behind it is refused too — the restriction is in the database, not just the interface.',
           'Some buttons stay visible but greyed out — that means you can work on the thing but not take the final step (generating, publishing or approving). Hover the button and it tells you what access you would need.',
           'Only @scalepods.co addresses can create an account. A personal Gmail is refused at the door, not after signing in.',
           'Signing in is not the same as being let in: a new account has to be switched on by an admin before it can reach anything. Until then you land on an "Almost there" screen.',

@@ -1,14 +1,13 @@
 # Team Collaboration & Access Control — PRD + Implementation Plan
 
-**Status:** Approved · **Phases 0–2 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
+**Status:** Approved · **Phases 0–3 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
 
-> **Progress:** Phases 0 (identity), 1 (Users & Access) and 2 (UI enforcement) are built.
-> Google sign-in is enabled and working end to end. §13 records the decisions that changed
-> during the build. Phases 3–7 are still as specified below.
+> **Progress:** Phases 0 (identity), 1 (Users & Access), 2 (UI enforcement) and 3 (the RLS
+> rewrite) are built and verified. **Permissions are now enforced by Postgres**, not just by the
+> interface — the constraint that held since Phase 0 is lifted, and the team can be activated.
+> §13 records the decisions that changed during the build.
 >
-> **Next up — Phase 3, the RLS rewrite.** Until it lands, permissions shape the UI but do not
-> protect the data: every table is still `USING (true)`, so a determined user could reach the
-> API directly. Do not tell the team to sign in yet.
+> **Next up — Phase 4, the Kanban board.** Phases 5–7 (notifications, spend caps, docs) follow.
 
 Covers: real multi-user identity, per-feature access control, a Jira-style Kanban board with a
 maker–checker gate, per-user notifications (in-app + email), and per-user spend caps.
@@ -691,3 +690,74 @@ true. Proving it needs either a temporary self-demotion in SQL or a second real 
 `Protected` holds the spinner until the permission map has loaded, not just the directory row.
 Rendering earlier showed the ungated sidebar items (manual, Support AI) alone for a beat before
 the rest appeared, which reads as the app deciding you have no access.
+
+### 13.12 Phase 3: shipped in three steps so it could be rolled back
+
+Applied as `phase3_access_helpers`, `phase3_granular_policies`,
+`phase3_status_transition_guards` and `phase3_drop_auth_all`. The middle two are **additive** —
+PERMISSIVE policies OR together, so adding the real policies while `auth_all` was still in place
+changed nothing observable. Only the final `drop policy auth_all` switches enforcement on, which
+means the risky step is one statement per table and the rollback is one statement per table:
+
+```sql
+create policy auth_all on public.<table> for all to authenticated using (true) with check (true);
+```
+
+88 policies now stand where 21 tables previously shared a single `USING (true)`.
+
+### 13.13 Phase 3: verified against the end state before committing to it
+
+The whole rewrite was tested by dropping `auth_all` **inside a transaction that rolled back** and
+running the matrix as the real `authenticated` role with simulated JWTs — `postgres` has
+BYPASSRLS, so testing as the migration role would have proved nothing. Row visibility across ten
+tables for owner / designer / writer / stranger, then ten write cases covering insert, update,
+delete and both status triggers. All passed before the drop was applied for real.
+
+One trap worth recording: **an RLS-filtered UPDATE or DELETE affects 0 rows rather than raising.**
+A test that only catches exceptions reports a silent denial as a pass. Every write case checks
+`GET DIAGNOSTICS row_count` instead.
+
+### 13.14 Phase 3: `content_items` reads on any of eight features
+
+The shared table is read by Creative Review, Calendar, Publishing, Content Factory, all three
+studios and Blog. A single feature gate would have locked most of the app out of most of its own
+data, so SELECT grants if the person has `view` on **any** of those eight. Verified: a designer
+and a writer both still see all 49 rows, while seeing zero rows of `business_profiles`,
+`scheduled_posts` and `post_analytics`.
+
+### 13.15 Phase 3: status transitions are triggers, not policies
+
+RLS has no column granularity, so it cannot say "you may edit the copy but not approve it" — and
+that distinction is the whole difference between `edit` and `full` on Creative Review and Blog.
+`content_items_status_guard` and `blog_posts_status_guard` carry that half: approving or sending
+back needs `review: full`, scheduling/publishing/unpublishing needs `publishing: full`, and
+publishing a blog post needs `blog: full`. Same policy-for-rows / trigger-for-columns split used
+for `app_users` in Phase 1.
+
+### 13.16 Phase 3: n8n is unaffected, and why
+
+`service_role` has `rolbypassrls = true`, and n8n's predefined Supabase credential field is the
+service-role secret — so every workflow bypasses RLS entirely and none of this reaches them. The
+status-transition triggers also return early when `auth.uid()` is null, so the publish and
+approve steps inside those workflows keep working. This was PRD §11's biggest listed risk; it
+closed structurally rather than needing a change.
+
+### 13.17 Phase 3: a bypass found in `instagram_connection_status`
+
+Locking down `instagram_connections` exposed that the status view over it was a way around the
+new policy. The view was created without `security_invoker`, so on PG15+ it runs with its
+owner's rights — and the owner has BYPASSRLS. It had also been granted `arwdDxtm` (all
+privileges, including writes) to **`anon`**, meaning an unauthenticated request could read
+connection details and write through the view into the table beneath it.
+
+Fixed by setting `security_invoker = true`, revoking `anon` entirely, and leaving `authenticated`
+with SELECT only. Verified: the owner still sees the row, a designer sees none, writes through
+the view are refused, and `anon` gets "permission denied". This also cleared the advisor's
+long-standing `rls_enabled_no_policy` finding on `canva_connections` and `instagram_connections`,
+which now carry real `settings: full` policies.
+
+### 13.18 Phase 3: what is deliberately still open
+
+`notifications` keeps its `auth_all` policy. It has no `user_id` column yet, so there is nothing
+to scope "own rows" to — Phase 5 adds the column and the policy together rather than inventing
+half of it now. Every signed-in user can currently read the whole notification feed.
