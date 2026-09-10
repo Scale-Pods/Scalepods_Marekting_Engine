@@ -127,9 +127,10 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'Pick the narrator from the voice grid and press play on any voice to hear it read a sample line before you commit. Six are shortlisted for B2B reads; "Show all 30 voices" opens the full set. The voiceover costs a fraction of a cent; the music bed is a flat $0.04.',
           'Click "Generate video" — a confirmation box restates the exact amount before anything is charged. Videos over $5 are blocked outright.',
           'Each shot generates separately (a few minutes each). If one shot comes out wrong, regenerate just that shot — you only pay for that one, not the whole video.',
-          'When it is done, preview it and click "Send to Review" to hand it to Creative Review like any other post.',
+          'Once it is done, the finished video and its full storyboard stay together — open it any time to watch it or keep editing. Change a shot\'s prompt and the button below it updates to say what redoing it will actually cost; leave shots untouched and it just says "Rebuild video" (free) because every already-generated shot is reused, never re-paid for.',
+          'When you are happy with it, click "Send to Review" to hand it to Creative Review like any other post.',
         ],
-        tip: 'Recent videos sit in a grid at the top — click any one to open it on its own, storyboard and all, so you can edit a prompt and rebuild without losing the shots that were already fine. If Google runs out of credits the page tells you plainly and links straight to the top-up page; nothing is charged when a generation fails.',
+        tip: 'Recent videos sit in an Instagram-style grid at the top of the page, with "New video" opposite the heading — click any past video to open its full storyboard on its own rather than merging it into the create form. If Google runs out of credits the page tells you plainly and links straight to the top-up page; nothing is charged when a generation fails.',
       },
       {
         id: 'creative-review',
