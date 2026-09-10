@@ -1,14 +1,15 @@
 # Team Collaboration & Access Control — PRD + Implementation Plan
 
-**Status:** Approved · **Phases 0–4 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
+**Status:** Approved · **Phases 0–5 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
 
-> **Progress:** Phases 0 (identity), 1 (Users & Access), 2 (UI enforcement) and 3 (the RLS
-> rewrite) are built and verified. **Permissions are now enforced by Postgres**, not just by the
-> interface — the constraint that held since Phase 0 is lifted, and the team can be activated.
+> **Progress:** Phases 0 (identity), 1 (Users & Access), 2 (UI enforcement), 3 (the RLS rewrite),
+> 4 (Kanban + maker-checker) and 5 (email notifications, @-mentions, digests) are built and
+> verified. **Permissions are enforced by Postgres**, tickets carry the maker-checker gate, and
+> every notification — assignment, submission, acceptance, send-back, @-mention, a new sign-in
+> awaiting approval, and a daily due/overdue digest — now reaches the right person by email too.
 > §13 records the decisions that changed during the build.
 >
-> **Next up — Phase 5 (email notifications + digests), then 6 (spend caps) and 7 (docs).** The
-> in-app half of notifications shipped early, with Phase 4 — see §13.20.
+> **Next up — Phase 6 (spend caps), then 7 (docs).**
 
 Covers: real multi-user identity, per-feature access control, a Jira-style Kanban board with a
 maker–checker gate, per-user notifications (in-app + email), and per-user spend caps.
@@ -408,11 +409,13 @@ straight to the ticket.
 | You were @-mentioned | Mentioned user | Mentioned user |
 | Due tomorrow | Assignee | Assignee (one daily digest, not per ticket) |
 | Overdue | Assignee + reviewer | Daily digest |
-| New user awaiting approval | All `users: full` | All `users: full` |
-| Spend cap reached | The user + all `users: full` | Same |
+| New user awaiting approval | All active owner/admin | Same |
+| Spend cap reached | The user + all `users: full` | Same | *(Phase 6)*
 
-Due/overdue digests come from an n8n schedule trigger anchored to a real 00:00 IST, matching the
-fix already made to the Trends scheduler.
+Due/overdue digests come from a `pg_cron` job anchored to 09:00 IST (03:30 UTC), not an n8n
+schedule trigger — see §13.22. Reviewer is not separately notified of "overdue" beyond the daily
+digest they get as assignee-of-record on their own overdue tickets; a reviewer-side overdue
+digest wasn't built (no case surfaced for it — a reviewer only cares once something is submitted).
 
 ### 7.6 Real enforcement — the RLS rewrite
 
@@ -525,7 +528,7 @@ Phase 4 can run in parallel with 5–6 if useful; it shares no files with them.
 |---|---|---|---|
 | 1 | **Google Cloud OAuth client ID + secret.** Authorised redirect URI: `https://oyfudqqypvpqsyrjqnfy.supabase.co/auth/v1/callback` | Only you can create this in Google Cloud Console. | Phase 0 |
 | 2 | **The seven exact `@scalepods.co` addresses** for Palki, Raunak, Adnan, Puja, Priya, Pratham (+ confirm the Owner account). | Invites and seeding. | Phase 0 |
-| 3 | **Is Amazon SES out of sandbox?** In sandbox it can only send to *verified* addresses — team emails would silently not arrive. | Determines whether email notifications work at all. | Phase 5 |
+| 3 | **Is Amazon SES out of sandbox?** *(Observed, not confirmed — see §13.28: real sends to two `@scalepods.co` addresses returned 200 with no bounce, which sandbox mode would not allow unless both happened to be pre-verified.)* | Determines whether email notifications work at all. | Phase 5 |
 | 4 | **Confirm `In Review` as a 7th column** (§7.3), and whether to rename "Selected for Development". | Column seeding. | Phase 4 |
 | 5 | **Ticket key prefix** — `SP-101` or `SCALEPODS-101`? | One constant. | Phase 4 |
 | 6 | **Spend caps** — are $50/designer and $20/writer per month right? | Defaults only; editable later. | Phase 6 |
@@ -803,3 +806,80 @@ dropdown containing only themselves and nothing explaining why — everyone else
 `invited`. It now lists everyone except suspended accounts, labelling the rest
 "— not activated yet". Work gets handed out while onboarding is still in progress, and they see
 it the moment they are switched on.
+
+### 13.22 Phase 5: the n8n side
+
+One new workflow, `ScalePods · Team Notifications` (`jQvFE8m5AQzL3aRE`, webhook `sp-team-notify`,
+folder ScalePods Marketing Engine), mirroring `sp-notify`'s branded dark template: normalize the
+payload → skip silently if `to` has no `@` → render HTML → send via the existing `AMAZON SES`
+credential. Published and load-tested with a live send before anything in Postgres called it.
+
+The dispatch trigger lives on `notifications` itself, not on `tickets` — `notifications_send_email()`
+fires `AFTER INSERT` on every row, so a spend-cap alert or anything else that ever inserts a
+notification gets email for free without a second call site. It wraps the `net.http_post` in
+`exception when others then return new` deliberately: a webhook hiccup must never roll back the
+in-app notification that caused it — the bell is the source of truth, email is a courtesy.
+
+### 13.23 Phase 5: a rollback-wrapped test proved nothing
+
+The verification pattern from Phases 3–4 — do the real thing inside a `do $$ ... raise exception
+... $$` block so it always rolls back — doesn't work for `pg_net`. `net.http_post` queues its
+request as a row in the same transaction; roll the transaction back and the queued row never
+existed, so no HTTP call ever fires. Verifying this phase meant committing real test notifications
+(exactly what CLAUDE.md's working method calls for — "verify the full round trip... with a REAL
+login... clean it up") and reading `net._http_response` for the actual status code, then deleting
+the test rows afterward. The real digest row produced by testing `send_due_digests()` was kept,
+not deleted — it was a correct digest, not test junk.
+
+### 13.24 Phase 5: email would have gone to nobody
+
+The first version of `notifications_send_email()` gated on `status = 'active'`. Six of the seven
+seeded people are still `invited` — they haven't signed in with Google yet — so under that gate,
+not one assignment or @-mention email would ever have gone out; the exact email meant to get an
+invited person to come sign in would be the one thing withheld until after they'd already signed
+in. Fixed to `status <> 'suspended'`, in both `notifications_send_email()` and
+`send_due_digests()`. Found by checking `net._http_response` after a live mention test to Raunak
+(`invited`) came back empty, not by inspecting the code.
+
+### 13.25 Phase 5: `current_date` is UTC, the team is IST
+
+`send_due_digests()` first compared `t.due_date` against Postgres's own `current_date`, which is
+UTC. From roughly 18:30 UTC onward it is already the next day in IST — exactly when the FE (using
+the browser's local clock) would already be writing "tomorrow" into `due_date`. A live test
+caught SP-101 reading as "2 days out" instead of "due tomorrow" during that window. Same class of
+bug as the Trends scheduler fix (see memory: strategy-trend-anchored) — the function now computes
+`today := (now() at time zone 'Asia/Kolkata')::date` instead of trusting the session's own
+timezone, and the `pg_cron` schedule itself (`30 3 * * *` = 09:00 IST) was already correct.
+
+### 13.26 Phase 5: two §7.5 table rows the code didn't actually do
+
+Writing the build log against the PRD table surfaced two gaps: "reassigned away from you"
+(in-app only, previous assignee) had no trigger branch at all, and a plain comment with no
+@-mention never reached the assignee/reviewer/reporter — only `ticket-mention` existed.
+`tickets_notify()` gained the reassignment branch; `ticket_comments_notify()` now also notifies
+the ticket's assignee/reviewer/reporter (minus the author and anyone already told via a mention,
+tracked in a small `notified uuid[]` array so nobody gets the same comment twice).
+`notifications_send_email()` skips `type = 'ticket-reassigned-away'` specifically, since that row
+is in-app only by design.
+
+### 13.27 Phase 5: @-mention autocomplete needed `flushSync`, not `requestAnimationFrame`
+
+Picking a suggestion from the mention dropdown moves focus to the button that was clicked; typing
+more without clicking back into the textarea needs the caret returned to the end of the inserted
+`@Name`, done in code rather than left to the browser. The first attempt did this in a
+`requestAnimationFrame` callback after `setComment` — it raced the textarea's own re-render (worse
+in a backgrounded/throttled pane, where rAF can be deferred well past the next tool action) and
+lost, silently inserting subsequent keystrokes at the start of the string instead of the end.
+Fixed by wrapping the state update in React's `flushSync` so the DOM already reflects the new
+value before `focus()`/`setSelectionRange()` run — deterministic regardless of paint timing. Caught
+by reading the textarea's live `.value` after a simulated pick-then-type, not by the screenshot,
+which showed nothing wrong.
+
+### 13.28 Phase 5: what is deliberately still open
+
+Spend-cap-reached notifications wait on Phase 6's actual spend tracking — there's nothing to
+threshold against yet. A reviewer doesn't get a separate "ticket you're reviewing is overdue"
+digest row (§7.5) — only the assignee's own overdue/due-tomorrow digest exists; no real case
+surfaced for a reviewer-side one. Amazon SES's sandbox status (§10 item 3) reads as resolved by
+observation — two real sends to `@scalepods.co` addresses came back `200` from n8n with no bounce
+— but nobody has confirmed this from the SES console itself.

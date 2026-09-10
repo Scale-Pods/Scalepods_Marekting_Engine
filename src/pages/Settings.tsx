@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Settings as SettingsIcon, User, ShieldCheck, Sun, Moon, LogOut, Building2, Sparkles, Send, Instagram, Link2, Unlink, RefreshCw, MessageCircle, Power, CheckCircle2, Users, ArrowRight } from 'lucide-react'
+import { Settings as SettingsIcon, User, ShieldCheck, Sun, Moon, LogOut, Building2, Sparkles, Send, Instagram, Link2, Unlink, RefreshCw, MessageCircle, Power, CheckCircle2, Users, ArrowRight, Bell, BellOff } from 'lucide-react'
 import { useAuth } from '../lib/auth'
+import { supabase } from '../lib/supabase'
 import { useProfile } from '../lib/queries'
 import { GENERATION_ENABLED, PUBLISHING_ENABLED, listCommentAutomations, setCommentAutomationEnabled, type ContentItem } from '../lib/content'
 import { toggleTheme, getCurrentTheme, type Theme } from '../lib/theme'
@@ -12,11 +13,29 @@ import { PageHeader, Badge, Panel, Button } from '../components/ui'
 import AssetUploader from '../components/AssetUploader'
 
 export default function Settings() {
-  const { user, appUser, signOut } = useAuth()
+  const { user, appUser, refetchAppUser, signOut } = useAuth()
   const { data: profile } = useProfile()
   const [theme, setTheme] = useState<Theme>(getCurrentTheme())
   const [igStatus, setIgStatus] = useState<InstagramConnectionStatus | null>(null)
   const [igBusy, setIgBusy] = useState(false)
+  const [notifBusy, setNotifBusy] = useState(false)
+
+  // Own row, own display field — the same self-update RLS policy that lets someone fix a typo in
+  // their own name covers this, no admin action needed.
+  async function toggleEmailNotifications() {
+    if (!appUser) return
+    setNotifBusy(true)
+    try {
+      const { error } = await supabase
+        .from('app_users')
+        .update({ email_notifications: !appUser.email_notifications })
+        .eq('id', appUser.id)
+      if (error) throw error
+      await refetchAppUser()
+    } finally {
+      setNotifBusy(false)
+    }
+  }
 
   const refreshIgStatus = useCallback(() => {
     getInstagramConnectionStatus().then(setIgStatus).catch(() => setIgStatus(null))
@@ -132,6 +151,23 @@ export default function Settings() {
                   <span className="text-muted">—</span>
                 )}
               </div>
+            </div>
+            <div>
+              <div className="label">Email notifications</div>
+              <p className="text-muted text-xs mt-0.5 mb-2">
+                Ticket assignments, @-mentions, and your daily due/overdue digest. The in-app bell always works either way.
+              </p>
+              <Button
+                variant="ghost"
+                className="!py-1.5 !px-3 text-xs"
+                disabled={!appUser}
+                loading={notifBusy}
+                onClick={toggleEmailNotifications}
+              >
+                {appUser?.email_notifications ?? true
+                  ? <><BellOff size={13} /> Turn off</>
+                  : <><Bell size={13} /> Turn on</>}
+              </Button>
             </div>
           </div>
           <Button variant="ghost" className="mt-4 !py-1.5 !px-3 text-xs" onClick={signOut}>

@@ -185,10 +185,14 @@ export async function deleteTicket(id: string): Promise<void> {
   if (error) throw error
 }
 
-export async function addComment(ticketId: string, authorId: string, body: string): Promise<void> {
+/** `mentions` are the ids of everyone the comment actually @-names — `ticket_comments_notify` in
+ *  Postgres is what turns those into notifications (and, from there, email). */
+export async function addComment(
+  ticketId: string, authorId: string, body: string, mentions: string[] = [],
+): Promise<void> {
   const { error } = await supabase
     .from('ticket_comments')
-    .insert({ ticket_id: ticketId, author_id: authorId, body: body.trim() })
+    .insert({ ticket_id: ticketId, author_id: authorId, body: body.trim(), mentions })
   if (error) throw error
 }
 
@@ -239,6 +243,30 @@ export function ticketsIn(tickets: Ticket[], columnId: string): Ticket[] {
 
 export function personById(team: AppUser[], id: string | null): AppUser | undefined {
   return id ? team.find((u) => u.id === id) : undefined
+}
+
+/** Reads the final comment text for "@Full Name" tokens rather than trusting whatever the
+ *  autocomplete inserted — someone can still delete a name after picking it, and this way the
+ *  mentions sent to Postgres always match what the comment actually says. Longest names first so
+ *  "Priya Verma" isn't shadowed by a shorter "Priya" that happens to also be on the team. */
+export function extractMentions(text: string, team: AppUser[]): string[] {
+  const found = new Set<string>()
+  const byLenDesc = [...team].filter((u) => u.full_name).sort((a, b) => b.full_name.length - a.full_name.length)
+  for (const u of byLenDesc) {
+    if (text.includes(`@${u.full_name}`)) found.add(u.id)
+  }
+  return [...found]
+}
+
+/** Splits a comment body into plain-text and @-mention parts so the drawer can bold the mentions
+ *  without a markdown renderer. */
+export function splitMentions(text: string, team: AppUser[]): { text: string; isMention: boolean }[] {
+  const names = new Set([...team].filter((u) => u.full_name).map((u) => u.full_name))
+  if (!names.size) return [{ text, isMention: false }]
+  const sortedNames = [...names].sort((a, b) => b.length - a.length)
+  const pattern = new RegExp(`(@(?:${sortedNames.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}))`, 'g')
+  return text.split(pattern).filter(Boolean)
+    .map((part) => ({ text: part, isMention: part.startsWith('@') && names.has(part.slice(1)) }))
 }
 
 /** null when there is no due date; negative means overdue. Days, not hours — a board is scanned,

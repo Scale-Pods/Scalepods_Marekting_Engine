@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -10,7 +11,7 @@ import { listTeam, initialsOf, TEAM_KEY, type AppUser } from '../lib/team'
 import {
   listColumns, listTickets, listComments, listActivity, createTicket, updateTicket,
   deleteTicket, addComment, moveTicket, sendBackTicket, ticketsIn, personById,
-  daysUntilDue, dueTone, formatDue, describeActivity,
+  daysUntilDue, dueTone, formatDue, describeActivity, extractMentions, splitMentions,
   BOARD_KEY, TICKETS_KEY, TYPE_LABEL, TYPE_COLOR, PRIORITIES, PRIORITY_LABEL, PRIORITY_COLOR,
   type BoardColumn, type Ticket, type TicketType, type TicketPriority,
 } from '../lib/board'
@@ -452,6 +453,10 @@ function TicketDrawer({
   const [comment, setComment] = useState('')
   const [sendBackNote, setSendBackNote] = useState('')
   const [showSendBack, setShowSendBack] = useState(false)
+  // "@" plus whatever's typed since it, as long as there's no space yet — the moment a space
+  // (or a picked name) closes it off, this goes back to null and the dropdown disappears.
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const commentRef = useRef<HTMLTextAreaElement>(null)
 
   const { data: comments = [] } = useQuery({
     queryKey: ['ticket', ticket.id, 'comments'], queryFn: () => listComments(ticket.id),
@@ -483,10 +488,35 @@ function TicketDrawer({
   })
 
   const post = useMutation({
-    mutationFn: () => addComment(ticket.id, meId!, comment),
+    mutationFn: () => addComment(ticket.id, meId!, comment, extractMentions(comment, team)),
     onSuccess: () => { setComment(''); after() },
     onError: (e) => toast.error(toastMessage(e, 'Could not post that comment.')),
   })
+
+  const mentionMatches = mentionQuery === null
+    ? []
+    : team.filter((u) => u.full_name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 5)
+
+  function onCommentChange(value: string) {
+    setComment(value)
+    // Only the tail of the text counts — mentions are typed at the cursor, not pasted mid-way.
+    const tail = /@([^\s@]*)$/.exec(value)
+    setMentionQuery(tail ? tail[1] : null)
+  }
+
+  function pickMention(user: AppUser) {
+    const next = comment.replace(/@([^\s@]*)$/, `@${user.full_name} `)
+    // Clicking the suggestion moves focus to its button; a real Slack/GitHub-style picker hands
+    // focus straight back to the textbox, cursor after the inserted name, so typing just
+    // continues. flushSync forces the value onto the DOM node before we touch its selection —
+    // an rAF-deferred version of this raced the textarea's own re-render and lost.
+    flushSync(() => {
+      setComment(next)
+      setMentionQuery(null)
+    })
+    commentRef.current?.focus()
+    commentRef.current?.setSelectionRange(next.length, next.length)
+  }
 
   const assignee = personById(team, ticket.assignee_id)
   const reviewer = personById(team, ticket.reviewer_id)
@@ -630,26 +660,51 @@ function TicketDrawer({
                       <b className="text-ink">{author?.full_name ?? 'Someone'}</b>{' '}
                       {new Date(c.created_at).toLocaleString()}
                     </div>
-                    <div className="text-sm whitespace-pre-wrap">{c.body}</div>
+                    <div className="text-sm whitespace-pre-wrap">
+                      {splitMentions(c.body, team).map((part, i) => (
+                        part.isMention
+                          ? <b key={i} style={{ color: 'var(--accent-green)' }}>{part.text}</b>
+                          : <span key={i}>{part.text}</span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )
             })}
             {comments.length === 0 && <p className="text-muted text-sm">No comments yet.</p>}
 
-            <div className="flex gap-2 pt-1">
-              <textarea
-                className="input flex-1" rows={2} placeholder="Add a comment…"
-                value={comment} onChange={(e) => setComment(e.target.value)}
-              />
-              <Button
-                className="!px-3 self-end"
-                disabled={!comment.trim() || !meId}
-                loading={post.isPending}
-                onClick={() => post.mutate()}
-              >
-                <Send size={14} />
-              </Button>
+            <div className="relative pt-1">
+              {mentionMatches.length > 0 && (
+                <div
+                  className="absolute bottom-full left-0 mb-1 w-56 rounded-lg overflow-hidden z-10"
+                  style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)' }}
+                >
+                  {mentionMatches.map((u) => (
+                    <button
+                      key={u.id}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-sm hover:opacity-80"
+                      onClick={() => pickMention(u)}
+                    >
+                      <Avatar user={u} size={20} /> {u.full_name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <textarea
+                  ref={commentRef}
+                  className="input flex-1" rows={2} placeholder="Add a comment… (@ to mention someone)"
+                  value={comment} onChange={(e) => onCommentChange(e.target.value)}
+                />
+                <Button
+                  className="!px-3 self-end"
+                  disabled={!comment.trim() || !meId}
+                  loading={post.isPending}
+                  onClick={() => post.mutate()}
+                >
+                  <Send size={14} />
+                </Button>
+              </div>
             </div>
           </div>
         ) : (
