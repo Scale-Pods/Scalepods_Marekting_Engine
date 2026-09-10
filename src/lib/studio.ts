@@ -2,6 +2,28 @@ import { supabase, fireWebhook } from './supabase'
 import { GENERATION_ENABLED } from './content'
 import type { AspectRatio } from './studioStyles'
 
+/** Shared feedback shape — a shot, a slide, a single image, a voiceover, or a music bed can all
+ *  carry one. Lives here (not videoStudio.ts) because videoStudio.ts already imports from this
+ *  file; the reverse would be a cycle. `rating` alone is a lightweight, always-saved log; `note`
+ *  is meant to be folded into the item's own prompt/script text (via `foldFeedbackIntoText`) the
+ *  next time that item is regenerated, then cleared — the same click that records the problem
+ *  tries to fix it, rather than the note sitting somewhere nobody reads it. */
+export interface ItemFeedback {
+  rating: 'up' | 'down' | null
+  note: string
+}
+
+/** Appends a feedback note to a prompt/script as an explicit revision instruction, once — calling
+ *  it again with the same note is a no-op rather than stacking duplicates, since "regenerate with
+ *  feedback" can be clicked more than once before the note is cleared. */
+export function foldFeedbackIntoText(text: string, note: string): string {
+  const trimmed = note.trim()
+  if (!trimmed) return text
+  const marker = `Revision note — address this: ${trimmed}`
+  if (text.includes(marker)) return text
+  return `${text}\n\n${marker}`
+}
+
 /**
  * AI Studio — job CRUD + the image-model registry.
  *
@@ -230,6 +252,7 @@ export interface StudioSlide {
   image_prompt: string
   image_url: string | null
   status: 'pending' | 'generating' | 'done' | 'failed'
+  feedback?: ItemFeedback | null
 }
 
 /** The editable copy GPT drafts alongside the image prompt. Same field names the Content Text
@@ -267,6 +290,9 @@ export interface StudioJob {
   post_type: StudioPostType
   slide_count: number | null
   slides_json: StudioSlide[] | null
+  /** Feedback for a 'single' job's one image. A carousel's per-slide feedback lives inline on
+   *  each StudioSlide instead — there's no single item to attach this to there. */
+  image_feedback: ItemFeedback | null
   created_at: string
   updated_at: string
 }
@@ -357,6 +383,7 @@ export async function updateStudioDraft(
     model?: ImageModelId
     variant_count?: number
     slides_json?: StudioSlide[]
+    image_feedback?: ItemFeedback | null
   },
 ): Promise<void> {
   const { error } = await supabase.from('studio_jobs').update(patch).eq('id', jobId)

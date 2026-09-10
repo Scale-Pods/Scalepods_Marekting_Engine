@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Film, Sparkles, RefreshCw, Play, CheckCircle2, XCircle, Plus, Trash2, TrendingUp, Target, Type,
   Mic, Download, Send, Clapperboard, Wand2, AlertTriangle, ExternalLink, Clock, Music, Pause,
+  ThumbsUp, ThumbsDown,
 } from 'lucide-react'
 import { useProfile } from '../lib/queries'
 import { supabase } from '../lib/supabase'
@@ -14,9 +15,9 @@ import {
   markVideoJobUsed, regenerateVideoShot, describeProgress, overallProgress,
   estimateShotsCost, totalDurationS, ratePerSecond, formatUsdInr, describeVideoError,
   VIDEO_ENGINES, VIDEO_RESOLUTIONS, ENGINE_LABEL, ENGINE_BLURB, PER_VIDEO_CEILING_USD,
-  MUSIC_COST_USD, VOICE_OPTIONS, DEFAULT_VOICE, voiceSampleUrl,
+  MUSIC_COST_USD, VOICE_OPTIONS, DEFAULT_VOICE, voiceSampleUrl, foldFeedbackIntoText,
   type VideoJob, type CarouselSlide, type VideoShot, type VideoEngine, type VideoType,
-  type VideoResolution,
+  type VideoResolution, type ItemFeedback,
 } from '../lib/videoStudio'
 import { createManualItem, GENERATION_ENABLED, VIDEO_GENERATION_ENABLED } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
@@ -315,6 +316,55 @@ function SlideEditor({ slide, onChange, onRemove }: { slide: CarouselSlide; onCh
 
 /** One shot of the storyboard. The prompt is the expensive part, so it's fully editable before
  *  anything is spent — same "review the prompt before you pay" gate AI Studio has for images. */
+/**
+ * Thumbs up/down + an optional note, shared by shots, the voiceover, and the music bed. The
+ * rating alone is the log (option 1 of the hybrid the user asked for); the note, once you hit
+ * regenerate, gets folded straight into that item's prompt/script text (option 2) — the same
+ * click that records the problem tries to fix it, rather than the note sitting unread somewhere.
+ */
+function FeedbackControl({
+  feedback, onChange, disabled, notePlaceholder,
+}: {
+  feedback: ItemFeedback | null | undefined
+  onChange: (f: ItemFeedback) => void
+  disabled?: boolean
+  notePlaceholder: string
+}) {
+  const rating = feedback?.rating ?? null
+  const note = feedback?.note ?? ''
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => onChange({ rating: rating === 'up' ? null : 'up', note })}
+        disabled={disabled}
+        title="This is good"
+        className="disabled:opacity-40"
+        style={{ color: rating === 'up' ? 'var(--accent-green)' : 'var(--text-muted)' }}
+      >
+        <ThumbsUp size={13} />
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange({ rating: rating === 'down' ? null : 'down', note })}
+        disabled={disabled}
+        title="Needs work"
+        className="disabled:opacity-40"
+        style={{ color: rating === 'down' ? 'var(--accent-orange)' : 'var(--text-muted)' }}
+      >
+        <ThumbsDown size={13} />
+      </button>
+      <input
+        className="input !py-1 text-xs flex-1"
+        placeholder={notePlaceholder}
+        value={note}
+        onChange={(e) => onChange({ rating, note: e.target.value })}
+        disabled={disabled}
+      />
+    </div>
+  )
+}
+
 function ShotEditor({
   shot, engine, resolution, editable, onChange, onRemove, onRegenerate, regenerating,
 }: {
@@ -398,7 +448,15 @@ function ShotEditor({
         <div className="text-xs text-terracotta break-words">{shot.errorDetail}</div>
       )}
       {shot.status === 'done' && shot.clipUrl && (
-        <video src={shot.clipUrl} controls className="w-full rounded-lg mt-1" style={{ maxHeight: 220, background: 'var(--fill-tertiary)' }} />
+        <>
+          <video src={shot.clipUrl} controls className="w-full rounded-lg mt-1" style={{ maxHeight: 220, background: 'var(--fill-tertiary)' }} />
+          <FeedbackControl
+            feedback={shot.feedback}
+            onChange={(f) => set({ feedback: f })}
+            disabled={!editable}
+            notePlaceholder="What's wrong? Folded into the prompt when you regenerate"
+          />
+        </>
       )}
     </Panel>
   )
@@ -435,6 +493,8 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
   // feature existed at all) can still turn either on now, not just edit what's already there.
   const [wantsVoiceoverEdit, setWantsVoiceoverEdit] = useState(job.voiceover_script !== null)
   const [wantsMusicEdit, setWantsMusicEdit] = useState(job.music_prompt !== null)
+  const [voFeedback, setVoFeedback] = useState<ItemFeedback | null>(job.voiceover_feedback)
+  const [musicFeedback, setMusicFeedback] = useState<ItemFeedback | null>(job.music_feedback)
   const [saving, setSaving] = useState(false)
   const [rendering, setRendering] = useState(false)
   const [sending, setSending] = useState(false)
@@ -457,6 +517,8 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
     setMusicPrompt(job.music_prompt ?? '')
     setWantsVoiceoverEdit(job.voiceover_script !== null)
     setWantsMusicEdit(job.music_prompt !== null)
+    setVoFeedback(job.voiceover_feedback)
+    setMusicFeedback(job.music_feedback)
   }, [job.id])
 
   // Live, not stale: recomputed on every duration change / shot removal, so the number on the
@@ -521,6 +583,8 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
           voiceover_script: effectiveVoScript,
           voice,
           music_prompt: effectiveMusicPrompt,
+          voiceover_feedback: voFeedback,
+          music_feedback: musicFeedback,
           ...(voChanged ? { voiceover_url: null } : {}),
           ...(musicChanged ? { music_url: null } : {}),
         })
@@ -562,6 +626,17 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
   async function onRegenerateShot(idx: number) {
     setRegeneratingShot(idx)
     try {
+      // A feedback note gets folded into the prompt BEFORE firing — n8n reads shots_json fresh
+      // from Supabase when this webhook lands, so the worker only ever sees what is actually
+      // saved, not local component state. The note is cleared once folded in (it is now part of
+      // the prompt text itself, visible and editable there); the rating stays as the log.
+      const note = shots[idx].feedback?.note?.trim()
+      let nextShots = shots
+      if (note) {
+        nextShots = shots.map((s, i) => (i === idx ? { ...s, prompt: foldFeedbackIntoText(s.prompt, note), feedback: { rating: s.feedback?.rating ?? null, note: '' } } : s))
+        setShots(nextShots)
+        await updateVideoDraft(job.id, { shots_json: nextShots })
+      }
       await regenerateVideoShot(job.id, idx)
       toast.info(`Regenerating shot ${idx + 1} — this costs the price of that one shot.`)
       onChanged()
@@ -580,9 +655,31 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
   async function onRegenerateAudio(kind: 'voiceover' | 'music') {
     setRegeneratingAudio(kind)
     try {
-      await updateVideoDraft(job.id, kind === 'voiceover' ? { voiceover_url: null } : { music_url: null })
+      // Same fold-then-regenerate as a shot: a note gets baked into the actual script/prompt
+      // that gets saved, then cleared (the rating stays, as the log). Whatever is currently on
+      // screen is what gets folded and saved — not just what was there when the job last loaded.
+      const isVo = kind === 'voiceover'
+      const feedback = isVo ? voFeedback : musicFeedback
+      const note = feedback?.note?.trim()
+      const patch: Parameters<typeof updateVideoDraft>[1] = isVo ? { voiceover_url: null } : { music_url: null }
+      if (note) {
+        if (isVo) {
+          const folded = foldFeedbackIntoText(voScript, note)
+          setVoScript(folded)
+          setVoFeedback({ rating: feedback?.rating ?? null, note: '' })
+          patch.voiceover_script = folded
+          patch.voiceover_feedback = { rating: feedback?.rating ?? null, note: '' }
+        } else {
+          const folded = foldFeedbackIntoText(musicPrompt, note)
+          setMusicPrompt(folded)
+          setMusicFeedback({ rating: feedback?.rating ?? null, note: '' })
+          patch.music_prompt = folded
+          patch.music_feedback = { rating: feedback?.rating ?? null, note: '' }
+        }
+      }
+      await updateVideoDraft(job.id, patch)
       await triggerVideoRender(job.id, job.video_type, 0)
-      toast.info(kind === 'voiceover' ? 'Re-recording the voiceover…' : 'Re-composing the music bed — $0.04.')
+      toast.info(isVo ? 'Re-recording the voiceover…' : 'Re-composing the music bed — $0.04.')
       onChanged()
     } catch (err) {
       toast.error(toastMessage(err, `Could not regenerate the ${kind}`))
@@ -815,7 +912,12 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                         )}
                       </div>
                       <textarea className="input" rows={3} placeholder="What the narrator says over the whole video" value={voScript} onChange={(e) => setVoScript(e.target.value)} disabled={!editable} />
-                      {job.voiceover_url && <audio src={job.voiceover_url} controls className="w-full" />}
+                      {job.voiceover_url && (
+                        <>
+                          <audio src={job.voiceover_url} controls className="w-full" />
+                          <FeedbackControl feedback={voFeedback} onChange={setVoFeedback} disabled={!editable} notePlaceholder="What's wrong? Folded into the script when you redo the take" />
+                        </>
+                      )}
                     </>
                   )}
                   {wantsMusicEdit && (
@@ -828,7 +930,12 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                           </button>
                         )}
                       </div>
-                      {job.music_url && <audio src={job.music_url} controls className="w-full" />}
+                      {job.music_url && (
+                        <>
+                          <audio src={job.music_url} controls className="w-full" />
+                          <FeedbackControl feedback={musicFeedback} onChange={setMusicFeedback} disabled={!editable} notePlaceholder="What's wrong? Folded into the brief when you redo the take" />
+                        </>
+                      )}
                     </>
                   )}
                   <div className="text-[11px] text-muted">

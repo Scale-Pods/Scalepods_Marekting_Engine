@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Wand2, Sparkles, RefreshCw, Check, X, ImageIcon, TrendingUp, Target, Type,
-  ArrowRight, Trash2, AlertTriangle, ExternalLink, Layers,
+  ArrowRight, Trash2, AlertTriangle, ExternalLink, Layers, ThumbsUp, ThumbsDown,
 } from 'lucide-react'
 import { useProfile } from '../lib/queries'
 import { listSignalsSince, type TrendSignal } from '../lib/trends'
@@ -10,7 +10,9 @@ import {
   generateStudioBrief, triggerStudioGenerate, updateStudioDraft, listStudioJobs, getStudioJob,
   selectStudioVariant, markStudioJobUsed, deleteStudioJob, regenerateStudioSlide,
   IMAGE_MODELS, getModel, estimateStudioCost, estimateCarouselCost, formatUsdInr,
+  foldFeedbackIntoText,
   type StudioJob, type StudioSourceKind, type ImageModelId, type StudioCopy, type StudioPostType, type StudioSlide,
+  type ItemFeedback,
 } from '../lib/studio'
 import {
   STUDIO_STYLES, styleDirection, getStyle, ASPECT_RATIOS, RATIO_VALUE, PLATFORM_DEFAULT_RATIO,
@@ -110,6 +112,32 @@ function jobCostEstimate(j: StudioJob): number | null {
 /** "3 Sep, 2:41 PM" — compact enough for a grid tile, still unambiguous about date vs. time. */
 function formatJobDate(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+}
+
+/** Thumbs up/down + an optional note on a generated slide. `rating` alone is a lightweight log;
+ *  `note`, once you hit "Regenerate this slide", gets folded straight into that slide's own
+ *  image_prompt and cleared — the same click that records the problem tries to fix it. Compact,
+ *  built for a ~200px grid tile rather than a full-width panel. */
+function FeedbackControl({
+  feedback, onChange, notePlaceholder,
+}: {
+  feedback: ItemFeedback | null | undefined
+  onChange: (f: ItemFeedback) => void
+  notePlaceholder: string
+}) {
+  const rating = feedback?.rating ?? null
+  const note = feedback?.note ?? ''
+  return (
+    <div className="flex items-center gap-1 mt-1">
+      <button type="button" onClick={() => onChange({ rating: rating === 'up' ? null : 'up', note })} title="Good" style={{ color: rating === 'up' ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+        <ThumbsUp size={11} />
+      </button>
+      <button type="button" onClick={() => onChange({ rating: rating === 'down' ? null : 'down', note })} title="Needs work" style={{ color: rating === 'down' ? 'var(--accent-orange)' : 'var(--text-muted)' }}>
+        <ThumbsDown size={11} />
+      </button>
+      <input className="input !py-0.5 !text-[10.5px] flex-1" placeholder={notePlaceholder} value={note} onChange={(e) => onChange({ rating, note: e.target.value })} />
+    </div>
+  )
 }
 
 /** Editable list of slide drafts in the review step — one card per slide, title/caption/image
@@ -375,6 +403,18 @@ export default function AIStudio() {
     if (!job) return
     setRegeneratingSlideIdx(idx)
     try {
+      // A feedback note gets folded into image_prompt and saved BEFORE firing — n8n reads
+      // slides_json fresh from Supabase when this webhook lands, so it only ever sees what is
+      // actually saved. The note is cleared once folded in; the rating stays as the log.
+      const slide = (job.slides_json ?? []).find((s) => s.idx === idx)
+      const note = slide?.feedback?.note?.trim()
+      if (slide && note) {
+        const nextSlides = (job.slides_json ?? []).map((s) =>
+          s.idx === idx ? { ...s, image_prompt: foldFeedbackIntoText(s.image_prompt, note), feedback: { rating: s.feedback?.rating ?? null, note: '' } } : s,
+        )
+        setJob({ ...job, slides_json: nextSlides })
+        await updateStudioDraft(job.id, { slides_json: nextSlides })
+      }
       await regenerateStudioSlide(job.id, idx)
       await refreshJob(job.id)
     } catch (err) {
@@ -387,6 +427,15 @@ export default function AIStudio() {
     if (!job) return
     await selectStudioVariant(job.id, url)
     setJob({ ...job, selected_image_url: url })
+  }
+
+  /** Persists immediately, same as onPick above — there's no separate "save" step in this view,
+   *  so a rating/note has to stand on its own rather than wait for one. */
+  async function onSlideFeedbackChange(idx: number, feedback: ItemFeedback) {
+    if (!job) return
+    const nextSlides = (job.slides_json ?? []).map((s) => (s.idx === idx ? { ...s, feedback } : s))
+    setJob({ ...job, slides_json: nextSlides })
+    await updateStudioDraft(job.id, { slides_json: nextSlides })
   }
 
   async function onSendToReview() {
@@ -928,6 +977,13 @@ export default function AIStudio() {
                         >
                           <RefreshCw size={11} /> {busy ? 'Regenerating…' : 'Regenerate this slide'}
                         </button>
+                        {s.status === 'done' && (
+                          <FeedbackControl
+                            feedback={s.feedback}
+                            onChange={(f) => onSlideFeedbackChange(s.idx, f)}
+                            notePlaceholder="What's wrong?"
+                          />
+                        )}
                       </div>
                     </div>
                   )
@@ -1082,9 +1138,24 @@ function RecentJobModal({
     setCurrent((c) => ({ ...c, selected_image_url: url }))
   }
 
+  async function onSlideFeedbackChange(idx: number, feedback: ItemFeedback) {
+    const nextSlides = (current.slides_json ?? []).map((s) => (s.idx === idx ? { ...s, feedback } : s))
+    setCurrent((c) => ({ ...c, slides_json: nextSlides }))
+    await updateStudioDraft(current.id, { slides_json: nextSlides })
+  }
+
   async function onRegenerateSlide(idx: number) {
     setRegeneratingSlideIdx(idx)
     try {
+      const slide = (current.slides_json ?? []).find((s) => s.idx === idx)
+      const note = slide?.feedback?.note?.trim()
+      if (slide && note) {
+        const nextSlides = (current.slides_json ?? []).map((s) =>
+          s.idx === idx ? { ...s, image_prompt: foldFeedbackIntoText(s.image_prompt, note), feedback: { rating: s.feedback?.rating ?? null, note: '' } } : s,
+        )
+        setCurrent((c) => ({ ...c, slides_json: nextSlides }))
+        await updateStudioDraft(current.id, { slides_json: nextSlides })
+      }
       await regenerateStudioSlide(current.id, idx)
       const fresh = await getStudioJob(current.id)
       if (fresh) setCurrent(fresh)
@@ -1263,6 +1334,13 @@ function RecentJobModal({
                         >
                           <RefreshCw size={10} /> {busy ? 'Regenerating…' : 'Regenerate'}
                         </button>
+                        {s.status === 'done' && (
+                          <FeedbackControl
+                            feedback={s.feedback}
+                            onChange={(f) => onSlideFeedbackChange(s.idx, f)}
+                            notePlaceholder="What's wrong?"
+                          />
+                        )}
                       </div>
                     </div>
                   )

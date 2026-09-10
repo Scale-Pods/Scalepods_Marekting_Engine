@@ -1,6 +1,7 @@
 import { supabase, fireWebhook } from './supabase'
 import { GENERATION_ENABLED, VIDEO_GENERATION_ENABLED } from './content'
-import type { StudioSourceKind, StudioCopy } from './studio'
+import type { StudioSourceKind, StudioCopy, ItemFeedback } from './studio'
+import { foldFeedbackIntoText } from './studio'
 import type { CarouselSlide, RenderProgress } from './carousels'
 import type { AspectRatio } from './studioStyles'
 
@@ -164,21 +165,8 @@ export interface VideoShot {
 /** Shared shape for the feedback attached to a shot, a slide, or an audio track. `rating` alone
  *  is the lightweight log; `note`, once a regenerate is fired, gets folded into the actual prompt
  *  text so the same click that logs the problem also tries to fix it. */
-export interface ItemFeedback {
-  rating: 'up' | 'down' | null
-  note: string
-}
-
-/** Appends a feedback note to a prompt/script as an explicit revision instruction, once — calling
- *  it again with the same note is a no-op rather than stacking duplicates, since "regenerate with
- *  feedback" can be clicked more than once before the note is cleared. */
-export function foldFeedbackIntoText(text: string, note: string): string {
-  const trimmed = note.trim()
-  if (!trimmed) return text
-  const marker = `Revision note — address this: ${trimmed}`
-  if (text.includes(marker)) return text
-  return `${text}\n\n${marker}`
-}
+export type { ItemFeedback }
+export { foldFeedbackIntoText }
 
 /** Cost of a shot list at a given engine+resolution. Uses each shot's REAL recorded cost once it
  *  has one, so the same function serves as both the pre-spend estimate (all shots pending) and
