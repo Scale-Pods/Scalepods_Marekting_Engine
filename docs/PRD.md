@@ -39,6 +39,13 @@ The product doubles as the ultimate sales asset: **"we market ourselves with the
 
 ## 4. Personas & Roles
 
+> **Superseded 2026-09-11.** This was the launch-day model: one shared login, a role *view* picked
+> from a localStorage switcher rather than a real identity. Team Collaboration & Access Control
+> (`docs/team-collaboration-prd.md`) replaced it with real named `@scalepods.co` accounts, five
+> actual roles (owner/admin/designer/writer/client) with a 16-feature × 4-level permission model
+> enforced in Postgres, and a maker-checker Kanban board for handing work between them. The table
+> below is kept for history; it does not describe how access works today.
+
 Single Supabase auth identity, three role views (localStorage-switchable, same as VE):
 
 | Role | Who | Can do |
@@ -52,10 +59,12 @@ Single Supabase auth identity, three role views (localStorage-switchable, same a
 Each module = one stage of the flow. FE button → n8n webhook → Supabase → FE reflects result. **Video generation is the only manual-only step** (credit safety).
 
 ### M1 — Authentication
-- Email/password (Supabase Auth), single account `marketing@scalepods.co`.
-- Role selector on login (Admin/Client/Designer) → stored in `localStorage`.
+- **Superseded 2026-09-11** — see `docs/team-collaboration-prd.md` §7.1. Sign-in is now Google
+  OAuth restricted to `@scalepods.co` (domain enforced by a Postgres trigger, not just the OAuth
+  `hd` hint), with the original `marketing@scalepods.co` email/password login kept as a fallback.
+  There is no role selector — your role is set by an admin, not chosen at login.
 - Dark/light theme toggle. ScalePods-branded split login (brand panel + form).
-- **US:** *As a user I sign in and land on a role-appropriate dashboard.*
+- **US:** *As a user I sign in with my real account and see exactly what I've been given access to.*
 
 ### M2 — Business Onboarding (Discovery Form)
 - Single ScalePods business profile with 12 fields: business details, products/services, target audience, business goals, brand guidelines, brand voice, target platforms (IG/YT/FB/LI), competitors, website URL, social URLs, asset uploads, additional notes.
@@ -145,7 +154,9 @@ Reads approved strategy's calendar; generates per-post copy + creative.
 
 ## 7. Non-functional requirements
 - **Credit safety:** `GENERATION_ENABLED` flag + video engines have NO FE trigger/auto-chain. `PUBLISHING_ENABLED` flag gates all publish webhooks.
-- **Security:** Supabase RLS `authenticated`-only on all tables; OAuth secrets in Edge Functions (service role), never anon FE.
+- **Security:** ~~Supabase RLS `authenticated`-only on all tables~~ superseded 2026-09-11 — every
+  table now carries real per-feature, per-action policies (see `docs/team-collaboration-prd.md`
+  §7.6, §13); OAuth secrets in Edge Functions (service role), never anon FE.
 - **Brand:** every generated visual auto-stamped; FE strictly ScalePods brand tokens from **`brand-kit/`** (Deep Cyber Navy `#04070D` / Sage Green `#B1D997` / Electric Blue `#63A5E7` / Cream `#F8FAF7`; Inter + Instrument Serif Italic; full spec in TRD §9).
 - **Responsiveness:** desktop-first internal tool; no horizontal overflow at ≥1024px.
 - **Resilience:** retry-on-fail on binary transfers; error-handler workflow on crash.

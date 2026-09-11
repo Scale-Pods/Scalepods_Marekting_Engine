@@ -6,6 +6,9 @@ import {
   ArrowRight, ShieldCheck, Lightbulb, LogIn, Users, KanbanSquare,
 } from 'lucide-react'
 import { PageHeader, Badge, Panel } from '../components/ui'
+import { useAuth } from '../lib/auth'
+import { isAdminRole } from '../lib/team'
+import type { FeatureKey } from '../lib/permissions'
 
 // The in-app manual. Every step here describes what the screens actually do today — it's written
 // from the real pages, not from the spec, so if a flow changes the matching entry below has to
@@ -20,6 +23,12 @@ type ManualEntry = {
   what: string
   steps: string[]
   tip?: string
+  /** Same feature key AppShell gates its nav item on. Omitted for the two entries everyone reaches
+   *  regardless of role (Signing in, Settings) — those aren't behind a permission. */
+  feature?: FeatureKey
+  /** Team & access only — mirrors AppShell's own `adminOnly`, checked against the role directly
+   *  rather than a permission (see PRD §13.6: "users" was deliberately never a feature key). */
+  adminOnly?: boolean
 }
 
 const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[] = [
@@ -32,6 +41,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Business',
         to: '/clients',
         icon: <Building2 size={17} />,
+        feature: 'business',
         what: 'The brand knowledge base. One profile feeds every other engine on this list.',
         steps: [
           'Open Business and pick a profile, or create a new one.',
@@ -46,6 +56,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Trends',
         to: '/trends',
         icon: <TrendingUp size={17} />,
+        feature: 'trends',
         what: 'What people are actually talking about right now, ranked by relevance to your business.',
         steps: [
           'Signals come from real Reddit, Instagram, YouTube, Google Search and Google Trends data.',
@@ -62,6 +73,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Strategy',
         to: '/strategy',
         icon: <Target size={17} />,
+        feature: 'strategy',
         what: 'The plan: built from the business analysis, the trend signals, and how your past posts actually performed.',
         steps: [
           'Landing here shows a numbered list of every strategy you have ever generated — timestamp, scope, and status for each.',
@@ -83,6 +95,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'AI Studio',
         to: '/studio',
         icon: <Wand2 size={17} />,
+        feature: 'studio',
         what: 'One post at a time — image and copy together, with the cost shown before you spend anything. Single image or a multi-slide carousel.',
         steps: [
           'Pick what the post is about: a live trend, the strategy, or your own topic.',
@@ -101,6 +114,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Carousel Studio',
         to: '/carousel-studio',
         icon: <Clapperboard size={17} />,
+        feature: 'carousel_studio',
         what: 'Topic in, animated avatar-hosted carousel out — each slide is rendered as its own video.',
         steps: [
           'Click "New carousel" and give it a topic.',
@@ -115,6 +129,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Video Studio',
         to: '/video-studio',
         icon: <Film size={17} />,
+        feature: 'video_studio',
         what: 'A trend or a topic in, a branded short-form video out — either real AI-generated footage (Veo) or an animated motion-graphics explainer. Every shot and its exact price is reviewable before anything is charged.',
         steps: [
           'Pick how it is made: "AI video (Veo)" for real generated footage, or "Motion graphics" for animated on-screen text (no AI model, effectively free).',
@@ -139,6 +154,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Creative Review',
         to: '/review',
         icon: <CheckSquare size={17} />,
+        feature: 'review',
         what: 'The approval gate. Nothing reaches Publishing without passing through this screen.',
         steps: [
           'Filter by platform, content type, or status (everything / ready / sent back).',
@@ -159,6 +175,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Board',
         to: '/board',
         icon: <KanbanSquare size={17} />,
+        feature: 'board',
         what: 'The Jira-style board: every task the team is working on, and who it belongs to.',
         steps: [
           '"Create" raises a ticket. Give it a summary, a type, a priority, an assignee (who does the work) and a reviewer (who checks it).',
@@ -182,6 +199,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Calendar',
         to: '/calendar',
         icon: <CalendarDays size={17} />,
+        feature: 'calendar',
         what: 'Every post that has a target date — draft, ready, scheduled or already published — on one month grid.',
         steps: [
           'Click any day to create a post for that date.',
@@ -194,6 +212,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Publishing',
         to: '/publishing',
         icon: <Send size={17} />,
+        feature: 'publishing',
         what: 'Where posts actually go live to Instagram, Facebook and LinkedIn.',
         steps: [
           '"Ready to publish" lists everything approved and waiting.',
@@ -208,6 +227,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Blog',
         to: '/blog',
         icon: <Newspaper size={17} />,
+        feature: 'blog',
         what: 'Long-form posts that publish to the scalepods.co website rather than to a social platform.',
         steps: [
           'Create a new post and write it in the editor.',
@@ -225,6 +245,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Analytics',
         to: '/analytics',
         icon: <BarChart3 size={17} />,
+        feature: 'analytics',
         what: 'What actually happened after publishing — and the numbers that feed back into the system.',
         steps: [
           'Engagement by platform and Top posts show real performance from the live accounts.',
@@ -238,6 +259,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Intelligence',
         to: '/intelligence',
         icon: <BrainCircuit size={17} />,
+        feature: 'intelligence',
         what: 'The AI business analysis: 7 sub-analyses (website, Instagram, Facebook, LinkedIn, competitors, SEO, audience) compiled into one report.',
         steps: [
           'It runs on its own every time the business profile is saved — there is no separate button to press.',
@@ -249,6 +271,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Team & access',
         to: '/settings/team',
         icon: <Users size={17} />,
+        adminOnly: true,
         what: 'Admin only. Who is on the team, and exactly which screens each person can reach.',
         steps: [
           'Settings → Team & access, or "Team & access" in the sidebar. Only Owners and Admins see it.',
@@ -282,6 +305,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         label: 'Settings',
         to: '/settings',
         icon: <SettingsIcon size={17} />,
+        feature: 'settings',
         what: 'Your account, the look of the app, connected platforms, and the safety switches.',
         steps: [
           'See which account and role you are signed in as. Your name and role come from the team directory now — they are set by an admin, not chosen by you.',
@@ -311,6 +335,7 @@ const QUICK_START: { label: string; to: string; text: string }[] = [
 
 export default function UserManual() {
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const { can, appUser } = useAuth()
 
   // Instant, not `behavior: 'smooth'` — smooth scrolling is a no-op in some engines and
   // reduced-motion setups (verified live: a smooth scrollIntoView/scrollTo moved nothing at all
@@ -320,14 +345,28 @@ export default function UserManual() {
     sectionRefs.current[id]?.scrollIntoView({ block: 'start' })
   }
 
-  const allEntries = MANUAL_GROUPS.flatMap((g) => g.entries)
+  // Same predicate AppShell filters its sidebar on — walking someone through steps for a screen
+  // they will land on NoAccess for is worse than not mentioning it. Signing in / Settings have no
+  // `feature` and always show, since they apply regardless of what else you can reach.
+  const visible = (e: ManualEntry) =>
+    (!e.feature || can(e.feature, 'view')) && (!e.adminOnly || isAdminRole(appUser?.role))
+  const admin = isAdminRole(appUser?.role)
+  const visibleGroups = MANUAL_GROUPS
+    .map((g) => ({ ...g, entries: g.entries.filter(visible) }))
+    .filter((g) => g.entries.length > 0)
+
+  const allEntries = visibleGroups.flatMap((g) => g.entries)
 
   return (
     <div>
       <PageHeader
         accent={<Badge><BookOpen size={12} /> User manual</Badge>}
         title="How to use Growth OS"
-        subtitle="Every screen in the sidebar, what it is for, and the steps to actually use it. Start with the eight steps below if this is your first time here."
+        subtitle={
+          admin
+            ? 'Every screen in the sidebar, what it is for, and the steps to actually use it. Start with the eight steps below if this is your first time here.'
+            : 'What your account can reach, what each screen is for, and the steps to actually use it. An admin sees the rest.'
+        }
       />
 
       {/* --- Quick start ---------------------------------------------------- */}
@@ -373,7 +412,7 @@ export default function UserManual() {
 
       {/* --- Section reference ----------------------------------------------- */}
       <div className="space-y-6">
-        {MANUAL_GROUPS.map((group) => (
+        {visibleGroups.map((group) => (
           <div key={group.section}>
             <div className="mb-1 text-muted text-[10px] font-semibold uppercase tracking-wide">{group.section}</div>
             <p className="text-secondary text-sm mb-3">{group.blurb}</p>

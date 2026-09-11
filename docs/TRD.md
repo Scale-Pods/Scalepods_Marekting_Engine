@@ -1,7 +1,16 @@
 # ScalePods Growth OS — Technical Requirements Document (TRD)
 
-**Version:** 1.0 · Companion to `PRD.md`
+**Version:** 1.0 (original build) + §14 added 2026-09-11 · Companion to `PRD.md`
 **Basis:** Replication of the validated Victory Growth OS stack, scoped to IG/YT/FB/LinkedIn, re-branded ScalePods.
+
+> **Drift notice:** §§1-13 describe the app as it was at initial build. Every module shipped since
+> (Trends, the Strategy redesign, AI Studio, Carousel Studio, Video Studio, Blog, Comment-to-DM,
+> and — documented properly for the first time in §14 — Team Collaboration & Access Control) has
+> been keeping its own memory file and, for Team Collaboration, its own dedicated
+> `docs/team-collaboration-prd.md` rather than folding every change back into this document. §14
+> is scoped to correcting the specific claims below that Team Collaboration made outright false
+> (single-login auth, blanket RLS, the role selector) and to summarizing what replaced them — it
+> is not a full modernization of §§1-13 for everything else that has drifted since v1.0.
 
 ---
 
@@ -126,9 +135,20 @@ key pk, state, code_verifier, access_token, refresh_token, token_expires_at, sta
 ```
 
 ## 5. Supabase setup
-- **Auth:** email/password. Create `marketing@scalepods.co` user, confirm.
+- **Auth:** Google OAuth restricted to `@scalepods.co` (a Postgres trigger on `auth.users`
+  enforces the domain, not just Google's spoofable `hd` hint) — see §14. The original
+  `marketing@scalepods.co` email/password login still works as a fallback. A signed-in account
+  with no matching `app_users` row, or one still `invited`/`suspended`, is walled off before it
+  reaches any route — see §14.
 - **Storage buckets:** `content-media` (public read), plus `brand/scalepods-logo.png` uploaded for overlay + FE.
-- **RLS:** all app tables `authenticated`-all; `canva_connections` = service-role only.
+- **RLS: NOT a blanket `authenticated`-all policy anymore** — every app table now carries
+  per-feature, per-action policies keyed to the signed-in person's role and permissions, plus a
+  handful of trigger-enforced rules RLS can't express on its own (maker-checker on tickets, status
+  transitions on content/blog). §14 and `docs/team-collaboration-prd.md` (§6-§7, §13) are the
+  actual source of truth for the current policy set — this line is intentionally not re-itemized
+  here to avoid two documents drifting out of sync with each other.
+  `canva_connections`/`instagram_connections` = `settings: full` only (was, and still is, never
+  open to `anon`).
 - **Edge Functions** (Deno, `verify_jwt=false`, CORS): `canva-oauth-start`, `canva-oauth-callback`, `canva-list-designs`, `canva-import`, `figma-import`, `brand-overlay` (stamps ScalePods logo/tagline/socials footer onto generated images).
 
 ## 6. n8n workflows (create in a new ScalePods project/folder)
@@ -169,9 +189,17 @@ key pk, state, code_verifier, access_token, refresh_token, token_expires_at, sta
 > **LinkedIn note:** unlike VE (which used a personal profile with limited analytics), ScalePods should register the **Company Page + Marketing Developer Platform app** up front — that unlocks real org analytics from day one.
 
 ## 8. Frontend architecture
-- **Routing:** `App.tsx` — `Protected` wrapper gates all app routes behind Supabase session; `/login`, `/reset-password` public. Routes mirror VE: `/`, `/clients`, `/clients/:id`, `/trends`, `/strategy`, `/content`, `/review`, `/calendar`, `/publishing`, `/analytics`, `/intelligence`, `/intelligence/:id`, `/settings`.
-- **lib/** thin data layer over Supabase + webhook fire helpers. Master flags `GENERATION_ENABLED`, `PUBLISHING_ENABLED` in `content.ts`.
-- **AppShell:** sidebar nav with live counts (clients, calendar), theme toggle, role badge. Logo in white pill on dark theme.
+- **Routing:** `App.tsx` — `Protected` wrapper gates all app routes behind a Supabase session
+  AND, since Team Collaboration (§14), a real `app_users` row in `active` status and (per route) a
+  `feature` prop checked against that person's permissions; `/login`, `/reset-password` stay
+  public. The route list below is illustrative, not exhaustive — this TRD predates most of the
+  pages that now exist (the Studios, Board, Blog, Team & access, and others); `App.tsx` itself is
+  the actual source of truth for what's routed. Team Collaboration specifically added `/board`,
+  `/board/:key` and `/settings/team` (admin-only).
+- **lib/** thin data layer over Supabase + webhook fire helpers. Master flags `GENERATION_ENABLED`, `PUBLISHING_ENABLED`, `VIDEO_GENERATION_ENABLED` in `content.ts`.
+- **AppShell:** sidebar nav with live counts, theme toggle, the signed-in person's real name/photo/role
+  (from the team directory — see §14, not a role you can pick). Nav items are filtered by feature
+  permission, not shown-then-hidden. Logo in white pill on dark theme.
 - **Reusable:** `MediaEditor` (per-platform crop presets — IG 1:1/4:5/9:16, LI 1:1/1.91:1, YT 9:16, FB variants), `PlatformBadge` + `CarouselViewer` in `mediaUi.tsx`, `AssetUploader`.
 
 ## 9. Brand design system — ScalePods tokens (OFFICIAL, from `brand-kit/`)
@@ -212,7 +240,9 @@ key pk, state, code_verifier, access_token, refresh_token, token_expires_at, sta
 - Logo usage: **white wordmark** (`Scalepods White text logo.png`) on dark, **black wordmark** on cream/light, **icon.png** for avatar/small square spots; ≥24px clear space; top-left/top-center placement.
 - Optional faint grid/circuit background overlay at `0.02` opacity on hero panels.
 - Login: split brand panel + form, dark/light toggle, Lottie animation, **ambient looping brand video** behind theme-aware gradient overlay + "generated by ScalePods Growth OS AI" badge (Instrument Serif italic accent in the hero headline).
-- Role selector: Admin = sage green `#B1D997`, Client = electric blue `#63A5E7`, Designer = terracotta `#CC6B49`.
+- ~~Role selector~~ removed with Team Collaboration (§14) — there is no longer a role you pick,
+  only the one an admin assigned you. `ROLE_ACCENT` in `lib/team.ts` now colors a person's real
+  role badge (owner/admin/designer/writer/client), sage-green-led per the accent hierarchy above.
 - Every generated image auto-stamped via `brand-overlay` edge fn: **ScalePods wordmark + one-liner ("We build smart workflows that automate the repetitive…") + @handles footer**, using white wordmark on dark imagery / black on light.
 
 **Content-generation brand rules (feed into every GPT copy prompt):**
@@ -261,6 +291,55 @@ key pk, state, code_verifier, access_token, refresh_token, token_expires_at, sta
 9. **Polish:** brand pass, responsive check, seed memory, final QA sweep (mirror the 13-point VE sweep).
 
 > **Verification discipline:** for each module, test the full FE→n8n→DB→FE round-trip with a real login (RLS applies), exactly as the VE build was validated. Use a throwaway test profile, clean it up after.
+
+## 14. Team collaboration & access control (added 2026-09-11)
+
+Full spec, data model, and the build-log record of every decision that changed during
+implementation: **`docs/team-collaboration-prd.md`** (§13 there is the detailed equivalent of
+this TRD's own build sequence). This section is the compact summary — read the PRD for anything
+this doesn't answer.
+
+**Identity.** Google OAuth restricted to `@scalepods.co`, enforced by a Postgres trigger on
+`auth.users` (the `hd` query param on the OAuth request is a UX hint only, not the real
+boundary — it's spoofable). Seven people were seeded by hand (owner, 3 admins, 2 designers, 1
+writer); a new admin creates further accounts from `/settings/team`, which the person then claims
+on first sign-in. An `@scalepods.co` sign-in from someone nobody added lands as
+`role: designer, status: suspended` rather than being refused outright, and every active
+owner/admin is notified so someone can give them a real role.
+
+**Authorization.** Four levels — `none < view < edit < full` — per person, per one of 16 feature
+keys (`app_users.role` for owner/admin short-circuits to `full` everywhere; everyone else reads
+`user_permissions`). Enforced twice: in the UI (nav items, routes, and individual buttons hide or
+disable rather than trusting a screen never to be reached) and, the part that actually matters,
+in Postgres — every table's RLS policies are keyed to a feature and a minimum level, with a small
+number of `BEFORE UPDATE` triggers covering column-level authority RLS can't express (approving
+content, publishing, unpublishing, the ticket maker-checker gate). `service_role` (what n8n's
+Supabase credential uses) has `BYPASSRLS`, so none of this touches n8n's own reads/writes.
+
+**New tables:** `app_users`, `user_permissions`, `board_columns`, `tickets`, `ticket_comments`,
+`ticket_activity` (append-only, no write policy at all — only a trigger can add to it),
+`spend_events`. `notifications` gained a real `user_id` column (it previously only had a
+*business* `profile_id`, which nothing filtered on).
+
+**The board.** `/board` — a Jira-shaped Kanban (`Backlog → Not Started → In Progress → Selected
+for Development → In Review → On Hold → Done`) with fractional-position drag-and-drop ordering. A
+ticket can optionally point at a real content item/video/carousel/blog post job. The maker-checker
+rule — an assignee cannot move their own ticket into Done — is a Postgres trigger, not a UI
+convention, so it holds regardless of how the move is attempted.
+
+**Notifications.** In-app (the existing bell/`notifications` table, now filtered by `user_id`) and
+email, via a new n8n workflow (`ScalePods · Team Notifications`, webhook `sp-team-notify`) fired
+by a trigger on `notifications` itself rather than on any one source table — anything that ever
+inserts a notification gets email for free. @-mentions in ticket comments, and one daily
+due/overdue digest per person (`pg_cron`, anchored to 09:00 IST) round it out.
+
+**Spend caps.** `monthly_spend_cap_usd` per person (owner/admin uncapped by default). Enforced by
+a trigger on `spend_events`, not on the job tables themselves — `studio_jobs`/`video_jobs` are
+written by n8n via the service-role key, which carries no JWT, so a trigger there could never
+know who fired a generation. The browser logs the spend, with its own real session, in the moment
+before the paid webhook fires; a refused insert means the webhook is never called. Wired into AI
+Studio and Video Studio's real per-call AI costs; deliberately not wired into `/carousel-studio`
+(Puppeteer + ffmpeg rendering, no metered AI cost to enforce against).
 
 ---
 *This TRD is a faithful re-scope of the shipped Victory Growth OS. Where a decision isn't specified, mirror the VE implementation.*

@@ -1,14 +1,14 @@
 # Team Collaboration & Access Control — PRD + Implementation Plan
 
-**Status:** Approved · **Phases 0–6 shipped 2026-09-11** · **Owner:** marketing@scalepods.co
+**Status:** Shipped · **Phases 0–7 complete 2026-09-11** · **Owner:** marketing@scalepods.co
 
-> **Progress:** All of Phases 0–6 are built and verified. Identity, per-feature permissions, the
-> RLS rewrite, the Kanban board with its maker-checker gate, email notifications, and now per-user
-> monthly spend caps on AI Studio and Video Studio — enforced in Postgres, not just the UI, the
-> same way every other rule in this project has been. §13 records the decisions that changed
-> during the build.
->
-> **Next up — Phase 7 (final docs sweep).**
+> **Progress:** All 7 phases are built and verified. Identity, per-feature permissions, the RLS
+> rewrite, the Kanban board with its maker-checker gate, email notifications, per-user monthly
+> spend caps, and now the manual and both base docs (`PRD.md`, `TRD.md`) reflect the system as it
+> actually works — enforced in Postgres, not just the UI, the same way every other rule in this
+> project has been. §13 records the decisions that changed during the build. This document
+> remains the source of truth for team collaboration going forward; `docs/PRD.md`/`docs/TRD.md`
+> now point back to it rather than duplicating it.
 
 Covers: real multi-user identity, per-feature access control, a Jira-style Kanban board with a
 maker–checker gate, per-user notifications (in-app + email), and per-user spend caps.
@@ -956,3 +956,35 @@ console errors or render failures. The cap-exceeded *button* state (disabled, to
 why) was verified by code review and the underlying data path, not by seeing it rendered live —
 reaching that screen state honestly would have required either a real generation or driving a
 job into a state no real user action produces.
+
+### 13.32 Phase 7: the manual is now role-aware
+
+Every `/manual` entry gained the same `feature`/`adminOnly` key `AppShell` already gates its nav
+item on, and the page filters both the section list and the jump-link chips through the identical
+predicate: `(!feature || can(feature,'view')) && (!adminOnly || isAdminRole(role))`. A whole
+section (e.g. "Team") disappears if it ends up with zero visible entries rather than showing an
+empty header. "Signing in" and "Settings" carry no `feature` and always show — they apply
+regardless of what else a person can reach, same as Dashboard's own ungated nav item. The subtitle
+changes tone for a non-admin ("What your account can reach…") rather than pretending the manual
+still shows the same thing to everyone. `QUICK_START` (the 8-step first-run walkthrough)
+deliberately stays unfiltered — it's a reference for how the whole pipeline fits together, not a
+personal task list, and narrowing it to one person's own access would remove exactly the context
+that makes it worth reading. Verified by type-check and code review only: reaching this page as a
+non-owner account would need a real second Google sign-in this session didn't have credentials
+for, so the filtering logic (identical to `AppShell`'s, already verified live in Phase 2 — see
+§13.10-§13.11) was reviewed rather than re-observed rendering for a second role.
+
+### 13.33 Phase 7: `PRD.md`/`TRD.md` had gone actively wrong, not just stale
+
+`docs/TRD.md` was last touched at initial build (`Version: 1.0`) and `docs/PRD.md`'s §4 predates
+even that — both still described the localStorage role switcher, "Supabase RLS `authenticated`-only
+on all tables", and email/password as the only sign-in method. Those aren't just outdated, they're
+false in a way that would mislead anyone reading them as CLAUDE.md instructs ("source of truth")
+before touching auth or RLS. Fixed narrowly: struck through or annotated the specific claims Team
+Collaboration invalidated, added one summary section to each pointing at
+`docs/team-collaboration-prd.md` for the full picture, and left everything else in both documents
+untouched. **Deliberately not attempted:** a full modernization of either document for every other
+feature that has shipped since v1.0 and was never folded back in (Trends' real sources, the
+Strategy redesign, AI Studio, Carousel Studio, Video Studio, Blog, Comment-to-DM, Instagram leads,
+and more) — that drift predates this phase, is unrelated to team collaboration, and is a
+separate, much larger documentation project of its own.
