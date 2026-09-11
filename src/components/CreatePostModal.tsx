@@ -265,7 +265,10 @@ export default function CreatePostModal({
   // A LinkedIn Document post (real API: Documents API + /rest/posts, media.id: urn:li:document:…)
   // — the n8n Publishing Engine's matching branch creates the document, waits for it to finish
   // processing, then posts it. Distinct from LinkedIn's multi-image carousel (`isCarousel` below).
-  const supportsPdfSingle = platforms.length === 1 && hasLinkedin
+  // Excluded for the Buffer-routed Company Page: Buffer has no native Document post type (it
+  // throws server-side rather than silently drop it), even though LinkedIn's own composer offers
+  // PDF documents for a Page — that's LinkedIn's native API, which this account doesn't use yet.
+  const supportsPdfSingle = platforms.length === 1 && hasLinkedin && linkedinAccount !== 'company_page'
   // YouTube only supports Shorts through this composer — there's no photo/text post type for
   // it, so unlike Facebook it isn't a Photo/Video choice, it's just always video.
   const forcedVideo = platforms.includes('youtube')
