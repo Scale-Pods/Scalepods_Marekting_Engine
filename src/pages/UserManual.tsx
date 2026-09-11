@@ -204,6 +204,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         steps: [
           'Click any day to create a post for that date.',
           'Click an existing post to open it, then view, schedule or edit it there.',
+          'For LinkedIn, pick which account it goes out as — Adnan, Raunak, or the ScalePods Page. The Page publishes via Buffer instead of LinkedIn directly (LinkedIn\'s own Company Page API is still pending approval), so it can\'t do a PDF/Document post — that option only shows up for Adnan\'s or Raunak\'s account.',
         ],
         tip: 'This is a view across the whole pipeline, so a post can show up here before it has been approved.',
       },
