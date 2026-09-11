@@ -63,9 +63,13 @@ export function isActivePlatform(platform?: string | null): boolean {
  *      option here does NOT stop that; changing the n8n default is a separate, deliberate edit.
  *   2. Re-adding it here alone is enough to bring the option back; no n8n change needed.
  *
- * "company_page" has no matching branch yet — it's offered here so the composer doesn't need a
- * follow-up change, but selecting it today is a no-op until Community Management API's
- * w_organization_social approval lands and that branch gets added (pending as of 2026-08-13).
+ * "company_page" routes through Buffer as of 2026-09-11 (a 4th LinkedIn Account Router branch in
+ * n8n), not native LinkedIn — Community Management API / w_organization_social approval is still
+ * pending, so this is the interim path. It converges back into the shared LinkedIn Result node
+ * with a Buffer-shaped platform_post_id (prefixed 'buffer:', not a real LinkedIn URN, so
+ * Analytics Collector can't pull real engagement for these yet) and throws instead of publishing
+ * for linkedin_pdf content (Buffer has no native Document/PDF post type). It's a no-op in
+ * practice until the Buffer credential + real channelId are set on that branch in n8n.
  */
 export const LINKEDIN_ACCOUNTS: { value: string; label: string }[] = [
   { value: 'adnan', label: "Adnan's LinkedIn Account" },

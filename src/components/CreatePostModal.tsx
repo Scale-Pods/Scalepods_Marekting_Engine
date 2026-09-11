@@ -613,7 +613,9 @@ export default function CreatePostModal({
               </select>
               {linkedinAccount === 'company_page' && (
                 <p className="text-muted text-xs mt-1.5">
-                  Page posting is still pending LinkedIn's Community Management API approval — this option is ready for once that's live.
+                  Page posting now goes out via Buffer (LinkedIn's own Community Management API is
+                  still pending approval) — needs a Buffer credential + channel set up in n8n
+                  first, and can't do a native PDF/Document post.
                 </p>
               )}
             </div>
