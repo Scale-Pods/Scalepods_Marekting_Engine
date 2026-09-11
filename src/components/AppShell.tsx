@@ -94,6 +94,20 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
   },
 ]
 
+// NavLink's own path-prefix matching means "/settings" reads as active on "/settings/team" too
+// (it starts with the same string) even though they're separate sidebar entries, not a page and
+// its sub-route — the same problem the existing `n.to === '/'` special case exists for. Computed
+// generically here (true whenever another internal nav item's path nests under this one) rather
+// than hand-listing "/settings" specifically, so a future nav item with the same shape doesn't
+// silently reintroduce this bug. A route with no such sibling (e.g. "/clients", whose only
+// nested path is a click-through detail page that isn't itself a nav item) is untouched — it
+// should keep matching a sub-page, only siblings need `end`.
+const INTERNAL_NAV_PATHS = NAV_GROUPS.flatMap((g) => g.items.filter((n) => !n.external).map((n) => n.to))
+function navLinkEnd(to: string): boolean {
+  if (to === '/') return true
+  return INTERNAL_NAV_PATHS.some((other) => other !== to && other.startsWith(`${to}/`))
+}
+
 const SIDEBAR_PINNED_KEY = 'sp-sidebar-pinned'
 
 // Live count badges shown next to a nav item — path → which counter to read.
@@ -244,7 +258,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       <NavLink
                         key={n.to}
                         to={n.to}
-                        end={n.to === '/'}
+                        end={navLinkEnd(n.to)}
                         title={expanded ? undefined : n.label}
                         className={({ isActive }) => `nav-item relative ${expanded ? '' : 'justify-center'} ${isActive ? 'active' : ''}`}
                       >
