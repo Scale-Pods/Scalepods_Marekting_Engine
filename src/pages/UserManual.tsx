@@ -102,6 +102,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'Pick a look. The 15 styles are art direction (photo, poster, 3D render…), not the subject.',
           'Pick a post type: a single image, or a carousel (3-8 slides — each slide gets its own real image, no picking between variants).',
           'Choose the platform, shape, image model and how many options (or slides) you want. The price updates as you change them.',
+          'Have an existing poster or post whose look you want to match? Upload it as a reference image — the generated image (or every slide, for a carousel) follows its style and layout, not its actual content.',
           'Click "Write the brief". AI writes the copy and the image prompt — for a carousel, one prompt per slide — nothing has been spent yet at this point.',
           'Edit the copy, or any slide\'s title/caption/prompt, then click Generate.',
           'Single image: click an image to see it full size, click the checkmark in its corner to pick it. Carousel: every slide generates once — click "Regenerate this slide" on any tile that came out wrong, no need to redo the rest. Rate a slide with the thumbs beneath it and optionally say what is wrong; the note gets folded into that slide\'s own prompt the next time you regenerate it.',

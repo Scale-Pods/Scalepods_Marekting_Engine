@@ -59,9 +59,14 @@ export interface ImageModel {
   label: string
   provider: 'openai' | 'google'
   blurb: string
-  /** Accepts a reference image to steer style/content. None of the models below support this —
-   *  kept on the type since AIStudio.tsx's reference-image uploader already reads it, in case a
-   *  future OpenAI/Google model (or Higgsfield, if it comes back) does. */
+  /** Accepts a reference image to steer style/content — an existing poster/post goes in
+   *  alongside the text prompt, and the output follows its layout/style. True for every model
+   *  below as of 2026-09-12: Gemini's whole image family is natively multimodal (add an image
+   *  part next to the text part in the same generateContent call — this is the core "Nano
+   *  Banana" editing capability, not a bolt-on); OpenAI's gpt-image-* family gets it via the
+   *  `images/edits` endpoint instead of `images/generations` (one or more input images + prompt,
+   *  no mask = a full-image restyle guided by the reference, not a masked patch). See
+   *  ScalePods · Studio Generate / Studio Regenerate Slide (n8n) for the actual branch. */
   supportsReference: boolean
   supportsCharacter: boolean
   /** Most variants this model will return in one call. */
@@ -95,7 +100,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     label: 'OpenAI · gpt-image-1-mini',
     provider: 'openai',
     blurb: 'Cheapest OpenAI option. Good for quick drafts.',
-    supportsReference: false,
+    supportsReference: true,
     supportsCharacter: false,
     maxVariants: 4,
     aspectRatios: ['1:1', '4:5', '16:9'],
@@ -108,7 +113,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     label: 'OpenAI · gpt-image-1',
     provider: 'openai',
     blurb: 'Reliable all-rounder. Strong at diagrams and clean graphic work.',
-    supportsReference: false,
+    supportsReference: true,
     supportsCharacter: false,
     maxVariants: 4,
     // gpt-image-1 takes pixel sizes, not ratio strings — mapped in the workflow.
@@ -125,7 +130,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     label: 'OpenAI · gpt-image-1.5',
     provider: 'openai',
     blurb: 'Between gpt-image-1 and the newest gpt-image-2.',
-    supportsReference: false,
+    supportsReference: true,
     supportsCharacter: false,
     maxVariants: 4,
     aspectRatios: ['1:1', '4:5', '16:9'],
@@ -138,7 +143,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     label: 'OpenAI · gpt-image-2',
     provider: 'openai',
     blurb: "OpenAI's newest image model — cheaper per token than gpt-image-1 despite being newer.",
-    supportsReference: false,
+    supportsReference: true,
     supportsCharacter: false,
     maxVariants: 4,
     aspectRatios: ['1:1', '4:5', '16:9'],
@@ -151,7 +156,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     label: 'Google · Gemini 2.5 Flash Image',
     provider: 'google',
     blurb: '"Nano Banana" — the original. Google now recommends the Lite successor instead.',
-    supportsReference: false,
+    supportsReference: true,
     supportsCharacter: false,
     maxVariants: 1,
     aspectRatios: ['1:1', '4:5', '16:9'],
@@ -164,7 +169,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     label: 'Google · Gemini Flash Image',
     provider: 'google',
     blurb: 'Fast, cheap, strong prompt following ("Nano Banana 2 Lite").',
-    supportsReference: false,
+    supportsReference: true,
     supportsCharacter: false,
     // Gemini's generateContent returns exactly one image per call, unlike gpt-image-1's `n`
     // param — capped to 1 rather than faking multi-variant support with N sequential calls, so
@@ -180,7 +185,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     label: 'Google · Gemini 3.1 Flash Image',
     provider: 'google',
     blurb: '"Nano Banana 2" — newer and pricier than the Lite version above.',
-    supportsReference: false,
+    supportsReference: true,
     supportsCharacter: false,
     maxVariants: 1,
     aspectRatios: ['1:1', '4:5', '16:9'],
@@ -193,7 +198,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     label: 'Google · Gemini 3 Pro Image',
     provider: 'google',
     blurb: '"Nano Banana Pro" — best quality in the family, up to 4K.',
-    supportsReference: false,
+    supportsReference: true,
     supportsCharacter: false,
     maxVariants: 1,
     aspectRatios: ['1:1', '4:5', '16:9'],
