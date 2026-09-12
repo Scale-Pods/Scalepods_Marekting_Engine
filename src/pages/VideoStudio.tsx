@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Film, Sparkles, RefreshCw, Play, CheckCircle2, XCircle, Plus, Trash2, TrendingUp, Target, Type,
   Mic, Download, Send, Clapperboard, Wand2, AlertTriangle, ExternalLink, Clock, Music, Pause,
-  ThumbsUp, ThumbsDown,
+  ThumbsUp, ThumbsDown, ArrowUp, ArrowDown,
 } from 'lucide-react'
 import { useProfile } from '../lib/queries'
 import { supabase } from '../lib/supabase'
@@ -368,6 +368,7 @@ function FeedbackControl({
 
 function ShotEditor({
   shot, engine, resolution, editable, onChange, onRemove, onRegenerate, regenerating,
+  onMoveUp, onMoveDown,
 }: {
   shot: VideoShot
   engine: VideoEngine
@@ -377,6 +378,11 @@ function ShotEditor({
   onRemove?: () => void
   onRegenerate?: () => void
   regenerating?: boolean
+  /** Reordering is a pure position swap — no cost, no invalidation — so it's offered both before
+   *  and after generation (see moveShot in JobDetail). Omitted at the first/last position rather
+   *  than shown disabled, same convention as onRemove disappearing at one shot left. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }) {
   const set = (patch: Partial<VideoShot>) => onChange({ ...shot, ...patch })
   const rate = ratePerSecond(engine, resolution) ?? 0
@@ -386,6 +392,16 @@ function ShotEditor({
     <Panel className="!p-4 space-y-2">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
+          {editable && (onMoveUp || onMoveDown) && (
+            <div className="flex flex-col -my-1 -ml-1">
+              <button onClick={onMoveUp} disabled={!onMoveUp} className="text-muted hover:text-sage disabled:opacity-25 disabled:cursor-not-allowed" title="Move shot earlier">
+                <ArrowUp size={12} />
+              </button>
+              <button onClick={onMoveDown} disabled={!onMoveDown} className="text-muted hover:text-sage disabled:opacity-25 disabled:cursor-not-allowed" title="Move shot later">
+                <ArrowDown size={12} />
+              </button>
+            </div>
+          )}
           <Badge tone="blue">Shot {shot.index + 1}</Badge>
           {shot.status === 'done' && <Badge tone="green"><CheckCircle2 size={11} /> Done</Badge>}
           {shot.status === 'generating' && <Badge tone="blue">Generating…</Badge>}
@@ -560,6 +576,21 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
       const regenerationNeeded = p.status === 'done' && (next.prompt !== p.prompt || next.durationS !== p.durationS)
       return regenerationNeeded ? { ...next, status: 'pending', clipUrl: null, costUsd: null } : next
     }))
+  }
+
+  /** Pure position swap — prompt/duration/status/clipUrl/costUsd are untouched, only `index`
+   *  (and the array order it mirrors) changes. Unlike onShotChange, this never invalidates a
+   *  finished shot: reordering already-generated clips is free, the worker just re-stitches them
+   *  in the new order on the next render (same "re-assembly only" path as an on-screen-text edit).
+   *  Available both before and after generation for that reason. */
+  function moveShot(i: number, dir: -1 | 1) {
+    setShots((prev) => {
+      const j = i + dir
+      if (j < 0 || j >= prev.length) return prev
+      const next = prev.slice()
+      ;[next[i], next[j]] = [next[j], next[i]]
+      return next.map((s, idx) => ({ ...s, index: idx }))
+    })
   }
 
   // Changing the script or the voice invalidates the recording that was made from the old one —
@@ -752,6 +783,8 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                   editable
                   onChange={(s) => onShotChange(i, s)}
                   onRemove={shots.length > 1 ? () => setShots((prev) => prev.filter((_, idx) => idx !== i).map((s, idx) => ({ ...s, index: idx }))) : undefined}
+                  onMoveUp={i > 0 ? () => moveShot(i, -1) : undefined}
+                  onMoveDown={i < shots.length - 1 ? () => moveShot(i, 1) : undefined}
                 />
               ))}
             </div>
@@ -883,7 +916,7 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                 <div className="label !mb-0">Storyboard</div>
                 {editable && (
                   <div className="text-[11px] text-muted">
-                    Editing a prompt re-generates that shot · editing on-screen text is free
+                    Editing a prompt re-generates that shot · reordering and on-screen text are free
                   </div>
                 )}
               </div>
@@ -897,6 +930,8 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                   onChange={(s) => onShotChange(i, s)}
                   onRegenerate={editable ? () => onRegenerateShot(i) : undefined}
                   regenerating={regeneratingShot === i}
+                  onMoveUp={editable && i > 0 ? () => moveShot(i, -1) : undefined}
+                  onMoveDown={editable && i < shots.length - 1 ? () => moveShot(i, 1) : undefined}
                 />
               ))}
 
@@ -969,7 +1004,7 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                     />
                   ) : (
                     <div className="text-xs text-sage">
-                      Nothing to re-generate — re-assembling only applies your new on-screen text and caption, at no cost.
+                      Nothing to re-generate — re-assembling only applies your new on-screen text, caption and shot order, at no cost.
                     </div>
                   )}
                   <Button
