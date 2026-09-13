@@ -8,6 +8,7 @@ import {
   type CarouselJob, type CarouselSlide,
 } from '../lib/carousels'
 import { GENERATION_ENABLED } from '../lib/content'
+import { relativeTime } from '../lib/time'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel } from '../components/ui'
 import { useGate } from '../components/Gate'
 import { useToast, toastMessage } from '../components/Toast'
@@ -406,6 +407,9 @@ export default function CarouselStudio() {
                         {job.render_progress.slideIndex ?? 0}/{job.render_progress.slideTotal}
                       </span>
                     )}
+                    <span className="text-[10px] text-muted ml-auto" title={new Date(job.created_at).toLocaleString()}>
+                      {relativeTime(job.created_at)}
+                    </span>
                   </div>
                 </Panel>
               </div>

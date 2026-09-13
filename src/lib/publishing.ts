@@ -33,7 +33,10 @@ export async function listApprovedItems(profileId: string): Promise<ContentItem[
     .select('*')
     .eq('profile_id', profileId)
     .eq('status', 'approved')
-    .order('scheduled_date', { ascending: true })
+    // Most-recently-approved first, matching every other "recent" grid in the app (AI Studio,
+    // Video Studio, Recent activity below) — was scheduled_date ascending, which buried a post
+    // approved five minutes ago under everything with an earlier target date.
+    .order('created_at', { ascending: false })
   if (error) throw error
   return data as ContentItem[]
 }

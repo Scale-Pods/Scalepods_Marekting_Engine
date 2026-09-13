@@ -7,6 +7,7 @@ import { useToast, toastMessage } from './Toast'
 import { cancelScheduledPost, editScheduledPost, saveCommentAutomation, triggerPublish, type ScheduledPost } from '../lib/publishing'
 import { PUBLISHING_ENABLED, deleteContentItem, type CommentAutomation, type ContentItem, type ContentSlide } from '../lib/content'
 import { renderPdfPages } from '../lib/pdfPreview'
+import { relativeTime } from '../lib/time'
 import AssetUploader from './AssetUploader'
 
 // Shared building blocks for every "grid of posts -> click through to a native-looking
@@ -51,6 +52,20 @@ export function ContentTypeChip({ type }: { type: string }) {
       style={{ background: typeColor(type) }}
     >
       {type.replace(/_/g, ' ')}
+    </span>
+  )
+}
+
+/** "3h ago" corner badge for a grid tile — the full absolute date/time is still one hover away
+ *  via the title tooltip, same pattern AI Studio's job-detail view already used before this. */
+export function TimeBadge({ time }: { time: string }) {
+  return (
+    <span
+      className="text-[10px] font-medium px-1.5 py-0.5 rounded text-white tabular-nums"
+      style={{ background: 'rgba(0,0,0,0.55)' }}
+      title={new Date(time).toLocaleString()}
+    >
+      {relativeTime(time)}
     </span>
   )
 }
@@ -133,13 +148,14 @@ function PdfCoverThumb({ url, compact }: { url: string; compact?: boolean }) {
 // `busyNote` replaces the image entirely (e.g. "Generating image…") and suppresses the
 // click-through hover state, since there's nothing to preview yet.
 export function PostTile({
-  img, placeholder, platform, topRight, bottomLeft, busyNote, onClick,
+  img, placeholder, platform, topRight, bottomLeft, bottomRight, busyNote, onClick,
 }: {
   img: string | null
   placeholder?: ReactNode
   platform: string
   topRight?: ReactNode
   bottomLeft?: ReactNode
+  bottomRight?: ReactNode
   busyNote?: ReactNode
   onClick: () => void
 }) {
@@ -179,6 +195,7 @@ export function PostTile({
       <div className="absolute top-1.5 left-1.5 pointer-events-none"><PlatformBadge platform={platform} size="sm" /></div>
       {topRight && <div className="absolute top-1.5 right-1.5 pointer-events-none">{topRight}</div>}
       {bottomLeft && <div className="absolute bottom-1.5 left-1.5">{bottomLeft}</div>}
+      {bottomRight && <div className="absolute bottom-1.5 right-1.5 pointer-events-none">{bottomRight}</div>}
     </div>
   )
 }

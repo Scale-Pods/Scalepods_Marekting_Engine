@@ -4,6 +4,7 @@ import { Bell, CheckCircle2, XCircle, Sparkles, Send, Clock, Undo2 } from 'lucid
 import {
   useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead, type AppNotification,
 } from '../lib/notifications'
+import { relativeTime } from '../lib/time'
 
 // Per-type icon/tint. Types are free-text (n8n writes some of them), so unknown values fall
 // back to a neutral bell rather than breaking the row.
@@ -15,16 +16,6 @@ const TYPE_META: Record<string, { icon: typeof Bell; color: string }> = {
   revision: { icon: Undo2, color: 'var(--accent-orange)' },
   'generation-complete': { icon: Sparkles, color: 'var(--accent-green)' },
   'approval-needed': { icon: Send, color: 'var(--accent-blue)' },
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.round(diff / 60_000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.round(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.round(hrs / 24)}d ago`
 }
 
 function NotificationRow({ n, onRead }: { n: AppNotification; onRead: (id: string) => void }) {

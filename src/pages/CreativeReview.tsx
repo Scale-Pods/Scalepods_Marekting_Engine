@@ -14,7 +14,7 @@ import { useToast, toastMessage } from '../components/Toast'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
 import { useGate, useCan } from '../components/Gate'
 import { PLATFORM_OPTIONS } from '../components/mediaUi'
-import { PostTile, PostPreviewModal, ContentTypeChip } from '../components/postPreview'
+import { PostTile, PostPreviewModal, ContentTypeChip, TimeBadge } from '../components/postPreview'
 import AssetUploader from '../components/AssetUploader'
 import MediaEditor from '../components/MediaEditor'
 import CreatePostModal from '../components/CreatePostModal'
@@ -448,6 +448,7 @@ export default function CreativeReview() {
                         {isSelected && <Check size={14} className="text-white" />}
                       </button>
                     }
+                    bottomRight={<TimeBadge time={item.created_at} />}
                     onClick={() => navPreview(i)}
                   />
                 )

@@ -22,7 +22,7 @@ import {
 import { createManualItem, GENERATION_ENABLED, VIDEO_GENERATION_ENABLED } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
 import { useGate, useBudgetGate } from '../components/Gate'
-import { PostTile } from '../components/postPreview'
+import { PostTile, TimeBadge } from '../components/postPreview'
 import { useToast, toastMessage } from '../components/Toast'
 
 const POSES = ['casual', 'pointing', 'victory', 'arms-crossed', 'phone'] as const
@@ -1284,6 +1284,7 @@ export default function VideoStudio() {
                     </span>
                   ) : undefined
                 }
+                bottomRight={<TimeBadge time={job.created_at} />}
                 onClick={() => setSelectedId(selectedId === job.id ? null : job.id)}
               />
             ))}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Send, Clock, Loader2, Link2 } from 'lucide-react'
 import { useProfile, useApprovedItems, useScheduledPosts } from '../lib/queries'
 import { PageHeader, Badge, EmptyState, Spinner } from '../components/ui'
-import { PostTile, PostPreviewModal, ActivityPreviewModal, ReadyPreviewActions, ContentTypeChip, STATUS_META } from '../components/postPreview'
+import { PostTile, PostPreviewModal, ActivityPreviewModal, ReadyPreviewActions, ContentTypeChip, STATUS_META, TimeBadge } from '../components/postPreview'
 
 const ACTIVITY_FILTERS = ['all', 'published', 'scheduled', 'failed'] as const
 type ActivityFilter = (typeof ACTIVITY_FILTERS)[number]
@@ -123,6 +123,7 @@ export default function Publishing() {
                     </span>
                   ) : undefined
                 }
+                bottomRight={<TimeBadge time={item.created_at} />}
                 onClick={() => setReadyPreviewIndex(i)}
               />
             )
@@ -172,6 +173,7 @@ export default function Publishing() {
                         style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.7))' }}
                       />
                     }
+                    bottomRight={<TimeBadge time={p.published_at || p.created_at} />}
                     onClick={() => setPreviewIndex(i)}
                   />
                 )

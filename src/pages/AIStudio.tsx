@@ -20,6 +20,7 @@ import {
 } from '../lib/studioStyles'
 import { createManualItem, GENERATION_ENABLED, type ContentSlide } from '../lib/content'
 import { stampAndUpload } from '../lib/brandStamp'
+import { relativeTime } from '../lib/time'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Panel, Modal } from '../components/ui'
 import { useGate, useBudgetGate } from '../components/Gate'
 import { PlatformBadge } from '../components/mediaUi'
@@ -863,7 +864,7 @@ export default function AIStudio() {
                             <Badge tone={j.status === 'done' ? 'green' : j.status === 'failed' ? 'orange' : 'grey'}>{j.status.replace(/_/g, ' ')}</Badge>
                             {j.post_type === 'carousel' && <Badge tone="grey"><Layers size={9} /> Carousel</Badge>}
                           </div>
-                          <div className="text-muted text-[10px] mt-1 truncate">{formatJobDate(j.created_at)}</div>
+                          <div className="text-muted text-[10px] mt-1 truncate" title={new Date(j.created_at).toLocaleString()}>{relativeTime(j.created_at)}</div>
                           <div className="text-muted text-[10px] truncate" title={jModel?.label ?? j.model}>
                             {jModel?.label ?? j.model}{jCost != null ? ` · ${formatUsdInr(jCost)} (est.)` : ''}
                           </div>
