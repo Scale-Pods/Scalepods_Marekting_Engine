@@ -164,15 +164,20 @@ export default function Board() {
         </div>
       </div>
 
-      {/* Columns scroll sideways; the page itself never does. */}
-      <div className="flex gap-3 overflow-x-auto pb-4" style={{ scrollbarWidth: 'thin' }}>
+      {/* All columns share the row's width and shrink together (minmax(0,1fr)) so the whole
+          board is visible at once, Jira-style — never a horizontal scrollbar, however many
+          columns board_columns holds. */}
+      <div
+        className="grid gap-2 pb-4"
+        style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
+      >
         {columns.map((col) => {
           const items = ticketsIn(visible, col.id)
           const isOver = dragOverCol === col.id
           return (
             <div
               key={col.id}
-              className="shrink-0 w-[290px] rounded-xl flex flex-col"
+              className="min-w-0 rounded-xl flex flex-col"
               style={{
                 background: 'var(--bg-panel)',
                 outline: isOver ? '2px dashed var(--accent-green)' : '1px solid var(--border-subtle)',
@@ -190,8 +195,8 @@ export default function Board() {
                 if (t && t.column_id !== col.id) move.mutate({ id, to: col.id })
               }}
             >
-              <div className="flex items-center justify-between px-3 py-2.5 shrink-0">
-                <span className="text-muted text-[10.5px] font-semibold uppercase tracking-wide truncate">
+              <div className="flex items-center justify-between px-2.5 py-2 shrink-0 min-w-0">
+                <span className="text-muted text-[10px] font-semibold uppercase tracking-wide truncate">
                   {col.name}
                 </span>
                 <span className="flex items-center gap-1.5 shrink-0">
@@ -201,7 +206,7 @@ export default function Board() {
                 </span>
               </div>
 
-              <div className="px-2 pb-2 space-y-2 flex-1">
+              <div className="px-1.5 pb-1.5 space-y-1.5 flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
                 {items.map((t) => (
                   <TicketCard
                     key={t.id}
@@ -281,12 +286,12 @@ function TicketCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onOpen}
-      className={`card !p-3 cursor-pointer transition-opacity ${dragging ? 'opacity-40' : 'hover:opacity-90'}`}
+      className={`card !p-2.5 cursor-pointer transition-opacity ${dragging ? 'opacity-40' : 'hover:opacity-90'}`}
     >
-      <div className="text-sm leading-snug mb-2 line-clamp-3">{ticket.title}</div>
+      <div className="text-[12.5px] leading-snug mb-1.5 line-clamp-3">{ticket.title}</div>
 
       {ticket.due_date && (
-        <div className="flex items-center gap-1 text-[11px] mb-2" style={{ color: tone ?? 'var(--text-muted)' }}>
+        <div className="flex items-center gap-1 text-[10.5px] mb-1.5" style={{ color: tone ?? 'var(--text-muted)' }}>
           {days !== null && days < 0 && <AlertCircle size={11} />}
           {formatDue(ticket.due_date)}
         </div>
@@ -310,7 +315,7 @@ function TicketCard({
             {ticket.priority === 'highest' ? '↑↑' : ticket.priority === 'high' ? '↑'
               : ticket.priority === 'low' ? '↓' : ticket.priority === 'lowest' ? '↓↓' : '='}
           </span>
-          <Avatar user={assignee} size={22} />
+          <Avatar user={assignee} size={20} />
         </span>
       </div>
     </div>
