@@ -91,7 +91,7 @@ export default function Publishing() {
       <PageHeader
         accent={<Badge><Send size={12} /> Publishing</Badge>}
         title={`Publishing — ${profile.business_name}`}
-        subtitle="Post now or schedule at the AI-predicted best time. Publishes to Instagram, Facebook, LinkedIn (YouTube video is manual-only)."
+        subtitle="Post now or schedule at the AI-predicted best time. Publishes to Instagram, Facebook, LinkedIn, X (YouTube video is manual-only)."
       />
 
       <div className="font-medium mb-3">Ready to publish</div>

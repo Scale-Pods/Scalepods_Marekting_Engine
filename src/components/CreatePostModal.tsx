@@ -23,6 +23,16 @@ import { renderPdfPages } from '../lib/pdfPreview'
 // values stored/compared as 24h "HH:MM" so the rest of the composer's date-math is untouched.
 const SCHEDULE_TIMES = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0')).flatMap((h) => [`${h}:00`, `${h}:30`])
 
+// X's standard (non-Premium) character limit — the ScalePods X account isn't on Premium, so this
+// is the real ceiling Buffer/X will enforce. Mirrors the exact text the Publishing Engine's
+// n8n "Build Context" node sends (body + '\n\n' + hashtags), so this counter can't drift from
+// what actually gets posted.
+const X_CHAR_LIMIT = 280
+function xLength(bodyText: string, hashtagsList: string[]): number {
+  const tags = hashtagsList.map((h) => `#${h}`).join(' ')
+  return `${bodyText}\n\n${tags}`.length
+}
+
 function formatTime12h(hhmm: string): string {
   const match = /^(\d{2}):(\d{2})$/.exec(hhmm)
   if (!match) return hhmm
@@ -253,11 +263,13 @@ export default function CreatePostModal({
 
   const hasLinkedin = platforms.includes('linkedin')
   const hasInstagram = platforms.includes('instagram')
+  const hasX = platforms.includes('x')
   const isMultiPlatform = platforms.length > 1
   // Instagram video publishes as a Reel (its own media_type on IG's side, distinct from the
   // Story/Feed image toggle below) — the n8n Publishing Engine now has a matching branch that
-  // creates a REELS container and polls until it's processed before publishing.
-  const supportsVideoAll = platforms.every((p) => p === 'facebook' || p === 'youtube' || p === 'instagram')
+  // creates a REELS container and polls until it's processed before publishing. X video posts
+  // through Buffer as a plain video asset (no Reel-equivalent container/poll dance needed).
+  const supportsVideoAll = platforms.every((p) => p === 'facebook' || p === 'youtube' || p === 'instagram' || p === 'x')
   // Story only has an Instagram equivalent, and a Document post only has a LinkedIn one — both
   // stay single-platform, so these only ever apply when exactly that one platform is selected
   // alone (not merely present alongside others).
@@ -291,7 +303,10 @@ export default function CreatePostModal({
   function platformCompatible(p: string): boolean {
     if (mediaKind === 'pdf') return p === 'linkedin'
     if (postFormat === 'story') return p === 'instagram'
-    if (mediaKind === 'video') return p === 'facebook' || p === 'youtube' || p === 'instagram'
+    if (mediaKind === 'video') return p === 'facebook' || p === 'youtube' || p === 'instagram' || p === 'x'
+    // X is deliberately excluded here even though Buffer could technically send it up to 4
+    // images: X has no real per-slide carousel (it's a flat image grid, not the slide-by-slide
+    // narrative LinkedIn/Instagram carousels are), so multi-image posts stay LinkedIn/Instagram.
     if (images.length > 1) return p === 'linkedin' || p === 'instagram'
     if (p === 'youtube') return false // YouTube has no photo/text mode in this composer
     return true
@@ -313,7 +328,7 @@ export default function CreatePostModal({
   useEffect(() => {
     if (mediaKind === 'video') {
       setPlatforms((prev) => {
-        const next = prev.filter((p) => p === 'facebook' || p === 'youtube' || p === 'instagram')
+        const next = prev.filter((p) => p === 'facebook' || p === 'youtube' || p === 'instagram' || p === 'x')
         return next.length ? next : ['instagram']
       })
     }
@@ -794,7 +809,7 @@ export default function CreatePostModal({
                 ? 'Required — posted as a native LinkedIn Document (the same mechanism behind what people call a "LinkedIn PDF carousel" — a swipeable page-by-page viewer). Up to 100MB / 300 pages.'
                 : mediaKind === 'video'
                 ? isMultiPlatform
-                  ? `Required — one video, posted as ${platforms.map((p) => (p === 'instagram' ? 'a Reel on Instagram' : p === 'youtube' ? 'a Short on YouTube' : 'a video on Facebook')).join(', ')}. Processing can take up to ~1 minute per platform after you save.`
+                  ? `Required — one video, posted as ${platforms.map((p) => (p === 'instagram' ? 'a Reel on Instagram' : p === 'youtube' ? 'a Short on YouTube' : p === 'x' ? 'a video on X' : 'a video on Facebook')).join(', ')}. Processing can take up to ~1 minute per platform after you save.`
                   : platforms[0] === 'youtube'
                     ? 'Required — vertical video, up to 3 minutes, posted as a YouTube Short.'
                     : platforms[0] === 'instagram'
@@ -844,6 +859,16 @@ export default function CreatePostModal({
                       onChange={(e) => setCaptionOverrides((prev) => ({ ...prev, [p]: { caption: prev[p]?.caption ?? caption, hashtagsInput: e.target.value } }))}
                       placeholder="#GrowthOS #B2B"
                     />
+                    {p === 'x' && (() => {
+                      const pCaption = captionOverrides[p]?.caption ?? caption
+                      const pTags = (captionOverrides[p]?.hashtagsInput ?? hashtagsInput).split(/[\s,]+/).map((h) => h.trim().replace(/^#/, '')).filter(Boolean)
+                      const len = xLength(pCaption, pTags)
+                      return (
+                        <p className="text-xs mt-1.5" style={{ color: len > X_CHAR_LIMIT ? 'var(--accent-orange)' : 'var(--text-muted)' }}>
+                          {len}/{X_CHAR_LIMIT} characters for X. Buffer will reject the post if it goes over.
+                        </p>
+                      )
+                    })()}
                   </div>
                 ))}
               </div>
@@ -865,6 +890,11 @@ export default function CreatePostModal({
                     placeholder="#GrowthOS #B2B"
                   />
                 </div>
+                {hasX && (
+                  <p className="text-xs mt-1.5" style={{ color: xLength(caption, hashtags) > X_CHAR_LIMIT ? 'var(--accent-orange)' : 'var(--text-muted)' }}>
+                    {xLength(caption, hashtags)}/{X_CHAR_LIMIT} characters for X (caption + hashtags). Buffer will reject the post if it goes over.
+                  </p>
+                )}
               </>
             )}
           </div>

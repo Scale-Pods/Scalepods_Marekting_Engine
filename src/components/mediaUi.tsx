@@ -36,6 +36,13 @@ function YtGlyph() {
     </svg>
   )
 }
+function XGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="#fff" aria-hidden>
+      <path d="M18.9 2.4h3.3l-7.2 8.2 8.5 11.1h-6.6l-5.2-6.8-5.9 6.8H2.4l7.7-8.8L1.9 2.4h6.8l4.7 6.2zM17.7 19.7h1.8L7.5 4.3H5.5z" />
+    </svg>
+  )
+}
 
 type PlatformStyle = { bg: string; label: string; glyph?: JSX.Element }
 function platformStyle(platform?: string | null): PlatformStyle {
@@ -44,17 +51,19 @@ function platformStyle(platform?: string | null): PlatformStyle {
   if (p.includes('facebook') || p === 'fb') return { bg: '#1877F2', label: 'Facebook', glyph: <FbGlyph /> }
   if (p.includes('linkedin')) return { bg: '#0A66C2', label: 'LinkedIn', glyph: <LiGlyph /> }
   if (p.includes('youtube')) return { bg: '#FF0000', label: 'YouTube', glyph: <YtGlyph /> }
+  if (p === 'x' || p.includes('twitter')) return { bg: '#000000', label: 'X', glyph: <XGlyph /> }
   return { bg: 'var(--fill-tertiary)', label: platform || '—' }
 }
 
-// Matches ACTIVE_PLATFORMS in lib/content.ts. Facebook and YouTube are manual-composer-only
+// Matches ACTIVE_PLATFORMS in lib/content.ts. Facebook, YouTube, and X are manual-composer-only
 // (see ACTIVE_PLATFORMS' comment) — offered here, but Content Factory's AI generation still
-// only targets IG/LinkedIn.
+// only targets IG/LinkedIn. X publishes through Buffer, not a native X API integration.
 export const PLATFORM_OPTIONS = [
   { value: 'instagram', label: 'Instagram' },
   { value: 'linkedin', label: 'LinkedIn' },
   { value: 'facebook', label: 'Facebook' },
   { value: 'youtube', label: 'YouTube' },
+  { value: 'x', label: 'X' },
 ]
 
 // Feed-card aspect ratio per platform — shared by CreatePostModal's live preview and
@@ -64,6 +73,7 @@ export const PLATFORM_ASPECT: Record<string, number> = {
   facebook: 1.91,
   linkedin: 1.91,
   youtube: 16 / 9,
+  x: 16 / 9,
 }
 
 export function PlatformBadge({ platform, size = 'md' }: { platform?: string | null; size?: 'sm' | 'md' }) {

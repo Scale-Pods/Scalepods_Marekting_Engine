@@ -5,11 +5,18 @@ re-scoped, re-branded replication of the shipped **Victory Growth OS**. Read
 `docs/PRD.md` and `docs/TRD.md` first — they are the source of truth.
 
 ## Non-negotiables
-- **Platforms: Instagram, YouTube, Facebook, LinkedIn, and the scalepods.co Blog.** No TikTok,
-  no Google Business Profile, no GA4/CRM lead analytics. Blog was added 2026-08-14 as a 5th
-  content pillar — it publishes to the separate `scalepods.co` Next.js site (its own repo,
+- **Platforms: Instagram, YouTube, Facebook, LinkedIn, X, and the scalepods.co Blog.** No
+  TikTok, no Google Business Profile, no GA4/CRM lead analytics. Blog was added 2026-08-14 as a
+  5th content pillar — it publishes to the separate `scalepods.co` Next.js site (its own repo,
   not this one), not to a social API, so it has its own integration contract; see
   `docs/blog-module.md` (once written) for the details Antigravity's discovery answers settle.
+  X was added 2026-09-16 as a manual-composer-only platform (never in Content Text/Image
+  Engine's AI-generation filter, same as Facebook/YouTube) — it publishes through Buffer, not a
+  native X API integration (see `docs/x-twitter-buffer-vs-official-api-comparison.md` for why:
+  Buffer's flat per-channel pricing avoids the official API's per-post metering, and the channel
+  + n8n credential were already live from the LinkedIn Buffer branch). Text/image/video only, no
+  carousel (X has no per-slide carousel, just a flat image grid) — see
+  `docs/x-twitter-integration-plan.md` if the official-API route is ever revisited.
 - **LinkedIn is the primary channel** (B2B agency audience). Register the Company Page +
   Marketing Developer Platform app for real analytics.
 - **Video generation is never auto-chained — no scheduler, no strategy auto-run, no batch.**

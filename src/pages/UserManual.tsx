@@ -207,6 +207,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'Click any day to create a post for that date.',
           'Click an existing post to open it, then view, schedule or edit it there.',
           'For LinkedIn, pick which account it goes out as — Adnan, Raunak, or the ScalePods Page. The Page publishes via Buffer instead of LinkedIn directly (LinkedIn\'s own Company Page API is still pending approval), so it can\'t do a PDF/Document post — that option only shows up for Adnan\'s or Raunak\'s account.',
+          'X posts also go out via Buffer (the same account already connected for the LinkedIn Page) — plain text, image, or video, no carousel (X has no slide-by-slide post type). A character counter warns before you go over X\'s 280-character limit.',
         ],
         tip: 'This is a view across the whole pipeline, so a post can show up here before it has been approved.',
       },
@@ -216,7 +217,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         to: '/publishing',
         icon: <Send size={17} />,
         feature: 'publishing',
-        what: 'Where posts actually go live to Instagram, Facebook and LinkedIn.',
+        what: 'Where posts actually go live to Instagram, Facebook, LinkedIn and X.',
         steps: [
           '"Ready to publish" lists everything approved and waiting.',
           'Open a post, then either "Post now" or "Schedule" it for the AI-predicted best time.',

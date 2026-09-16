@@ -32,14 +32,17 @@ export const IMAGE_CONTENT_TYPES: ContentType[] = ['static_image', 'carousel', '
 export const VIDEO_CONTENT_TYPES: ContentType[] = ['ugc_video', 'motion_graphics', 'product_video']
 
 /**
- * Platforms visible across Publishing/Calendar/etc. Facebook and YouTube are
+ * Platforms visible across Publishing/Calendar/etc. Facebook, YouTube, and X are
  * manual-composer-only: active here so a manually created post flows through Publishing/
  * Calendar like any other, but DELIBERATELY NOT in Content Text Engine's (n8n) generation
  * filter — AI content generation only ever targets Instagram/LinkedIn. YouTube specifically
  * only supports Shorts (a real vertical-video upload via the Data API's resumable upload flow)
- * — there's no photo/text post type for it, unlike Facebook.
+ * — there's no photo/text post type for it, unlike Facebook. X publishes through Buffer (see
+ * docs/x-twitter-buffer-vs-official-api-comparison.md) — Buffer's flat per-channel pricing
+ * avoids the official X API's per-post metering entirely, and the channel + n8n credential were
+ * already in place from the LinkedIn Buffer branch, so this was a same-day addition once decided.
  */
-export const ACTIVE_PLATFORMS = ['instagram', 'linkedin', 'facebook', 'youtube'] as const
+export const ACTIVE_PLATFORMS = ['instagram', 'linkedin', 'facebook', 'youtube', 'x'] as const
 
 export function isActivePlatform(platform?: string | null): boolean {
   return (ACTIVE_PLATFORMS as readonly string[]).includes((platform || '').toLowerCase())
