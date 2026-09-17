@@ -3,7 +3,7 @@ import { NavLink, Link } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target,
   CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
-  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion, Users, KanbanSquare,
+  PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion, Users, KanbanSquare, BellRing,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
@@ -51,6 +51,7 @@ const NAV_GROUPS: { section: string; items: NavItem[] }[] = [
     items: [
       { to: '/clients', label: 'Business', icon: <Building2 size={18} />, feature: 'business' },
       { to: '/trends', label: 'Trends', icon: <TrendingUp size={18} />, feature: 'trends' },
+      { to: '/trend-alerts', label: 'Trend Alerts', icon: <BellRing size={18} />, feature: 'trend_alerts' },
       { to: '/strategy', label: 'Strategy', icon: <Target size={18} />, feature: 'strategy' },
     ],
   },

@@ -20,6 +20,7 @@ const BusinessProfile = lazy(() => import('./pages/BusinessProfile'))
 const Intelligence = lazy(() => import('./pages/Intelligence'))
 const IntelligenceReport = lazy(() => import('./pages/IntelligenceReport'))
 const Trends = lazy(() => import('./pages/Trends'))
+const TrendAlerts = lazy(() => import('./pages/TrendAlerts'))
 const Strategy = lazy(() => import('./pages/Strategy'))
 const ContentFactory = lazy(() => import('./pages/ContentFactory'))
 const CarouselStudio = lazy(() => import('./pages/CarouselStudio'))
@@ -121,6 +122,8 @@ export default function App() {
               <Route path="/intelligence" element={<Protected feature="intelligence"><Intelligence /></Protected>} />
               <Route path="/intelligence/:id" element={<Protected feature="intelligence"><IntelligenceReport /></Protected>} />
               <Route path="/trends" element={<Protected feature="trends"><Trends /></Protected>} />
+              <Route path="/trend-alerts" element={<Protected feature="trend_alerts"><TrendAlerts /></Protected>} />
+              <Route path="/trend-alerts/:id" element={<Protected feature="trend_alerts"><TrendAlerts /></Protected>} />
               <Route path="/strategy" element={<Protected feature="strategy"><Strategy /></Protected>} />
               <Route path="/content" element={<Protected feature="content"><ContentFactory /></Protected>} />
               <Route path="/carousel-studio" element={<Protected feature="carousel_studio"><CarouselStudio /></Protected>} />

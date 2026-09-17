@@ -26,7 +26,7 @@ export const LEVEL_LABEL: Record<AccessLevel, string> = {
 }
 
 export type FeatureKey =
-  | 'dashboard' | 'business' | 'trends' | 'strategy'
+  | 'dashboard' | 'business' | 'trends' | 'trend_alerts' | 'strategy'
   | 'studio' | 'carousel_studio' | 'video_studio' | 'content' | 'review'
   | 'calendar' | 'publishing' | 'blog'
   | 'analytics' | 'intelligence' | 'board' | 'settings'
@@ -56,6 +56,8 @@ export const FEATURES: FeatureDef[] = [
     levels: { view: 'See business profiles', edit: 'Edit profile and competitors', full: 'Create and delete profiles' } },
   { key: 'trends', label: 'Trends', to: '/trends', group: 'Marketing Strategy',
     levels: { view: 'See trend signals', edit: 'Select and tag trends', full: 'Run a trend scan' } },
+  { key: 'trend_alerts', label: 'Trend Alerts', to: '/trend-alerts', group: 'Marketing Strategy',
+    levels: { view: 'See watch items and alerts', edit: 'Create and edit watch items, rules, run checks', full: 'Delete watch items' } },
   { key: 'strategy', label: 'Strategy', to: '/strategy', group: 'Marketing Strategy',
     levels: { view: 'Read strategies', edit: 'Edit a strategy', full: 'Generate a new strategy' } },
 
@@ -106,8 +108,9 @@ export const ROLE_PRESETS: Record<TeamRole, PermissionMap> = {
   admin: Object.fromEntries(FEATURES.map((f) => [f.key, 'full'])) as PermissionMap,
 
   // The three studios at full — designers may spend, bounded by their monthly cap.
+  // Trend Alerts is 'full' for every role: everyone may create and manage their own watch items.
   designer: {
-    dashboard: 'view',
+    dashboard: 'view', trend_alerts: 'full',
     studio: 'full', carousel_studio: 'full', video_studio: 'full',
     review: 'edit', calendar: 'view', board: 'edit', settings: 'edit',
   },
@@ -115,14 +118,14 @@ export const ROLE_PRESETS: Record<TeamRole, PermissionMap> = {
   // Words, not renders: studios at edit (prompts and copy, no spend), no Video Studio at all,
   // Blog up to edit but not publish.
   writer: {
-    dashboard: 'view', trends: 'view', strategy: 'view',
+    dashboard: 'view', trends: 'view', trend_alerts: 'full', strategy: 'view',
     content: 'edit', studio: 'edit', carousel_studio: 'edit',
     review: 'edit', calendar: 'edit', blog: 'edit', board: 'edit', settings: 'edit',
   },
 
   // Read the plan and the results, approve the work, nothing else.
   client: {
-    dashboard: 'view', trends: 'view', strategy: 'view',
+    dashboard: 'view', trends: 'view', trend_alerts: 'full', strategy: 'view',
     review: 'full', calendar: 'view', blog: 'view',
     analytics: 'view', intelligence: 'view', settings: 'edit',
   },

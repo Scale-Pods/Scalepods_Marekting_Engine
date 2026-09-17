@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   BookOpen, Building2, TrendingUp, Target, Wand2, Clapperboard, Film, CheckSquare,
   CalendarDays, Send, Newspaper, BarChart3, BrainCircuit, Settings as SettingsIcon,
-  ArrowRight, ShieldCheck, Lightbulb, LogIn, Users, KanbanSquare,
+  ArrowRight, ShieldCheck, Lightbulb, LogIn, Users, KanbanSquare, BellRing,
 } from 'lucide-react'
 import { PageHeader, Badge, Panel } from '../components/ui'
 import { useAuth } from '../lib/auth'
@@ -67,6 +67,26 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'Or click "Create Post" on a single trend to build one image/carousel straight away in AI Studio instead.',
         ],
         tip: 'A trend-anchored generation shows up as a new entry in the list on the Strategy page — nothing there is overwritten, so past generations stay browsable.',
+      },
+      {
+        id: 'trend-alerts',
+        label: 'Trend Alerts',
+        to: '/trend-alerts',
+        icon: <BellRing size={17} />,
+        feature: 'trend_alerts',
+        what: 'Watch any topic, brand, product or competitor across the web and get alerted only when something meaningful happens.',
+        steps: [
+          'Click "New watch item". Give it a name, then describe in plain words what counts and what does not, for example "quality changes to OpenAI\'s image models, not office openings or funding news". The AI judges every story against this description, so be specific.',
+          'Add the keywords to search for, pick the sources (Google News and RSS feeds are free; Reddit, web search and YouTube cost a little per check), and choose how often to check. The default is every hour, and you can pick anything from every 30 minutes to once a day.',
+          'Set a monthly budget. The form shows the estimated cost per check and per month before you save. Checks stop for the rest of the month once the budget is used.',
+          'Each check collects new items only (links it has already seen are skipped for free), drops off-topic ones, groups the same story from different outlets into one event with a source count, and has AI score relevance, importance, sentiment (including mixed, like "praised for image quality, criticised for text"), and source credibility.',
+          'Open a watch item to see its Feed. Filter by "High & critical", "Spikes", or sentiment, open "Coverage" to see every outlet reporting a story, and check "Filtered out" to see what the AI dropped and why.',
+          'The Trend tab charts mentions and sentiment per day. When a day runs far above the usual level (for example 100 mentions a day suddenly becoming 700), a spike alert is raised with an AI note on what is driving it.',
+          'Alert rules decide who hears about what, and when. Every new watch item starts with two: important stories sent right away, and everything relevant in a daily digest at 9:00 AM IST. Edit them or add your own by relevance, importance, sentiment, number of sources, credibility and spikes.',
+          'Each rule can send an in-app notification and email to chosen teammates, a Slack message (paste a Slack incoming webhook URL), or a webhook for tools like Zapier. Use "Send test" to check the delivery.',
+          'Use "Run now" to check straight away, and "Pause" to stop checks without losing history. The Check history tab shows every check with what it found and what it cost.',
+        ],
+        tip: 'Everyone on the team can create watch items. Alerts sent right away include a short AI-written explanation of what happened and why it matters; digests list the headlines. X (Twitter) and WhatsApp are planned for a later version.',
       },
       {
         id: 'strategy',
