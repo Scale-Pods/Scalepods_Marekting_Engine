@@ -15,7 +15,8 @@ import { useProfile } from '../lib/queries'
 import { useTeam } from '../lib/team'
 import { relativeTime } from '../lib/time'
 import {
-  SOURCE_OPTIONS, SOURCE_LABEL, FREQUENCY_OPTIONS, DEFAULT_FREQUENCY, REGION_OPTIONS, STRICTNESS_OPTIONS,
+  SOURCE_OPTIONS, SOURCE_LABEL, FREQUENCY_OPTIONS, DEFAULT_FREQUENCY, REGION_OPTIONS, ALL_REGIONS,
+  LOOKBACK_OPTIONS, DEFAULT_LOOKBACK_DAYS, STRICTNESS_OPTIONS,
   IMPORTANCE_OPTIONS, DELIVERY_OPTIONS,
   frequencyLabel, estimateCheckCost, estimateMonthlyCost, formatUsd, splitList,
   listWatches, createWatch, updateWatch, deleteWatch, runWatchNow,
@@ -184,8 +185,19 @@ function WatchFormModal({ initial, onClose, onSaved }: { initial?: TrendAlertWat
   const [exclude, setExclude] = useState((initial?.exclude_keywords ?? []).join(', '))
   const [sources, setSources] = useState<WatchSource[]>(initial?.sources ?? ['google_news', 'reddit', 'web'])
   const [rssUrls, setRssUrls] = useState((initial?.rss_urls ?? []).join('\n'))
-  const [region, setRegion] = useState(initial?.region ?? 'US')
+  const presetRegions = new Set([...REGION_OPTIONS.map((r) => r.value), ALL_REGIONS])
+  const initialRegion = initial?.region ?? 'US'
+  const [regionChoice, setRegionChoice] = useState(presetRegions.has(initialRegion) ? initialRegion : '__custom__')
+  const [customRegion, setCustomRegion] = useState(presetRegions.has(initialRegion) ? '' : initialRegion)
+  const region = regionChoice === '__custom__' ? customRegion.trim().toUpperCase() : regionChoice
   const [resultsPerSource, setResultsPerSource] = useState(initial?.results_per_source ?? 10)
+  const [lookbackChoice, setLookbackChoice] = useState<number | '__custom__'>(
+    LOOKBACK_OPTIONS.some((o) => o.value === (initial?.lookback_days ?? DEFAULT_LOOKBACK_DAYS))
+      ? (initial?.lookback_days ?? DEFAULT_LOOKBACK_DAYS)
+      : '__custom__'
+  )
+  const [customLookback, setCustomLookback] = useState(String(initial?.lookback_days ?? DEFAULT_LOOKBACK_DAYS))
+  const lookbackDays = lookbackChoice === '__custom__' ? Math.max(1, Math.min(365, Number(customLookback) || DEFAULT_LOOKBACK_DAYS)) : lookbackChoice
   const [frequency, setFrequency] = useState(initial?.frequency_minutes ?? DEFAULT_FREQUENCY)
   const [threshold, setThreshold] = useState(initial ? Number(initial.relevance_threshold) : 0.6)
   const [budget, setBudget] = useState(initial ? (initial.monthly_budget_usd == null ? '' : String(initial.monthly_budget_usd)) : '25')
@@ -198,7 +210,8 @@ function WatchFormModal({ initial, onClose, onSaved }: { initial?: TrendAlertWat
   const budgetNum = budget.trim() === '' ? null : Number(budget)
   const budgetInvalid = budgetNum !== null && (!Number.isFinite(budgetNum) || budgetNum < 0)
   const rssInvalid = sources.includes('rss') && (rssList.length === 0 || rssList.some((u) => !/^https?:\/\//i.test(u)))
-  const canSave = name.trim() && description.trim().length >= 15 && kwList.length > 0 && sources.length > 0 && !rssInvalid && !budgetInvalid
+  const regionInvalid = regionChoice === '__custom__' && !/^[A-Za-z]{2,4}$/.test(customRegion.trim())
+  const canSave = name.trim() && description.trim().length >= 15 && kwList.length > 0 && sources.length > 0 && !rssInvalid && !budgetInvalid && !regionInvalid
 
   function toggleSource(s: WatchSource) {
     setSources((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
@@ -216,6 +229,7 @@ function WatchFormModal({ initial, onClose, onSaved }: { initial?: TrendAlertWat
       region,
       results_per_source: resultsPerSource,
       frequency_minutes: frequency,
+      lookback_days: lookbackDays,
       relevance_threshold: threshold,
       monthly_budget_usd: budgetNum,
     }
@@ -298,10 +312,37 @@ function WatchFormModal({ initial, onClose, onSaved }: { initial?: TrendAlertWat
               </select>
             </div>
             <div>
-              <label className="label">Region</label>
-              <select className="input mt-1.5" value={region} onChange={(e) => setRegion(e.target.value)}>
-                {REGION_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              <label className="label">How far back to search</label>
+              <select
+                className="input mt-1.5"
+                value={lookbackChoice}
+                onChange={(e) => setLookbackChoice(e.target.value === '__custom__' ? '__custom__' : Number(e.target.value))}
+              >
+                {LOOKBACK_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                <option value="__custom__">Custom…</option>
               </select>
+              {lookbackChoice === '__custom__' && (
+                <input
+                  className="input mt-1.5" type="number" min={1} max={365} value={customLookback}
+                  onChange={(e) => setCustomLookback(e.target.value)} placeholder="Days, 1-365"
+                />
+              )}
+              <p className="text-muted text-xs mt-1">Google News and RSS honor this exactly. Reddit, web search and YouTube stay at the last week regardless, for now.</p>
+            </div>
+            <div>
+              <label className="label">Region</label>
+              <select className="input mt-1.5" value={regionChoice} onChange={(e) => setRegionChoice(e.target.value)}>
+                {REGION_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                <option value={ALL_REGIONS}>Worldwide (all regions)</option>
+                <option value="__custom__">Custom code…</option>
+              </select>
+              {regionChoice === '__custom__' && (
+                <input
+                  className="input mt-1.5" value={customRegion} onChange={(e) => setCustomRegion(e.target.value)}
+                  placeholder="2-letter code, e.g. DE" maxLength={4}
+                />
+              )}
+              <p className="text-muted text-xs mt-1">Only affects Google News and web search. Worldwide/custom codes are best-effort — Google may fall back to its default edition.</p>
             </div>
             <div>
               <label className="label">Results per source</label>

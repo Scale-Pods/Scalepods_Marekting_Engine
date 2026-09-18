@@ -6,14 +6,18 @@ import { queryClient } from './lib/queries'
 import { ToastProvider } from './components/Toast'
 import { Spinner } from './components/ui'
 import AppShell from './components/AppShell'
-import Login from './pages/Login'
-import ResetPassword from './pages/ResetPassword'
-import AccountPending, { type AccountBlockReason } from './pages/AccountPending'
-import NoAccess from './pages/NoAccess'
+import type { AccountBlockReason } from './pages/AccountPending'
 import type { FeatureKey } from './lib/permissions'
 
 // Route-level code splitting — keeps the initial bundle small; each page
 // (and its heavy deps like Recharts or react-easy-crop) loads on navigation.
+// Login/ResetPassword/AccountPending/NoAccess are lazy too: none of them is needed for the
+// common case (an already-authenticated visitor), so they shouldn't cost anything in the one
+// chunk every visit pays for up front.
+const Login = lazy(() => import('./pages/Login'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+const AccountPending = lazy(() => import('./pages/AccountPending'))
+const NoAccess = lazy(() => import('./pages/NoAccess'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Clients = lazy(() => import('./pages/Clients'))
 const BusinessProfile = lazy(() => import('./pages/BusinessProfile'))
@@ -69,7 +73,7 @@ function Protected({ children, feature }: { children: ReactNode; feature?: Featu
       : appUser.status !== 'active'
         ? (appUser.status as AccountBlockReason)
         : null
-  if (block) return <AccountPending reason={block} />
+  if (block) return <Suspense fallback={<FullScreenLoader />}><AccountPending reason={block} /></Suspense>
 
   // Hiding the nav item is cosmetic; this is what stops someone typing the path in. Rendered as
   // an explanation rather than a redirect, because silently bouncing somebody to the dashboard
@@ -77,7 +81,7 @@ function Protected({ children, feature }: { children: ReactNode; feature?: Featu
   if (feature && !can(feature, 'view')) {
     return (
       <AppShell>
-        <NoAccess feature={feature} />
+        <Suspense fallback={<div className="flex justify-center py-16"><Spinner size={24} /></div>}><NoAccess feature={feature} /></Suspense>
       </AppShell>
     )
   }
@@ -112,8 +116,8 @@ export default function App() {
         <ToastProvider>
           <BrowserRouter>
             <Routes>
-              <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/login" element={<PublicOnly><Suspense fallback={<FullScreenLoader />}><Login /></Suspense></PublicOnly>} />
+              <Route path="/reset-password" element={<Suspense fallback={<FullScreenLoader />}><ResetPassword /></Suspense>} />
 
               <Route path="/" element={<Protected><Dashboard /></Protected>} />
               <Route path="/clients" element={<Protected feature="business"><Clients /></Protected>} />

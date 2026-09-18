@@ -25,6 +25,7 @@ export interface TrendAlertWatch {
   region: string
   results_per_source: number
   frequency_minutes: number
+  lookback_days: number
   relevance_threshold: number
   monthly_budget_usd: number | null
   status: WatchStatus
@@ -159,6 +160,20 @@ export const REGION_OPTIONS: { value: string; label: string }[] = [
   { value: 'AE', label: 'UAE' },
 ]
 
+/** Sentinel region value meaning "no region restriction" — Google News' global edition, no
+ *  countryCode filter on web search. Reddit/YouTube don't take a region param either way. */
+export const ALL_REGIONS = 'ALL'
+
+export const LOOKBACK_OPTIONS: { value: number; label: string }[] = [
+  { value: 7, label: 'Last 7 days' },
+  { value: 15, label: 'Last 15 days' },
+  { value: 30, label: 'Last 30 days' },
+  { value: 90, label: 'Last 3 months' },
+  { value: 365, label: 'Last year' },
+]
+
+export const DEFAULT_LOOKBACK_DAYS = 7
+
 export const STRICTNESS_OPTIONS: { value: number; label: string; hint: string }[] = [
   { value: 0.75, label: 'Strict', hint: 'Only clearly on-topic stories' },
   { value: 0.6, label: 'Balanced', hint: 'Recommended' },
@@ -223,6 +238,7 @@ export interface WatchInput {
   region: string
   results_per_source: number
   frequency_minutes: number
+  lookback_days: number
   relevance_threshold: number
   monthly_budget_usd: number | null
 }
@@ -230,7 +246,7 @@ export interface WatchInput {
 export async function listWatches(): Promise<TrendAlertWatch[]> {
   const { data, error } = await supabase
     .from('trend_alert_watches')
-    .select('id,profile_id,name,description,keywords,exclude_keywords,sources,rss_urls,region,results_per_source,frequency_minutes,relevance_threshold,monthly_budget_usd,status,next_run_at,last_run_at,last_run_status,last_error,created_by,created_at,updated_at')
+    .select('id,profile_id,name,description,keywords,exclude_keywords,sources,rss_urls,region,results_per_source,frequency_minutes,lookback_days,relevance_threshold,monthly_budget_usd,status,next_run_at,last_run_at,last_run_status,last_error,created_by,created_at,updated_at')
     .order('created_at', { ascending: false })
   if (error) throw error
   return data as TrendAlertWatch[]
@@ -240,7 +256,7 @@ export async function createWatch(input: WatchInput, profileId: string | null): 
   const { data, error } = await supabase
     .from('trend_alert_watches')
     .insert({ ...input, profile_id: profileId })
-    .select('id,profile_id,name,description,keywords,exclude_keywords,sources,rss_urls,region,results_per_source,frequency_minutes,relevance_threshold,monthly_budget_usd,status,next_run_at,last_run_at,last_run_status,last_error,created_by,created_at,updated_at')
+    .select('id,profile_id,name,description,keywords,exclude_keywords,sources,rss_urls,region,results_per_source,frequency_minutes,lookback_days,relevance_threshold,monthly_budget_usd,status,next_run_at,last_run_at,last_run_status,last_error,created_by,created_at,updated_at')
     .single()
   if (error) throw error
   const watch = data as TrendAlertWatch
