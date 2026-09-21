@@ -253,9 +253,9 @@ function WatchFormModal({ initial, onClose, onSaved }: { initial?: TrendAlertWat
   }
 
   return (
-    <Modal title={initial ? 'Edit watch item' : 'New watch item'} onClose={onClose} size="xl">
-      <div className="grid md:grid-cols-2 gap-5">
-        <div className="space-y-4">
+    <Modal title={initial ? 'Edit watch item' : 'New watch item'} onClose={onClose} size="2xl" aspectVideo>
+      <div className="grid lg:grid-cols-3 gap-x-7 gap-y-4">
+        <div className="space-y-3">
           <div>
             <label className="label">Name</label>
             <input className="input mt-1.5" value={name} onChange={(e) => setName(e.target.value)} placeholder="OpenAI image models" maxLength={80} />
@@ -264,7 +264,7 @@ function WatchFormModal({ initial, onClose, onSaved }: { initial?: TrendAlertWat
             <label className="label">What counts, and what doesn't</label>
             <textarea
               className="input mt-1.5"
-              rows={5}
+              rows={6}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Real developments in OpenAI's image generation: launches, quality improvements or problems, pricing changes, and how people rate the output. Not general company news like funding, offices or hiring."
@@ -282,10 +282,10 @@ function WatchFormModal({ initial, onClose, onSaved }: { initial?: TrendAlertWat
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div>
             <label className="label">Sources</label>
-            <div className="space-y-1.5 mt-1.5">
+            <div className="space-y-1 mt-1.5">
               {SOURCE_OPTIONS.map((s) => (
                 <label key={s.value} className="flex items-start gap-2 cursor-pointer text-sm">
                   <input type="checkbox" className="mt-1" checked={sources.includes(s.value)} onChange={() => toggleSource(s.value)} />
@@ -298,62 +298,10 @@ function WatchFormModal({ initial, onClose, onSaved }: { initial?: TrendAlertWat
             </div>
             {sources.includes('rss') && (
               <div className="mt-2">
-                <textarea className="input" rows={3} value={rssUrls} onChange={(e) => setRssUrls(e.target.value)} placeholder={'https://openai.com/news/rss.xml\nhttps://example.com/feed'} />
+                <textarea className="input" rows={2} value={rssUrls} onChange={(e) => setRssUrls(e.target.value)} placeholder={'https://openai.com/news/rss.xml\nhttps://example.com/feed'} />
                 <p className="text-muted text-xs mt-1">One feed URL per line, up to 10. Only items mentioning a keyword are kept.</p>
               </div>
             )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">How often to check</label>
-              <select className="input mt-1.5" value={frequency} onChange={(e) => setFrequency(Number(e.target.value))}>
-                {FREQUENCY_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">How far back to search</label>
-              <select
-                className="input mt-1.5"
-                value={lookbackChoice}
-                onChange={(e) => setLookbackChoice(e.target.value === '__custom__' ? '__custom__' : Number(e.target.value))}
-              >
-                {LOOKBACK_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                <option value="__custom__">Custom…</option>
-              </select>
-              {lookbackChoice === '__custom__' && (
-                <input
-                  className="input mt-1.5" type="number" min={1} max={365} value={customLookback}
-                  onChange={(e) => setCustomLookback(e.target.value)} placeholder="Days, 1-365"
-                />
-              )}
-              <p className="text-muted text-xs mt-1">Google News and RSS honor this exactly. Reddit, web search and YouTube stay at the last week regardless, for now.</p>
-            </div>
-            <div>
-              <label className="label">Region</label>
-              <select className="input mt-1.5" value={regionChoice} onChange={(e) => setRegionChoice(e.target.value)}>
-                {REGION_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                <option value={ALL_REGIONS}>Worldwide (all regions)</option>
-                <option value="__custom__">Custom code…</option>
-              </select>
-              {regionChoice === '__custom__' && (
-                <input
-                  className="input mt-1.5" value={customRegion} onChange={(e) => setCustomRegion(e.target.value)}
-                  placeholder="2-letter code, e.g. DE" maxLength={4}
-                />
-              )}
-              <p className="text-muted text-xs mt-1">Only affects Google News and web search. Worldwide/custom codes are best-effort — Google may fall back to its default edition.</p>
-            </div>
-            <div>
-              <label className="label">Results per source</label>
-              <select className="input mt-1.5" value={resultsPerSource} onChange={(e) => setResultsPerSource(Number(e.target.value))}>
-                {[5, 10, 15, 20, 25].map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Monthly budget (USD)</label>
-              <input className="input mt-1.5" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="No limit" inputMode="decimal" />
-            </div>
           </div>
 
           <div>
@@ -366,6 +314,68 @@ function WatchFormModal({ initial, onClose, onSaved }: { initial?: TrendAlertWat
               ))}
             </div>
             <p className="text-muted text-xs mt-1">{STRICTNESS_OPTIONS.find((o) => Math.abs(threshold - o.value) < 0.01)?.hint ?? ''}</p>
+          </div>
+
+          <div>
+            <label className="label">Monthly budget (USD)</label>
+            <input className="input mt-1.5" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="No limit" inputMode="decimal" />
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">How often to check</label>
+                <select className="input mt-1.5" value={frequency} onChange={(e) => setFrequency(Number(e.target.value))}>
+                  {FREQUENCY_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">How far back to search</label>
+                <select
+                  className="input mt-1.5"
+                  value={lookbackChoice}
+                  onChange={(e) => setLookbackChoice(e.target.value === '__custom__' ? '__custom__' : Number(e.target.value))}
+                >
+                  {LOOKBACK_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  <option value="__custom__">Custom…</option>
+                </select>
+                {lookbackChoice === '__custom__' && (
+                  <input
+                    className="input mt-1.5" type="number" min={1} max={365} value={customLookback}
+                    onChange={(e) => setCustomLookback(e.target.value)} placeholder="Days, 1-365"
+                  />
+                )}
+              </div>
+            </div>
+            <p className="text-muted text-xs mt-1">Google News and RSS honor the lookback exactly. Reddit, web search and YouTube stay at the last week for now.</p>
+          </div>
+
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Region</label>
+                <select className="input mt-1.5" value={regionChoice} onChange={(e) => setRegionChoice(e.target.value)}>
+                  {REGION_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  <option value={ALL_REGIONS}>Worldwide (all regions)</option>
+                  <option value="__custom__">Custom code…</option>
+                </select>
+                {regionChoice === '__custom__' && (
+                  <input
+                    className="input mt-1.5" value={customRegion} onChange={(e) => setCustomRegion(e.target.value)}
+                    placeholder="2-letter code, e.g. DE" maxLength={4}
+                  />
+                )}
+              </div>
+              <div>
+                <label className="label">Results per source</label>
+                <select className="input mt-1.5" value={resultsPerSource} onChange={(e) => setResultsPerSource(Number(e.target.value))}>
+                  {[5, 10, 15, 20, 25].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+            </div>
+            <p className="text-muted text-xs mt-1">Region applies to Google News and web search only. Worldwide and custom codes are best-effort.</p>
           </div>
 
           <div className="panel p-3 text-sm">
@@ -384,7 +394,7 @@ function WatchFormModal({ initial, onClose, onSaved }: { initial?: TrendAlertWat
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 mt-6">
+      <div className="flex justify-end gap-2 mt-4">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button onClick={onSave} loading={saving} disabled={!canSave}>{initial ? 'Save changes' : 'Create watch item'}</Button>
       </div>
