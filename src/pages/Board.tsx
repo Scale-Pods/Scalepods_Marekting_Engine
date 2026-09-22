@@ -1065,7 +1065,7 @@ function TicketDrawer({
             no dropdown: it isn't a stored field (see docs/board-list-view-plan.md), it's read off
             the column plus accepted_at/rejection_note, so editing Column already changes it. */}
         <div className="space-y-4">
-          <div className="panel !py-3 space-y-3 text-sm">
+          <div className="panel !py-3 !px-3.5 space-y-3 text-sm">
             <FieldRow label="Assignee">
               {canManage ? (
                 <select
