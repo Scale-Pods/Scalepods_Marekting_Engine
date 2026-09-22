@@ -67,6 +67,16 @@ export interface TicketActivity {
   created_at: string
 }
 
+export interface TicketAttachment {
+  id: string
+  ticket_id: string
+  author_id: string | null
+  kind: 'file' | 'url'
+  url: string
+  file_name: string | null
+  created_at: string
+}
+
 export const BOARD_KEY = ['board'] as const
 export const TICKETS_KEY = ['board', 'tickets'] as const
 
@@ -132,6 +142,13 @@ export async function listActivity(ticketId: string): Promise<TicketActivity[]> 
   return data as TicketActivity[]
 }
 
+export async function listAttachments(ticketId: string): Promise<TicketAttachment[]> {
+  const { data, error } = await supabase
+    .from('ticket_attachments').select('*').eq('ticket_id', ticketId).order('created_at', { ascending: false })
+  if (error) throw error
+  return data as TicketAttachment[]
+}
+
 // --- writes ----------------------------------------------------------------
 
 export interface NewTicket {
@@ -187,6 +204,24 @@ export async function deleteTicket(id: string): Promise<void> {
 
 /** `mentions` are the ids of everyone the comment actually @-names — `ticket_comments_notify` in
  *  Postgres is what turns those into notifications (and, from there, email). */
+/** `kind: 'file'` expects `url` already uploaded to the `ticket-attachments` bucket (see
+ *  AssetUploader) and the original filename in `fileName`; `kind: 'url'` is a plain pasted link,
+ *  `fileName` is null. RLS requires `authorId` to be the caller — there's no "attach on someone
+ *  else's behalf". */
+export async function addAttachment(
+  ticketId: string, authorId: string, kind: 'file' | 'url', url: string, fileName: string | null = null,
+): Promise<void> {
+  const { error } = await supabase
+    .from('ticket_attachments')
+    .insert({ ticket_id: ticketId, author_id: authorId, kind, url, file_name: fileName })
+  if (error) throw error
+}
+
+export async function deleteAttachment(id: string): Promise<void> {
+  const { error } = await supabase.from('ticket_attachments').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function addComment(
   ticketId: string, authorId: string, body: string, mentions: string[] = [],
 ): Promise<void> {
@@ -239,6 +274,22 @@ function nextPositionInColumn(tickets: Ticket[], columnId: string): number {
 
 export function ticketsIn(tickets: Ticket[], columnId: string): Ticket[] {
   return tickets.filter((t) => t.column_id === columnId).sort((a, b) => a.position - b.position)
+}
+
+export type Resolution = 'Done' | 'Sent back' | 'Unresolved'
+
+/** There is no real Resolution field (see docs/board-list-view-plan.md §2/§4) — this derives
+ *  Jira's "Resolution" column from what the board already tracks: the terminal column plus the
+ *  accepted/rejected stamps, rather than a new piece of state to keep in sync. */
+export function resolutionOf(ticket: Ticket, columns: BoardColumn[]): Resolution {
+  const col = columns.find((c) => c.id === ticket.column_id)
+  if (col?.is_terminal && ticket.accepted_at) return 'Done'
+  if (ticket.rejection_note && !col?.is_terminal) return 'Sent back'
+  return 'Unresolved'
+}
+
+export const RESOLUTION_TONE: Record<Resolution, 'green' | 'orange' | 'grey'> = {
+  Done: 'green', 'Sent back': 'orange', Unresolved: 'grey',
 }
 
 export function personById(team: AppUser[], id: string | null): AppUser | undefined {

@@ -1,23 +1,33 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  KanbanSquare, Plus, Search, X, AlertCircle, CheckCircle2, Undo2, Clock,
-  MessageSquare, History, Trash2, Send, Loader2,
+  KanbanSquare, List as ListIcon, Plus, Search, X, AlertCircle, CheckCircle2, Undo2, Clock,
+  MessageSquare, History, Paperclip, Link2, Trash2, Send, Loader2, User,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { listTeam, initialsOf, TEAM_KEY, type AppUser } from '../lib/team'
 import {
-  listColumns, listTickets, listComments, listActivity, createTicket, updateTicket,
-  deleteTicket, addComment, moveTicket, sendBackTicket, ticketsIn, personById,
+  listColumns, listTickets, listComments, listActivity, listAttachments, createTicket,
+  updateTicket, deleteTicket, addComment, addAttachment, deleteAttachment, moveTicket,
+  sendBackTicket, ticketsIn, personById, resolutionOf,
   daysUntilDue, dueTone, formatDue, describeActivity, extractMentions, splitMentions,
   BOARD_KEY, TICKETS_KEY, TYPE_LABEL, TYPE_COLOR, PRIORITIES, PRIORITY_LABEL, PRIORITY_COLOR,
-  type BoardColumn, type Ticket, type TicketType, type TicketPriority,
+  RESOLUTION_TONE,
+  type BoardColumn, type Ticket, type TicketType, type TicketPriority, type TicketAttachment,
 } from '../lib/board'
 import { PageHeader, Badge, Button, Spinner, Modal } from '../components/ui'
 import { useToast, toastMessage } from '../components/Toast'
 import { useCan } from '../components/Gate'
+import AssetUploader from '../components/AssetUploader'
+
+type BoardView = 'board' | 'list'
+type DateField = 'created_at' | 'due_date'
+type DateRange = 'all' | '7' | '30' | 'custom'
+type GroupBy = 'none' | 'column' | 'assignee' | 'priority' | 'type' | 'reporter'
+
+const VIEW_STORAGE_KEY = 'board-view'
 
 // The Jira-shaped board. Columns are rows in board_columns, so renaming or reordering them is a
 // data change rather than a deploy.
@@ -78,8 +88,20 @@ export default function Board() {
   const { data: tickets = [], isLoading: ticketsLoading } = useQuery({ queryKey: TICKETS_KEY, queryFn: listTickets })
   const { data: team = [] } = useQuery({ queryKey: TEAM_KEY, queryFn: listTeam })
 
+  const [view, setView] = useState<BoardView>(() => (localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'board'))
+  useEffect(() => { try { localStorage.setItem(VIEW_STORAGE_KEY, view) } catch { /* private mode, etc. */ } }, [view])
+
   const [query, setQuery] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null)
+  const [reporterFilter, setReporterFilter] = useState<string | null>(null)
+  const [priorityFilter, setPriorityFilter] = useState<TicketPriority | null>(null)
+  const [typeFilter, setTypeFilter] = useState<TicketType | null>(null)
+  const [onlyMine, setOnlyMine] = useState(false)
+  const [dateField, setDateField] = useState<DateField>('created_at')
+  const [dateRange, setDateRange] = useState<DateRange>('all')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [groupBy, setGroupBy] = useState<GroupBy>('none')
   const [creating, setCreating] = useState(false)
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOverCol, setDragOverCol] = useState<string | null>(null)
@@ -100,10 +122,37 @@ export default function Board() {
     onError: (e) => toast.error(toastMessage(e, 'Could not move that ticket.')),
   })
 
+  const meId = appUser?.id ?? null
+
+  // Custom-range bounds are computed once per render rather than per ticket — a fixed window
+  // "now" is fine here, this isn't a live countdown.
+  const [rangeFrom, rangeTo] = useMemo((): [number | null, number | null] => {
+    if (dateRange === '7') return [Date.now() - 7 * 86_400_000, null]
+    if (dateRange === '30') return [Date.now() - 30 * 86_400_000, null]
+    if (dateRange === 'custom') {
+      return [
+        customFrom ? new Date(`${customFrom}T00:00:00`).getTime() : null,
+        customTo ? new Date(`${customTo}T23:59:59`).getTime() : null,
+      ]
+    }
+    return [null, null]
+  }, [dateRange, customFrom, customTo])
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     return tickets.filter((t) => {
+      if (onlyMine && t.assignee_id !== meId) return false
       if (assigneeFilter && t.assignee_id !== assigneeFilter) return false
+      if (reporterFilter && t.reporter_id !== reporterFilter) return false
+      if (priorityFilter && t.priority !== priorityFilter) return false
+      if (typeFilter && t.type !== typeFilter) return false
+      if (rangeFrom !== null || rangeTo !== null) {
+        const raw = dateField === 'due_date' ? t.due_date : t.created_at
+        if (!raw) return false
+        const ts = new Date(raw).getTime()
+        if (rangeFrom !== null && ts < rangeFrom) return false
+        if (rangeTo !== null && ts > rangeTo) return false
+      }
       if (!q) return true
       return (
         t.key.toLowerCase().includes(q) ||
@@ -111,7 +160,7 @@ export default function Board() {
         (t.description ?? '').toLowerCase().includes(q)
       )
     })
-  }, [tickets, query, assigneeFilter])
+  }, [tickets, query, assigneeFilter, reporterFilter, priorityFilter, typeFilter, dateField, rangeFrom, rangeTo, onlyMine, meId])
 
   const openTicket = routeKey ? tickets.find((t) => t.key === routeKey) ?? null : null
 
@@ -125,11 +174,33 @@ export default function Board() {
         accent={<Badge tone="green"><KanbanSquare size={13} /> {tickets.length} tickets</Badge>}
         title="Board"
         subtitle="Everything the team is working on. Drag a card to move it; finished work goes to the reviewer, not straight to Done."
-        actions={canEdit ? <Button onClick={() => setCreating(true)}><Plus size={15} /> Create</Button> : undefined}
+        actions={
+          <>
+            <div className="flex items-center rounded-lg p-0.5 gap-0.5" style={{ background: 'var(--fill-tertiary)' }}>
+              <button
+                onClick={() => setView('board')}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors"
+                style={{ background: view === 'board' ? 'var(--bg-card)' : 'transparent', color: view === 'board' ? 'var(--text-primary)' : 'var(--text-muted)' }}
+              >
+                <KanbanSquare size={13} /> Board
+              </button>
+              <button
+                onClick={() => setView('list')}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors"
+                style={{ background: view === 'list' ? 'var(--bg-card)' : 'transparent', color: view === 'list' ? 'var(--text-primary)' : 'var(--text-muted)' }}
+              >
+                <ListIcon size={13} /> List
+              </button>
+            </div>
+            {canEdit && <Button onClick={() => setCreating(true)}><Plus size={15} /> Create</Button>}
+          </>
+        }
       />
 
-      {/* Search + the team avatar row — "search for all users profile in our circle". */}
-      <div className="flex items-center gap-3 mb-5 flex-wrap">
+      {/* Search, the team avatar row, and the rest of the filters. Assignee/search were already
+          here; reporter/priority/type/date-range/"assigned to me" are new — the original board
+          only ever shipped search + the avatar row, despite the PRD planning more. */}
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
         <div className="relative w-full sm:w-64">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <input
@@ -162,12 +233,74 @@ export default function Board() {
             </button>
           )}
         </div>
+
+        {meId && (
+          <button
+            onClick={() => setOnlyMine((v) => !v)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all"
+            style={onlyMine
+              ? { background: 'rgba(177,217,151,0.14)', border: '1px solid var(--accent-green)', color: 'var(--text-primary)' }
+              : { background: 'var(--fill-tertiary)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+          >
+            <User size={12} /> Assigned to me
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 mb-5 flex-wrap text-xs">
+        <select className="input !py-1.5 !text-xs !w-auto" value={reporterFilter ?? ''} onChange={(e) => setReporterFilter(e.target.value || null)}>
+          <option value="">Any reporter</option>
+          {team.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+        </select>
+        <select className="input !py-1.5 !text-xs !w-auto" value={priorityFilter ?? ''} onChange={(e) => setPriorityFilter((e.target.value || null) as TicketPriority | null)}>
+          <option value="">Any priority</option>
+          {PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>)}
+        </select>
+        <select className="input !py-1.5 !text-xs !w-auto" value={typeFilter ?? ''} onChange={(e) => setTypeFilter((e.target.value || null) as TicketType | null)}>
+          <option value="">Any type</option>
+          {(Object.keys(TYPE_LABEL) as TicketType[]).map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
+        </select>
+
+        <span className="text-muted">·</span>
+
+        <select className="input !py-1.5 !text-xs !w-auto" value={dateField} onChange={(e) => setDateField(e.target.value as DateField)}>
+          <option value="created_at">Created</option>
+          <option value="due_date">Due date</option>
+        </select>
+        <select className="input !py-1.5 !text-xs !w-auto" value={dateRange} onChange={(e) => setDateRange(e.target.value as DateRange)}>
+          <option value="all">Any time</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="custom">Custom range…</option>
+        </select>
+        {dateRange === 'custom' && (
+          <>
+            <input type="date" className="input !py-1.5 !text-xs !w-auto" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+            <span className="text-muted">to</span>
+            <input type="date" className="input !py-1.5 !text-xs !w-auto" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+          </>
+        )}
+
+        {view === 'list' && (
+          <>
+            <span className="text-muted">·</span>
+            <span className="text-muted">Group by</span>
+            <select className="input !py-1.5 !text-xs !w-auto" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
+              <option value="none">Nothing</option>
+              <option value="column">Status</option>
+              <option value="assignee">Assignee</option>
+              <option value="reporter">Reporter</option>
+              <option value="priority">Priority</option>
+              <option value="type">Type</option>
+            </select>
+          </>
+        )}
       </div>
 
       {/* All columns share the row's width and shrink together (minmax(0,1fr)) so the whole
           board is visible at once, Jira-style — never a horizontal scrollbar, however many
           columns board_columns holds. */}
-      <div
+      {view === 'board' && <div
         className="grid gap-2 pb-4"
         style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
       >
@@ -231,7 +364,17 @@ export default function Board() {
             </div>
           )
         })}
-      </div>
+      </div>}
+
+      {view === 'list' && (
+        <ListView
+          tickets={visible}
+          columns={columns}
+          team={team}
+          groupBy={groupBy}
+          onOpen={(t) => navigate(`/board/${t.key}`)}
+        />
+      )}
 
       {move.isPending && (
         <div className="fixed bottom-6 right-6 flex items-center gap-2 text-sm card !px-3 !py-2">
@@ -244,7 +387,7 @@ export default function Board() {
           columns={columns}
           team={team}
           tickets={tickets}
-          meId={appUser?.id ?? null}
+          meId={meId}
           canAssignOthers={canManage}
           onClose={() => setCreating(false)}
           onCreated={(t) => { setCreating(false); refresh(); navigate(`/board/${t.key}`) }}
@@ -256,13 +399,150 @@ export default function Board() {
           ticket={openTicket}
           columns={columns}
           team={team}
-          meId={appUser?.id ?? null}
+          meId={meId}
           canManage={canManage}
+          canEdit={canEdit}
           onClose={() => navigate('/board')}
           onChanged={refresh}
         />
       )}
     </div>
+  )
+}
+
+// ─── list view ───────────────────────────────────────────────────────────────
+
+const GROUP_LABEL: Record<Exclude<GroupBy, 'none'>, (t: Ticket, ctx: { columns: BoardColumn[]; team: AppUser[] }) => string> = {
+  column: (t, { columns }) => columns.find((c) => c.id === t.column_id)?.name ?? 'Unknown',
+  assignee: (t, { team }) => personById(team, t.assignee_id)?.full_name ?? 'Unassigned',
+  reporter: (t, { team }) => personById(team, t.reporter_id)?.full_name ?? 'Unknown',
+  priority: (t) => PRIORITY_LABEL[t.priority],
+  type: (t) => TYPE_LABEL[t.type],
+}
+
+/** Encounter order (whichever ticket happens to sort first) reads as random for anyone scanning
+ *  grouped sections — Status should read top-to-bottom like the Kanban columns do, Priority
+ *  Highest-to-Lowest, Type in its own fixed list; only people-based groupings (who has no
+ *  inherent order) fall back to alphabetical. */
+function groupOrder(groupBy: GroupBy, columns: BoardColumn[]): string[] | null {
+  if (groupBy === 'column') return [...columns].sort((a, b) => a.position - b.position).map((c) => c.name)
+  if (groupBy === 'priority') return PRIORITIES.map((p) => PRIORITY_LABEL[p])
+  if (groupBy === 'type') return (Object.keys(TYPE_LABEL) as TicketType[]).map((t) => TYPE_LABEL[t])
+  return null
+}
+
+function ListView({
+  tickets, columns, team, groupBy, onOpen,
+}: {
+  tickets: Ticket[]
+  columns: BoardColumn[]
+  team: AppUser[]
+  groupBy: GroupBy
+  onOpen: (t: Ticket) => void
+}) {
+  const sorted = useMemo(() => [...tickets].sort((a, b) => +new Date(b.updated_at) - +new Date(a.updated_at)), [tickets])
+
+  const groups = useMemo(() => {
+    if (groupBy === 'none') return [{ label: null as string | null, items: sorted }]
+    const labelFn = GROUP_LABEL[groupBy]
+    const byLabel = new Map<string, Ticket[]>()
+    for (const t of sorted) {
+      const label = labelFn(t, { columns, team })
+      byLabel.set(label, [...(byLabel.get(label) ?? []), t])
+    }
+    const fixedOrder = groupOrder(groupBy, columns)
+    const labels = fixedOrder
+      ? fixedOrder.filter((l) => byLabel.has(l))
+      : [...byLabel.keys()].sort((a, b) => a.localeCompare(b))
+    return labels.map((label) => ({ label, items: byLabel.get(label)! }))
+  }, [sorted, groupBy, columns, team])
+
+  if (!tickets.length) {
+    return (
+      <div className="rounded-xl text-center text-muted text-sm py-16" style={{ border: '1px dashed var(--border-subtle)' }}>
+        Nothing matches these filters.
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-subtle)' }}>
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="text-muted text-[11px] uppercase tracking-wide" style={{ background: 'var(--bg-panel)' }}>
+            <th className="text-left font-medium px-3 py-2">Work</th>
+            <th className="text-left font-medium px-3 py-2">Assignee</th>
+            <th className="text-left font-medium px-3 py-2">Reporter</th>
+            <th className="text-left font-medium px-3 py-2">Priority</th>
+            <th className="text-left font-medium px-3 py-2">Status</th>
+            <th className="text-left font-medium px-3 py-2">Resolution</th>
+            <th className="text-left font-medium px-3 py-2">Created</th>
+            <th className="text-left font-medium px-3 py-2">Updated</th>
+            <th className="text-left font-medium px-3 py-2">Due date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((g) => (
+            <FragmentGroup key={g.label ?? '_'} label={g.label} count={g.items.length}>
+              {g.items.map((t) => {
+                const assignee = personById(team, t.assignee_id)
+                const reporter = personById(team, t.reporter_id)
+                const resolution = resolutionOf(t, columns)
+                const days = daysUntilDue(t.due_date)
+                const tone = dueTone(days)
+                return (
+                  <tr
+                    key={t.id}
+                    onClick={() => onOpen(t)}
+                    className="cursor-pointer hover:opacity-80 transition-opacity"
+                    style={{ borderTop: '1px solid var(--border-subtle)' }}
+                  >
+                    <td className="px-3 py-2 max-w-md">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="h-2 w-2 rounded-[2px] shrink-0" style={{ background: TYPE_COLOR[t.type] }} title={TYPE_LABEL[t.type]} />
+                        <span className="text-muted text-[11px] tabular-nums shrink-0">{t.key}</span>
+                        <span className="truncate">{t.title}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className="flex items-center gap-1.5 whitespace-nowrap"><Avatar user={assignee} size={18} />{assignee?.full_name ?? 'Unassigned'}</span>
+                    </td>
+                    <td className="px-3 py-2 text-secondary whitespace-nowrap">{reporter?.full_name ?? '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span style={{ color: PRIORITY_COLOR[t.priority] }}>{PRIORITY_LABEL[t.priority]}</span>
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-secondary">{columns.find((c) => c.id === t.column_id)?.name}</td>
+                    <td className="px-3 py-2 whitespace-nowrap"><Badge tone={RESOLUTION_TONE[resolution]}>{resolution}</Badge></td>
+                    <td className="px-3 py-2 text-muted text-xs whitespace-nowrap tabular-nums">{new Date(t.created_at).toLocaleDateString()}</td>
+                    <td className="px-3 py-2 text-muted text-xs whitespace-nowrap tabular-nums">{new Date(t.updated_at).toLocaleDateString()}</td>
+                    <td className="px-3 py-2 text-xs whitespace-nowrap tabular-nums" style={{ color: tone ?? 'var(--text-muted)' }}>
+                      {t.due_date ? formatDue(t.due_date) : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </FragmentGroup>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** A `<tbody>` can't nest another `<tbody>`, so a group header is just another row spanning every
+ *  column — skipped entirely when there's no grouping (label is null). */
+function FragmentGroup({ label, count, children }: { label: string | null; count: number; children: React.ReactNode }) {
+  return (
+    <>
+      {label !== null && (
+        <tr>
+          <td colSpan={9} className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted" style={{ background: 'var(--bg-panel)', borderTop: '1px solid var(--border-subtle)' }}>
+            {label} <span className="text-muted font-normal">({count})</span>
+          </td>
+        </tr>
+      )}
+      {children}
+    </>
   )
 }
 
@@ -443,21 +723,23 @@ function CreateTicketModal({
 }
 
 function TicketDrawer({
-  ticket, columns, team, meId, canManage, onClose, onChanged,
+  ticket, columns, team, meId, canManage, canEdit, onClose, onChanged,
 }: {
   ticket: Ticket
   columns: BoardColumn[]
   team: AppUser[]
   meId: string | null
   canManage: boolean
+  canEdit: boolean
   onClose: () => void
   onChanged: () => void
 }) {
   const toast = useToast()
-  const [tab, setTab] = useState<'comments' | 'history'>('comments')
+  const [tab, setTab] = useState<'comments' | 'attachments' | 'history'>('comments')
   const [comment, setComment] = useState('')
   const [sendBackNote, setSendBackNote] = useState('')
   const [showSendBack, setShowSendBack] = useState(false)
+  const [attachUrl, setAttachUrl] = useState('')
   // "@" plus whatever's typed since it, as long as there's no space yet — the moment a space
   // (or a picked name) closes it off, this goes back to null and the dropdown disappears.
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
@@ -468,6 +750,9 @@ function TicketDrawer({
   })
   const { data: activity = [] } = useQuery({
     queryKey: ['ticket', ticket.id, 'activity'], queryFn: () => listActivity(ticket.id),
+  })
+  const { data: attachments = [] } = useQuery({
+    queryKey: ['ticket', ticket.id, 'attachments'], queryFn: () => listAttachments(ticket.id),
   })
 
   const qc = useQueryClient()
@@ -496,6 +781,19 @@ function TicketDrawer({
     mutationFn: () => addComment(ticket.id, meId!, comment, extractMentions(comment, team)),
     onSuccess: () => { setComment(''); after() },
     onError: (e) => toast.error(toastMessage(e, 'Could not post that comment.')),
+  })
+
+  const attach = useMutation({
+    mutationFn: (input: { kind: 'file' | 'url'; url: string; fileName?: string | null }) =>
+      addAttachment(ticket.id, meId!, input.kind, input.url, input.fileName ?? null),
+    onSuccess: () => { setAttachUrl(''); after() },
+    onError: (e) => toast.error(toastMessage(e, 'Could not attach that.')),
+  })
+
+  const removeAttachment = useMutation({
+    mutationFn: (id: string) => deleteAttachment(id),
+    onSuccess: after,
+    onError: (e) => toast.error(toastMessage(e, 'Could not remove that attachment.')),
   })
 
   const mentionMatches = mentionQuery === null
@@ -635,6 +933,7 @@ function TicketDrawer({
           <Row label="Reviewer"><span className="flex items-center gap-2"><Avatar user={reviewer} size={20} />{reviewer?.full_name ?? 'Nobody'}</span></Row>
           <Row label="Reporter"><span className="text-secondary">{reporter?.full_name ?? '—'}</span></Row>
           <Row label="Column"><span className="text-secondary">{columns.find((c) => c.id === ticket.column_id)?.name}</span></Row>
+          <Row label="Resolution">{(() => { const r = resolutionOf(ticket, columns); return <Badge tone={RESOLUTION_TONE[r]}>{r}</Badge> })()}</Row>
           {ticket.due_date && (
             <Row label="Due">
               <span style={{ color: dueTone(daysUntilDue(ticket.due_date)) ?? undefined }}>
@@ -648,12 +947,64 @@ function TicketDrawer({
           <TabButton active={tab === 'comments'} onClick={() => setTab('comments')}>
             <MessageSquare size={13} /> Comments {comments.length > 0 && `(${comments.length})`}
           </TabButton>
+          <TabButton active={tab === 'attachments'} onClick={() => setTab('attachments')}>
+            <Paperclip size={13} /> Attachments {attachments.length > 0 && `(${attachments.length})`}
+          </TabButton>
           <TabButton active={tab === 'history'} onClick={() => setTab('history')}>
             <History size={13} /> History
           </TabButton>
         </div>
 
-        {tab === 'comments' ? (
+        {tab === 'attachments' ? (
+          <div className="space-y-3">
+            {attachments.map((a: TicketAttachment) => {
+              const author = personById(team, a.author_id)
+              const canRemove = a.author_id === meId || canManage
+              return (
+                <div key={a.id} className="flex items-center gap-2.5">
+                  {a.kind === 'file' ? <Paperclip size={15} className="text-muted shrink-0" /> : <Link2 size={15} className="text-muted shrink-0" />}
+                  <a href={a.url} target="_blank" rel="noreferrer" className="text-sm text-secondary hover:text-sage truncate flex-1 min-w-0">
+                    {a.file_name ?? a.url}
+                  </a>
+                  <span className="text-muted text-[11px] shrink-0">{author?.full_name ?? 'Someone'}</span>
+                  {canRemove && (
+                    <button
+                      onClick={() => removeAttachment.mutate(a.id)}
+                      className="btn-ghost !p-1 shrink-0"
+                      title="Remove attachment"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+            {attachments.length === 0 && <p className="text-muted text-sm">No attachments yet.</p>}
+
+            {canEdit && meId && (
+              <div className="flex items-center gap-2 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                <AssetUploader
+                  bucket="ticket-attachments"
+                  pathPrefix={ticket.id}
+                  accept=""
+                  label="Attach file"
+                  onUploaded={(url, file) => attach.mutate({ kind: 'file', url, fileName: file.name })}
+                />
+                <input
+                  className="input flex-1 !py-1.5 text-sm"
+                  placeholder="Or paste a link and press Enter"
+                  value={attachUrl}
+                  onChange={(e) => setAttachUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && /^https?:\/\//i.test(attachUrl.trim())) {
+                      attach.mutate({ kind: 'url', url: attachUrl.trim() })
+                    }
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        ) : tab === 'comments' ? (
           <div className="space-y-3">
             {comments.map((c) => {
               const author = personById(team, c.author_id)
