@@ -202,7 +202,8 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         what: 'The Jira-style board: every task the team is working on, and who it belongs to.',
         steps: [
           '"Create" raises a ticket. Give it a summary, a type, a priority, an assignee (who does the work) and a reviewer (who checks it).',
-          'Drag a card between columns to move it. Click one to open it — description, people, dates, comments and full history.',
+          'Drag a card between columns to move it. Click one to open it in a centered window — description and tabs (Comments/Attachments/History) on the left, the people and status fields on the right.',
+          'Admins and owners can edit Assignee, Reviewer, Reporter and Column directly from that window, not just by dragging — useful for fixing a wrong assignment or reopening something without dragging it back across the whole board.',
           'Click any avatar along the top to see only that person’s tickets. Click it again to clear.',
           'Switch to "List" (next to Create) for a Jira-style table — Work, Assignee, Reporter, Priority, Status, Resolution, Created, Updated, Due date, one row per ticket. Click a row to open the same ticket detail the Kanban card does.',
           'Filter by reporter, priority, type, or a date range (created or due, last 7/30 days or a custom range) — these apply to both views. "Assigned to me" is a one-click filter to just your own tickets, useful for tracking your own work alongside anything you assign to others.',

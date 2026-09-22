@@ -783,6 +783,12 @@ function TicketDrawer({
     onError: (e) => toast.error(toastMessage(e, 'Could not post that comment.')),
   })
 
+  const updateField = useMutation({
+    mutationFn: (patch: Partial<Ticket>) => updateTicket(ticket.id, patch),
+    onSuccess: after,
+    onError: (e) => toast.error(toastMessage(e, 'Could not update that.')),
+  })
+
   const attach = useMutation({
     mutationFn: (input: { kind: 'file' | 'url'; url: string; fileName?: string | null }) =>
       addAttachment(ticket.id, meId!, input.kind, input.url, input.fileName ?? null),
@@ -824,35 +830,22 @@ function TicketDrawer({
   const assignee = personById(team, ticket.assignee_id)
   const reviewer = personById(team, ticket.reviewer_id)
   const reporter = personById(team, ticket.reporter_id)
+  // Suspended people stay pickable as whatever they already are (so an old ticket doesn't show
+  // a broken reference) but drop out of the "reassign to" list, same rule CreateTicketModal uses.
+  const assignable = team.filter((u) => u.status !== 'suspended')
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={onClose}>
-      <div
-        className="w-full max-w-xl h-full overflow-y-auto p-6"
-        style={{ background: 'var(--bg-card)', borderLeft: '1px solid var(--border-subtle)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span
-                className="h-2.5 w-2.5 rounded-[3px]"
-                style={{ background: TYPE_COLOR[ticket.type] }}
-              />
-              <span className="text-muted text-xs tabular-nums">{ticket.key}</span>
-              <span className="text-muted text-xs">·</span>
-              <span className="text-xs" style={{ color: PRIORITY_COLOR[ticket.priority] }}>
-                {PRIORITY_LABEL[ticket.priority]}
-              </span>
-            </div>
-            <h2 className="text-lg leading-snug">{ticket.title}</h2>
-          </div>
-          <button onClick={onClose} className="btn-ghost !p-2 shrink-0"><X size={16} /></button>
+    <Modal title={`${ticket.key} — ${ticket.title}`} onClose={onClose} size="2xl" aspectVideo>
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-4 min-w-0">
+        <div className="flex items-center gap-2 -mt-1">
+          <span className="h-2.5 w-2.5 rounded-[3px] shrink-0" style={{ background: TYPE_COLOR[ticket.type] }} title={TYPE_LABEL[ticket.type]} />
+          <span className="text-xs" style={{ color: PRIORITY_COLOR[ticket.priority] }}>{PRIORITY_LABEL[ticket.priority]} priority</span>
         </div>
 
         {ticket.rejection_note && !isDone && (
           <div
-            className="flex gap-2.5 px-4 py-3 rounded-xl text-sm mb-4"
+            className="flex gap-2.5 px-4 py-3 rounded-xl text-sm"
             style={{
               background: 'rgb(var(--accent-orange-rgb) / 0.12)',
               border: '1px solid rgb(var(--accent-orange-rgb) / 0.3)',
@@ -866,7 +859,7 @@ function TicketDrawer({
 
         {/* The maker–checker controls. Which one you see depends on which side of the
             handover you are on — and Postgres enforces the same thing regardless. */}
-        <div className="flex flex-wrap gap-2 mb-5">
+        <div className="flex flex-wrap gap-2">
           {isAssignee && !inReview && !isDone && reviewCol && (
             <Button
               className="!py-1.5 !px-3 text-xs"
@@ -906,7 +899,7 @@ function TicketDrawer({
         </div>
 
         {showSendBack && (
-          <div className="space-y-2 mb-5">
+          <div className="space-y-2">
             <textarea
               className="input" rows={2} autoFocus
               placeholder="What needs to change? (required)"
@@ -925,25 +918,10 @@ function TicketDrawer({
         )}
 
         {ticket.description && (
-          <p className="text-secondary text-sm whitespace-pre-wrap leading-relaxed mb-5">{ticket.description}</p>
+          <p className="text-secondary text-sm whitespace-pre-wrap leading-relaxed">{ticket.description}</p>
         )}
 
-        <div className="panel !py-3 mb-5 space-y-2.5 text-sm">
-          <Row label="Assignee"><span className="flex items-center gap-2"><Avatar user={assignee} size={20} />{assignee?.full_name ?? 'Unassigned'}</span></Row>
-          <Row label="Reviewer"><span className="flex items-center gap-2"><Avatar user={reviewer} size={20} />{reviewer?.full_name ?? 'Nobody'}</span></Row>
-          <Row label="Reporter"><span className="text-secondary">{reporter?.full_name ?? '—'}</span></Row>
-          <Row label="Column"><span className="text-secondary">{columns.find((c) => c.id === ticket.column_id)?.name}</span></Row>
-          <Row label="Resolution">{(() => { const r = resolutionOf(ticket, columns); return <Badge tone={RESOLUTION_TONE[r]}>{r}</Badge> })()}</Row>
-          {ticket.due_date && (
-            <Row label="Due">
-              <span style={{ color: dueTone(daysUntilDue(ticket.due_date)) ?? undefined }}>
-                {formatDue(ticket.due_date)}
-              </span>
-            </Row>
-          )}
-        </div>
-
-        <div className="flex gap-1 mb-3">
+        <div className="flex gap-1">
           <TabButton active={tab === 'comments'} onClick={() => setTab('comments')}>
             <MessageSquare size={13} /> Comments {comments.length > 0 && `(${comments.length})`}
           </TabButton>
@@ -1079,19 +1057,99 @@ function TicketDrawer({
             ))}
           </div>
         )}
+        </div>
+
+        {/* The details sidebar. Only board:full (admin/owner) gets dropdowns here — everyone
+            else keeps the plain read-only display, same asymmetry the rest of the board already
+            has between "work your own ticket" and "reassign/override anything". Resolution has
+            no dropdown: it isn't a stored field (see docs/board-list-view-plan.md), it's read off
+            the column plus accepted_at/rejection_note, so editing Column already changes it. */}
+        <div className="space-y-4">
+          <div className="panel !py-3 space-y-3 text-sm">
+            <FieldRow label="Assignee">
+              {canManage ? (
+                <select
+                  className="input !py-1 !text-xs"
+                  value={ticket.assignee_id ?? ''}
+                  onChange={(e) => updateField.mutate({ assignee_id: e.target.value || null })}
+                >
+                  <option value="">Unassigned</option>
+                  {assignable.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                </select>
+              ) : (
+                <span className="flex items-center gap-2"><Avatar user={assignee} size={18} />{assignee?.full_name ?? 'Unassigned'}</span>
+              )}
+            </FieldRow>
+            <FieldRow label="Reviewer">
+              {canManage ? (
+                <select
+                  className="input !py-1 !text-xs"
+                  value={ticket.reviewer_id ?? ''}
+                  onChange={(e) => updateField.mutate({ reviewer_id: e.target.value || null })}
+                >
+                  <option value="">Nobody</option>
+                  {assignable.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                </select>
+              ) : (
+                <span className="flex items-center gap-2"><Avatar user={reviewer} size={18} />{reviewer?.full_name ?? 'Nobody'}</span>
+              )}
+            </FieldRow>
+            <FieldRow label="Reporter">
+              {canManage ? (
+                <select
+                  className="input !py-1 !text-xs"
+                  value={ticket.reporter_id ?? ''}
+                  onChange={(e) => updateField.mutate({ reporter_id: e.target.value || null })}
+                >
+                  <option value="">—</option>
+                  {assignable.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                </select>
+              ) : (
+                <span className="text-secondary">{reporter?.full_name ?? '—'}</span>
+              )}
+            </FieldRow>
+            <FieldRow label="Column">
+              {canManage ? (
+                <select
+                  className="input !py-1 !text-xs"
+                  value={ticket.column_id}
+                  onChange={(e) => updateField.mutate({ column_id: e.target.value })}
+                >
+                  {columns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              ) : (
+                <span className="text-secondary">{columns.find((c) => c.id === ticket.column_id)?.name}</span>
+              )}
+            </FieldRow>
+            <FieldRow label="Resolution">
+              {(() => { const r = resolutionOf(ticket, columns); return <Badge tone={RESOLUTION_TONE[r]}>{r}</Badge> })()}
+            </FieldRow>
+            {ticket.due_date && (
+              <FieldRow label="Due">
+                <span style={{ color: dueTone(daysUntilDue(ticket.due_date)) ?? undefined }}>
+                  {formatDue(ticket.due_date)}
+                </span>
+              </FieldRow>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+/** Label above the control rather than beside it — a `<select>` needs the width a same-line
+ *  label would eat into, unlike the plain-text values `Row` (used elsewhere in this file)
+ *  displays for everyone who isn't `board:full`. */
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-muted text-xs">{label}</span>
+    <div>
+      <div className="text-muted text-xs mb-1">{label}</div>
       {children}
     </div>
   )
 }
+
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
