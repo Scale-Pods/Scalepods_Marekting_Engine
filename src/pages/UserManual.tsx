@@ -327,6 +327,7 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'Only @scalepods.co addresses can create an account. A personal Gmail is refused at the door, not after signing in.',
           'Signing in is not the same as being let in: a new account has to be switched on by an admin before it can reach anything. Until then you land on an "Almost there" screen.',
           'Your name, photo and role come from your Google account and the team directory. An admin sets the role; you cannot pick your own.',
+          'The owner account has one extra control in the top bar — an eye icon — to preview the app as any active team member: same nav, same enabled/disabled buttons their real access produces. An orange banner stays up the whole time as a reminder, and "Exit preview" turns it off instantly. Anything actually clicked while previewing still happens as the owner, not as the person being previewed.',
         ],
         tip: 'The email and password box is still there as a fallback for the original marketing@scalepods.co account. Everyone else should use the Google button.',
       },

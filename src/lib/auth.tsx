@@ -23,8 +23,15 @@ interface AuthState {
   /** "At least this level." The single access question the whole UI asks:
    *  `can('studio', 'full')` for a spend button, `can('studio', 'view')` for the nav item.
    *  Mirrors app_can() in Postgres, which is what actually protects the data in Phase 3 — this
-   *  only decides what is worth rendering. */
+   *  only decides what is worth rendering. While `previewAs` is set, this answers as THEM
+   *  instead of the real signed-in person — see `startPreview`. */
   can: (feature: FeatureKey, level: AccessLevel) => boolean
+  /** Owner-only "view as" — who `can()` currently answers as, or null when off. Nothing else
+   *  about the session changes: `appUser`/`user` still identify the real, real writes still
+   *  carry the real person's id wherever a page reads it from `appUser` rather than `can()`. */
+  previewAs: AppUser | null
+  startPreview: (target: AppUser) => void
+  exitPreview: () => void
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signInWithGoogle: () => Promise<{ error: string | null }>
@@ -98,16 +105,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const permissionsLoading = !!appUser?.id && permsLoading
 
+  // Owner-only "view as": lets the owner see the nav/pages/buttons a specific team member's real
+  // stored permissions produce, for manual QA, without a real session swap (most invited people
+  // have never signed in and have no session to swap into anyway). Session-only — never
+  // persisted — so it can't silently survive a refresh unnoticed.
+  const [previewAs, setPreviewAs] = useState<AppUser | null>(null)
+
+  const startPreview = useCallback((target: AppUser) => {
+    if (appUser?.role !== 'owner' || target.id === appUser.id) return
+    setPreviewAs(target)
+  }, [appUser])
+
+  const exitPreview = useCallback(() => setPreviewAs(null), [])
+
+  // Never let a preview outlive the identity that was allowed to start it — if the real account
+  // stops being an owner (role changed under them, or they signed out), drop it immediately.
+  useEffect(() => {
+    if (appUser?.role !== 'owner') setPreviewAs(null)
+  }, [appUser?.role])
+
+  const { data: previewPermissions = EMPTY_PERMISSIONS, isLoading: previewPermsLoading } = useQuery({
+    queryKey: ['permissions', 'preview', previewAs?.id],
+    queryFn: () => fetchPermissions(previewAs!.id),
+    enabled: !!previewAs?.id,
+    staleTime: 60_000,
+  })
+
   // Owners and admins always answer true, without consulting the map. app_can() in Postgres will
   // do the same in Phase 3, so the UI and the database agree — and it means an admin can never
   // lock themselves out of their own app by mangling a permission row.
   const can = useCallback(
     (feature: FeatureKey, level: AccessLevel) => {
+      if (previewAs) {
+        if (isAdminRole(previewAs.role)) return true
+        if (previewPermsLoading) return false
+        return canDo(previewPermissions, feature, level)
+      }
       if (isAdminRole(appUser?.role)) return true
       if (permissionsLoading) return false
       return canDo(permissions, feature, level)
     },
-    [appUser?.role, permissions, permissionsLoading],
+    [previewAs, previewPermissions, previewPermsLoading, appUser?.role, permissions, permissionsLoading],
   )
 
   const signIn = async (email: string, password: string) => {
@@ -131,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
+    setPreviewAs(null)
     await supabase.auth.signOut()
     // Drop every cached query, not just the identity one: react-query would otherwise hand the
     // next person to sign in on this browser the previous user's data while their own loads.
@@ -156,6 +195,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         permissions,
         permissionsLoading,
         can,
+        previewAs,
+        startPreview,
+        exitPreview,
         loading,
         signIn,
         signInWithGoogle,

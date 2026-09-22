@@ -1,16 +1,18 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Building2, BrainCircuit, TrendingUp, Target,
   CheckSquare, CalendarDays, Send, BarChart3, Settings, Sun, Moon, LogOut, ChevronDown, Newspaper,
   PanelLeftClose, PanelLeftOpen, Check, Plus, Clapperboard, Wand2, BookOpen, Film, MessageCircleQuestion, Users, KanbanSquare, BellRing,
+  Eye, EyeOff,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { useRealtimeSync, useNavCounts, useProfile, useProfiles, useSetActiveProfile } from '../lib/queries'
 import NotificationBell from './NotificationBell'
 import { toggleTheme, getCurrentTheme, type Theme } from '../lib/theme'
-import { initialsOf, isAdminRole, ROLE_LABEL as TEAM_ROLE_LABEL, ROLE_ACCENT as TEAM_ROLE_ACCENT } from '../lib/team'
+import { listTeam, TEAM_KEY, initialsOf, isAdminRole, ROLE_LABEL as TEAM_ROLE_LABEL, ROLE_ACCENT as TEAM_ROLE_ACCENT } from '../lib/team'
 import type { FeatureKey } from '../lib/permissions'
 
 // `external: true` items link off-app (target="_blank") instead of routing internally — `to`
@@ -118,9 +120,18 @@ const NAV_COUNT: Record<string, 'profiles' | 'pendingReview'> = {
 }
 
 export default function AppShell({ children }: { children: ReactNode }) {
-  const { user, appUser, can, signOut } = useAuth()
+  const { user, appUser, can, signOut, previewAs, startPreview, exitPreview } = useAuth()
   const [theme, setTheme] = useState<Theme>(getCurrentTheme())
   const [profileOpen, setProfileOpen] = useState(false)
+  const [viewAsOpen, setViewAsOpen] = useState(false)
+
+  // "View as" candidates: the real owner only, never the previewed identity itself — the
+  // control's visibility rides on the REAL role so it stays usable throughout a preview (to
+  // switch to someone else, or exit). Suspended/invited accounts are left out: they can't sign
+  // in for real either, so there is nothing meaningful to preview for them yet.
+  const isRealOwner = appUser?.role === 'owner'
+  const { data: team = [] } = useQuery({ queryKey: TEAM_KEY, queryFn: listTeam, enabled: isRealOwner })
+  const previewCandidates = team.filter((u) => u.status === 'active' && u.role !== 'owner' && u.id !== appUser?.id)
 
   const { data: profile } = useProfile()
   const { data: profiles = [] } = useProfiles()
@@ -292,6 +303,23 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Main */}
       <div className="flex-1 min-w-0 flex flex-col">
+        {/* Owner-only "view as" preview banner — outside <main>, so it never scrolls out of
+            view. Deliberately spells out that actions still happen as the real owner: the
+            control changes what `can()` answers, not who Postgres thinks is calling (see
+            auth.tsx). */}
+        {previewAs && (
+          <div
+            className="flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium shrink-0 flex-wrap text-center"
+            style={{ background: 'var(--accent-orange)', color: '#241a0f' }}
+          >
+            <Eye size={13} className="shrink-0" />
+            <span>
+              Viewing as <b>{previewAs.full_name}</b> ({TEAM_ROLE_LABEL[previewAs.role]}) — nav and buttons reflect their access. Actions you take still happen as you.
+            </span>
+            <button onClick={exitPreview} className="underline font-semibold shrink-0">Exit preview</button>
+          </div>
+        )}
+
         {/* Top bar — identity + theme + sign-out. No decorative search box: this app has no
             real search endpoint yet, and a non-functional input is worse than none. */}
         <div
@@ -300,6 +328,47 @@ export default function AppShell({ children }: { children: ReactNode }) {
         >
           <div className="flex-1" />
           <NotificationBell />
+          {isRealOwner && (
+            <div className="relative">
+              <button
+                onClick={() => setViewAsOpen((o) => !o)}
+                className="btn-ghost !p-2.5"
+                aria-label="View as a team member"
+                title="View as a team member"
+              >
+                {previewAs ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+              {viewAsOpen && (
+                <div className="absolute top-full mt-2 right-0 w-60 card p-1 z-20">
+                  <div className="text-muted text-[11px] font-semibold uppercase tracking-wide px-3 py-1.5">View as</div>
+                  {previewCandidates.length === 0 && (
+                    <div className="text-muted text-xs px-3 py-2">No one else to preview yet.</div>
+                  )}
+                  {previewCandidates.map((u) => (
+                    <button
+                      key={u.id}
+                      onClick={() => { startPreview(u); setViewAsOpen(false) }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-panel text-left"
+                    >
+                      <span className="h-2 w-2 rounded-full shrink-0" style={{ background: TEAM_ROLE_ACCENT[u.role] }} />
+                      <span className="truncate flex-1">{u.full_name}</span>
+                      <span className="text-muted text-[11px] shrink-0">{TEAM_ROLE_LABEL[u.role]}</span>
+                      {previewAs?.id === u.id && <Check size={13} className="text-sage shrink-0" />}
+                    </button>
+                  ))}
+                  {previewAs && (
+                    <button
+                      onClick={() => { exitPreview(); setViewAsOpen(false) }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-panel text-left text-muted mt-1"
+                      style={{ borderTop: '1px solid var(--border-subtle)' }}
+                    >
+                      <EyeOff size={13} /> Exit preview
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <button onClick={() => setTheme(toggleTheme())} className="btn-ghost !p-2.5" aria-label="Toggle theme">
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
