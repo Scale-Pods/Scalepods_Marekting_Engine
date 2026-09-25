@@ -204,6 +204,11 @@ export interface ContentItem {
   revision_count: number
   error_message: string | null
   approved_at: string | null
+  /** Who a maker handed this piece to for review, who handed it over, and when — all null until
+   *  someone uses "Send for review". Unset items are simply in the shared queue. */
+  reviewer_id: string | null
+  submitted_by: string | null
+  sent_for_review_at: string | null
   created_at: string
   updated_at: string
 }
@@ -278,6 +283,91 @@ export async function listReviewItems(profileId: string): Promise<ContentItem[]>
     .order('scheduled_date', { ascending: true })
   if (error) throw error
   return data as ContentItem[]
+}
+
+// --- hand-off to a specific reviewer ----------------------------------------
+
+export interface ReviewApprover {
+  id: string
+  full_name: string
+  email: string
+  role: string
+  avatar_url: string | null
+}
+
+export const REVIEW_APPROVERS_KEY = ['review', 'approvers'] as const
+
+/** Everyone who can actually approve here (owner/admin, or review = full). A definer function
+ *  rather than a table read: a maker can't see other people's permission rows. */
+export async function listReviewApprovers(): Promise<ReviewApprover[]> {
+  const { data, error } = await supabase.rpc('list_review_approvers')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as ReviewApprover[]
+}
+
+/**
+ * The maker's hand-off: names one reviewer for this piece and tells them. A piece that was sent
+ * back goes back to 'ready' (the maker fixed it and is resubmitting); anything else keeps its
+ * status. The reviewer gets a bell notification, plus an email unless they have turned that off.
+ * The notification is fire-and-forget: failing to ping must never undo the hand-off itself.
+ */
+export async function sendForReview(
+  item: Pick<ContentItem, 'id' | 'title' | 'profile_id' | 'status'>,
+  reviewer: ReviewApprover,
+  me: { id: string; full_name: string },
+): Promise<void> {
+  const patch: Record<string, unknown> = {
+    reviewer_id: reviewer.id,
+    submitted_by: me.id,
+    sent_for_review_at: new Date().toISOString(),
+  }
+  if (item.status === 'revision') patch.status = 'ready'
+  const { error } = await supabase.from('content_items').update(patch).eq('id', item.id)
+  if (error) throw error
+  const label = item.title || 'a post'
+  await pushNotification({
+    userId: reviewer.id,
+    profileId: item.profile_id,
+    type: 'review-requested',
+    title: `Ready for your review: ${label}`,
+    body: `${me.full_name} sent you "${label}" in Creative Review`,
+    itemId: item.id,
+    link: '/review',
+  }).catch(() => {})
+}
+
+// --- attachments (files and live links the maker shares with the reviewer) ----
+
+export interface ContentItemAttachment {
+  id: string
+  item_id: string
+  author_id: string | null
+  kind: 'file' | 'url'
+  url: string
+  file_name: string | null
+  created_at: string
+}
+
+export async function listItemAttachments(itemId: string): Promise<ContentItemAttachment[]> {
+  const { data, error } = await supabase
+    .from('content_item_attachments').select('*').eq('item_id', itemId).order('created_at', { ascending: false })
+  if (error) throw error
+  return data as ContentItemAttachment[]
+}
+
+/** RLS requires `authorId` to be the caller — there is no attaching on someone else's behalf. */
+export async function addItemAttachment(
+  itemId: string, authorId: string, kind: 'file' | 'url', url: string, fileName: string | null = null,
+): Promise<void> {
+  const { error } = await supabase
+    .from('content_item_attachments')
+    .insert({ item_id: itemId, author_id: authorId, kind, url, file_name: fileName })
+  if (error) throw error
+}
+
+export async function deleteItemAttachment(id: string): Promise<void> {
+  const { error } = await supabase.from('content_item_attachments').delete().eq('id', id)
+  if (error) throw error
 }
 
 export async function approveItem(id: string): Promise<void> {

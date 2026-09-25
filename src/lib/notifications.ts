@@ -49,6 +49,9 @@ export async function markAllNotificationsRead(): Promise<void> {
  * which are also .catch(() => {})).
  */
 export async function pushNotification(input: {
+  /** Aim it at one person (an app_users id) instead of the whole team. That also emails them, via
+   *  the notifications_send_email trigger, unless they have turned email off. */
+  userId?: string | null
   profileId?: string | null
   type: string
   title: string
@@ -57,6 +60,7 @@ export async function pushNotification(input: {
   link?: string | null
 }): Promise<void> {
   await supabase.from('notifications').insert({
+    user_id: input.userId ?? null,
     profile_id: input.profileId ?? null,
     type: input.type,
     title: input.title,

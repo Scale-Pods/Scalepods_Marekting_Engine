@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Image as ImageIcon, Filter, Clock, Plus, Check, Wand2,
+  CheckSquare, CheckCircle2, Undo2, Sparkles, Pencil, Replace, Filter, Clock, Plus, Check, Wand2, Send, Upload, User,
 } from 'lucide-react'
 import { useProfile, useReviewItems } from '../lib/queries'
 import {
@@ -9,13 +9,16 @@ import {
   replaceItemMedia, IMAGE_CONTENT_TYPES, VIDEO_CONTENT_TYPES, GENERATION_ENABLED,
   type ContentItem,
 } from '../lib/content'
-import { connectCanva, listCanvaDesigns, importCanvaDesign, importFigmaFrame, type CanvaDesign } from '../lib/designer'
 import { useToast, toastMessage } from '../components/Toast'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
 import { useGate, useCan } from '../components/Gate'
 import { PLATFORM_OPTIONS } from '../components/mediaUi'
 import { PostTile, PostPreviewModal, ContentTypeChip, TimeBadge } from '../components/postPreview'
-import AssetUploader from '../components/AssetUploader'
+import MediaSourcePanel from '../components/MediaSourcePanel'
+import { ReviewItemMenu, ReviewerChip, SendForReviewModal, ItemAttachments, ImportModal } from '../components/reviewHandoff'
+import { useAuth } from '../lib/auth'
+import { listTeam, TEAM_KEY } from '../lib/team'
+import { useQuery } from '@tanstack/react-query'
 import MediaEditor from '../components/MediaEditor'
 import CreatePostModal from '../components/CreatePostModal'
 
@@ -110,85 +113,6 @@ function StatusPills({
   )
 }
 
-function ReplacePanel({ item, onDone }: { item: ContentItem; onDone: (url: string) => void }) {
-  const [tab, setTab] = useState<'upload' | 'canva' | 'figma'>('upload')
-  const [designs, setDesigns] = useState<CanvaDesign[] | null>(null)
-  const [canvaError, setCanvaError] = useState<string | null>(null)
-  const [figmaFileKey, setFigmaFileKey] = useState('')
-  const [figmaNodeId, setFigmaNodeId] = useState('')
-  const [figmaBusy, setFigmaBusy] = useState(false)
-  const [figmaError, setFigmaError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (tab === 'canva' && designs === null) {
-      listCanvaDesigns()
-        .then(setDesigns)
-        .catch((err) => setCanvaError(err instanceof Error ? err.message : 'Canva not connected yet'))
-    }
-  }, [tab, designs])
-
-  async function onFigmaImport() {
-    setFigmaBusy(true)
-    setFigmaError(null)
-    try {
-      const url = await importFigmaFrame(figmaFileKey.trim(), figmaNodeId.trim(), item.id)
-      onDone(url)
-    } catch (err) {
-      setFigmaError(err instanceof Error ? err.message : 'Figma import failed')
-    } finally {
-      setFigmaBusy(false)
-    }
-  }
-
-  return (
-    <div>
-      <div className="flex gap-2 mb-4">
-        {(['upload', 'canva', 'figma'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={tab === t ? 'badge' : 'badge opacity-40'} style={{ textTransform: 'capitalize' }}>
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'upload' && (
-        <AssetUploader pathPrefix={`replace/${item.id}`} label="Upload replacement image" onUploaded={(url) => onDone(url)} />
-      )}
-
-      {tab === 'canva' && (
-        <div className="space-y-3">
-          <Button variant="ghost" onClick={connectCanva}>Connect Canva</Button>
-          {canvaError && <div className="text-xs text-muted">{canvaError} — connect Canva above, then reopen this panel.</div>}
-          {designs && designs.length > 0 && (
-            <div className="grid grid-cols-3 gap-2">
-              {designs.map((d) => (
-                <button key={d.id} onClick={() => importCanvaDesign(d.id, item.id).then(onDone)} className="panel p-2 hover:border-sage/40">
-                  {d.thumbnailUrl ? <img src={d.thumbnailUrl} alt={d.title} className="w-full h-16 object-cover rounded" /> : <ImageIcon size={20} />}
-                  <div className="text-xs mt-1 truncate">{d.title}</div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === 'figma' && (
-        <div className="space-y-3">
-          <div>
-            <label className="label">Figma file key</label>
-            <input className="input mt-1" value={figmaFileKey} onChange={(e) => setFigmaFileKey(e.target.value)} placeholder="from the file URL" />
-          </div>
-          <div>
-            <label className="label">Node ID</label>
-            <input className="input mt-1" value={figmaNodeId} onChange={(e) => setFigmaNodeId(e.target.value)} placeholder="e.g. 12:34" />
-          </div>
-          {figmaError && <div className="text-xs text-[var(--accent-orange)]">{figmaError}</div>}
-          <Button onClick={onFigmaImport} loading={figmaBusy} disabled={!figmaFileKey || !figmaNodeId}>Import from Figma</Button>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // Footer actions inside the click-through preview. `onDismiss` (approve / send back) reloads
 // AND closes the preview, since the item leaves the current filtered list either way and
 // leaving the modal open risks silently swapping to whichever item shifts into the same index.
@@ -209,6 +133,8 @@ function ReviewPreviewActions({
   const [busy, setBusy] = useState<string | null>(null)
   const [showNotes, setShowNotes] = useState(false)
   const [notes, setNotes] = useState('')
+  const [sendOpen, setSendOpen] = useState(false)
+  const canSend = useCan('review', 'edit')
   const toast = useToast()
   const isImage = IMAGE_CONTENT_TYPES.includes(item.content_type)
   const isVideo = VIDEO_CONTENT_TYPES.includes(item.content_type)
@@ -245,6 +171,11 @@ function ReviewPreviewActions({
         <Button variant="ghost" className="!py-1.5 !px-3 text-xs" onClick={onReplace}>
           <Replace size={13} /> Replace
         </Button>
+        {canSend && (
+          <Button variant="ghost" className="!py-1.5 !px-3 text-xs" onClick={() => setSendOpen(true)}>
+            <Send size={13} /> Send for review
+          </Button>
+        )}
         <Button
           variant="ghost"
           className="!py-1.5 !px-3 text-xs"
@@ -255,6 +186,10 @@ function ReviewPreviewActions({
           <Sparkles size={13} /> Revise with AI
         </Button>
       </div>
+
+      {sendOpen && (
+        <SendForReviewModal item={item} onClose={() => setSendOpen(false)} onSent={onUpdated} />
+      )}
 
       {showNotes && (
         <div className="space-y-2">
@@ -285,7 +220,12 @@ export default function CreativeReview() {
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [replaceOpen, setReplaceOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [onlyMine, setOnlyMine] = useState(false)
   const toast = useToast()
+  const { appUser } = useAuth()
+  const canImport = useCan('review', 'edit')
+  const { data: team = [] } = useQuery({ queryKey: TEAM_KEY, queryFn: listTeam, staleTime: 60_000 })
 
   const { data: profile, isLoading: profileLoading } = useProfile()
   const { data: items = [], refetch } = useReviewItems(profile?.id)
@@ -354,8 +294,10 @@ export default function CreativeReview() {
     (i) =>
       (platformFilter === 'all' || i.platform?.toLowerCase() === platformFilter) &&
       (typeFilter === 'all' || i.content_type === typeFilter) &&
-      (statusFilter === 'all' || i.status === statusFilter),
+      (statusFilter === 'all' || i.status === statusFilter) &&
+      (!onlyMine || i.reviewer_id === appUser?.id),
   )
+  const sentToMeCount = items.filter((i) => i.reviewer_id === appUser?.id).length
   const statusCounts = {
     all: items.length,
     ready: items.filter((i) => i.status === 'ready').length,
@@ -391,6 +333,11 @@ export default function CreativeReview() {
                 <CheckCircle2 size={15} /> Approve {selected.size} selected
               </Button>
             )}
+            {canImport && (
+              <Button variant="ghost" onClick={() => setImportOpen(true)}>
+                <Upload size={15} /> Import
+              </Button>
+            )}
             {canStudio && (
               <Link to="/studio" className="btn-ghost">
                 <Wand2 size={15} /> Create Post
@@ -416,7 +363,23 @@ export default function CreativeReview() {
             <StatTile icon={Clock} label="Ready for review" value={statusCounts.ready} accent="var(--accent-orange)" />
             <StatTile icon={Undo2} label="Sent back" value={statusCounts.revision} accent="var(--accent-blue)" />
           </div>
-          <StatusPills value={statusFilter} onChange={setStatusFilter} counts={statusCounts} />
+          <div className="flex items-start gap-3 flex-wrap">
+            <StatusPills value={statusFilter} onChange={setStatusFilter} counts={statusCounts} />
+            {appUser && (
+              <button
+                onClick={() => setOnlyMine((v) => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all mb-5"
+                style={{
+                  background: onlyMine ? 'var(--accent-green)' : 'var(--fill-secondary)',
+                  color: onlyMine ? '#0e1a0a' : 'var(--text-primary)',
+                  border: `1.5px solid ${onlyMine ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                }}
+              >
+                <User size={12} /> Sent to me
+                <span className="text-[10px] px-1.5 rounded-full" style={{ background: 'rgba(0,0,0,0.12)' }}>{sentToMeCount}</span>
+              </button>
+            )}
+          </div>
           {filteredItems.length === 0 ? (
             <EmptyState icon={<Filter size={28} />} title="No items match these filters" hint="Try a different platform or content type." />
           ) : (
@@ -430,11 +393,17 @@ export default function CreativeReview() {
                     img={thumb}
                     platform={item.platform}
                     placeholder={item.title || item.body?.slice(0, 80)}
-                    topRight={item.status === 'revision' ? (
-                      <Badge tone="orange" className="!text-[10px] !px-1.5 !py-0.5">Sent back</Badge>
-                    ) : (
-                      <ContentTypeChip type={item.content_type} />
-                    )}
+                    topRight={
+                      <div className="flex items-center gap-1">
+                        <ReviewerChip reviewerId={item.reviewer_id} />
+                        {item.status === 'revision' ? (
+                          <Badge tone="orange" className="!text-[10px] !px-1.5 !py-0.5">Sent back</Badge>
+                        ) : (
+                          <ContentTypeChip type={item.content_type} />
+                        )}
+                        <ReviewItemMenu item={item} onSent={() => load(profile.id)} />
+                      </div>
+                    }
                     bottomLeft={
                       <button
                         onClick={(e) => { e.stopPropagation(); toggle(item.id) }}
@@ -467,9 +436,16 @@ export default function CreativeReview() {
           caption={activeItem.body}
           headerExtra={activeItem.status === 'revision' ? <Badge tone="orange">Sent back</Badge> : <ContentTypeChip type={activeItem.content_type} />}
           body={
-            <>
+            <div className="space-y-3">
               {activeItem.review_notes && <div className="text-xs text-terracotta">Notes: {activeItem.review_notes}</div>}
-            </>
+              {activeItem.reviewer_id && (
+                <div className="text-xs text-muted">
+                  With <b className="text-ink">{team.find((u) => u.id === activeItem.reviewer_id)?.full_name ?? 'a reviewer'}</b>
+                  {activeItem.submitted_by && <> · sent by {team.find((u) => u.id === activeItem.submitted_by)?.full_name ?? 'someone'}</>}
+                </div>
+              )}
+              <ItemAttachments itemId={activeItem.id} />
+            </div>
           }
           footer={
             <ReviewPreviewActions
@@ -507,8 +483,10 @@ export default function CreativeReview() {
 
       {activeItem && replaceOpen && (
         <Modal title="Replace creative" onClose={() => setReplaceOpen(false)}>
-          <ReplacePanel
-            item={activeItem}
+          <MediaSourcePanel
+            keyId={activeItem.id}
+            pathPrefix={`replace/${activeItem.id}`}
+            uploadLabel="Upload replacement image"
             onDone={async (url) => {
               await replaceItemMedia(activeItem.id, url)
               setReplaceOpen(false)
@@ -516,6 +494,14 @@ export default function CreativeReview() {
             }}
           />
         </Modal>
+      )}
+
+      {importOpen && (
+        <ImportModal
+          profileId={profile.id}
+          onClose={() => setImportOpen(false)}
+          onCreated={() => { setImportOpen(false); void load(profile.id) }}
+        />
       )}
 
       {composerOpen && (
