@@ -9,6 +9,10 @@ import { PUBLISHING_ENABLED, deleteContentItem, type CommentAutomation, type Con
 import { renderPdfPages } from '../lib/pdfPreview'
 import { relativeTime } from '../lib/time'
 import AssetUploader from './AssetUploader'
+import EditLivePostModal from './editLivePost'
+import { useAuth } from '../lib/auth'
+import { isAdminRole } from '../lib/team'
+import { editBlockReason } from '../lib/postEdits'
 
 // Shared building blocks for every "grid of posts -> click through to a native-looking
 // preview" surface in the app (Publishing's Ready to publish / Recent activity, Content
@@ -644,6 +648,11 @@ export function ActivityPreviewModal({
   const toast = useToast()
   const [editing, setEditing] = useState(false)
   const [editingAutomation, setEditingAutomation] = useState(false)
+  const [editingLive, setEditingLive] = useState(false)
+  // Admins and the owner only. Reads the previewed role too, so "View as" shows an editor's real screen.
+  const { appUser, previewAs } = useAuth()
+  const canEditLive = isAdminRole(previewAs?.role ?? appUser?.role)
+  const liveBlockReason = editBlockReason(post)
   const [title, setTitle] = useState(post.title ?? '')
   const [body, setBody] = useState(post.caption ?? '')
   const [saving, setSaving] = useState(false)
@@ -694,6 +703,7 @@ export function ActivityPreviewModal({
   const meta = STATUS_META[post.status] ?? STATUS_META.pending
 
   return (
+    <>
     <PostPreviewModal
       img={post.media_url}
       slides={post.content_items?.metadata?.slides}
@@ -770,6 +780,20 @@ export function ActivityPreviewModal({
                 View live <ExternalLink size={13} />
               </a>
             ) : null}
+            {post.status === 'published' && canEditLive && (
+              <div className="space-y-1">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-center !py-2 text-xs"
+                  disabled={!!liveBlockReason}
+                  title={liveBlockReason ?? undefined}
+                  onClick={() => setEditingLive(true)}
+                >
+                  <Pencil size={13} /> Edit live post
+                </Button>
+                {liveBlockReason && <div className="text-muted text-[11px] leading-snug">{liveBlockReason}</div>}
+              </div>
+            )}
             {canEditAutomation && (
               <Button variant="ghost" className="w-full justify-center !py-2 text-xs" onClick={() => setEditingAutomation(true)}>
                 <MessageCircle size={13} /> Edit comment automation
@@ -784,5 +808,9 @@ export function ActivityPreviewModal({
       onPrev={onPrev}
       onNext={onNext}
     />
+    {editingLive && (
+      <EditLivePostModal post={post} onClose={() => setEditingLive(false)} onChanged={onChanged} />
+    )}
+    </>
   )
 }

@@ -253,8 +253,9 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
           'Open a post, then either "Post now" or "Schedule" it for the AI-predicted best time.',
           'Watch "Recent activity" for the live status, the link to the published post, and any error message.',
           'A scheduled post can still be edited or cancelled from Recent activity before it fires.',
+          'Spotted a typo after it went live? Admins and the owner can open a published LinkedIn or YouTube post in Recent activity and click "Edit live post" to change the caption (or, for YouTube, the title and description). Every edit is recorded with who made it and whether the platform accepted it.',
         ],
-        tip: '"Post now" is public and cannot be undone, so it always asks you to confirm first. YouTube video stays manual-only by design.',
+        tip: '"Post now" is public and cannot be undone, so it always asks you to confirm first. YouTube video stays manual-only by design. Editing a live post: LinkedIn shows an "Edited" label to everyone and the image or video cannot change; Instagram, Facebook, X and ScalePods Company Page posts cannot be edited from here (Instagram does not allow it, the rest are not supported yet), and the button says why.',
       },
       {
         id: 'blog',
