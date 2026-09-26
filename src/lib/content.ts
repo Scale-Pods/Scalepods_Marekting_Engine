@@ -508,6 +508,9 @@ export async function createManualItem(input: {
   scheduledTime: string | null
   scheduledAt: string | null
   linkedinAccount: string | null
+  /** Facebook video only: 'reel' posts through /video_reels, 'video' through /videos. Written to
+   *  metadata.facebook_video_kind; the Publishing Engine treats a missing value as 'reel'. */
+  facebookVideoKind?: 'reel' | 'video' | null
   /** Set when this item was created alongside sibling items on other platforms from one composer
    *  save (cross-posting the same media to e.g. Instagram + LinkedIn at once) — lets the UI show
    *  "posted together" and group them, without changing how any single item publishes. Omitted
@@ -546,6 +549,7 @@ export async function createManualItem(input: {
         ...(input.scheduledAt ? { scheduled_at: input.scheduledAt } : {}),
         ...(input.linkedinAccount ? { linkedin_account: input.linkedinAccount } : {}),
         ...(input.slides.length > 1 ? { slides: input.slides } : {}),
+        ...(input.facebookVideoKind ? { facebook_video_kind: input.facebookVideoKind } : {}),
         ...(input.crosspostGroupId ? { crosspost_group_id: input.crosspostGroupId } : {}),
         ...(input.commentAutomation?.enabled ? { comment_automation: input.commentAutomation } : {}),
       },

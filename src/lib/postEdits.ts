@@ -31,6 +31,7 @@ export const POST_EDITS_KEY = ['post_edits'] as const
  *  description is the caption plus "\n\n#Shorts", hence the 9 characters held back. */
 export const EDIT_LIMITS = {
   linkedin: { caption: 3000 },
+  facebook: { caption: 63206 },
   youtube: { title: 100, caption: 5000 - '\n\n#Shorts'.length },
 } as const
 
@@ -48,9 +49,8 @@ export function editBlockReason(post: ScheduledPost): string | null {
   if (post.platform === 'instagram') {
     return "Instagram doesn't let a published caption be changed through its API. To fix it, delete the post on Instagram and publish it again."
   }
-  if (post.platform === 'facebook') return "Editing a live Facebook post isn't available yet."
   if (post.platform === 'x') return "X posts go out through Buffer, which can't edit a post once it is sent."
-  if (post.platform !== 'linkedin' && post.platform !== 'youtube') return `Editing a live ${post.platform} post isn't supported.`
+  if (post.platform !== 'linkedin' && post.platform !== 'youtube' && post.platform !== 'facebook') return `Editing a live ${post.platform} post isn't supported.`
   if (!post.platform_post_id) return "This post has no platform id on record, so it can't be edited."
   if (post.platform_post_id.startsWith('buffer:')) return "This post went out through Buffer, which can't edit a post once it is sent."
   if (post.platform === 'linkedin' && post.content_items?.metadata?.linkedin_account === 'company_page') {

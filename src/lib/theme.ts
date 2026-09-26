@@ -74,6 +74,7 @@ export interface ComposerDraft {
    *  carousels" — a swipeable page-by-page viewer, distinct from the multi-image carousel above). */
   mediaKind: 'image' | 'video' | 'pdf'
   videoUrl: string | null
+  facebookVideoKind?: 'reel' | 'video'
   pdfUrl: string | null
   /** 'story' posts as a Story instead of a feed post — Instagram only today, and only for a
    *  single image (carousels/video aren't story-eligible in this composer yet). Older drafts

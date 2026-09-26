@@ -212,6 +212,9 @@ export default function CreatePostModal({
   // "LinkedIn PDF carousel" — a swipeable page viewer, distinct from the multi-image carousel).
   const [mediaKind, setMediaKind] = useState<'image' | 'video' | 'pdf'>(restored?.mediaKind ?? 'image')
   const [videoUrl, setVideoUrl] = useState<string | null>(restored?.videoUrl ?? null)
+  // Facebook only: a video posts as a Reel (default) or a plain Video. Instagram/YouTube/X
+  // ignore it. Shown only when Facebook is selected with a video.
+  const [facebookVideoKind, setFacebookVideoKind] = useState<'reel' | 'video'>(restored?.facebookVideoKind ?? 'reel')
   const [pdfUrl, setPdfUrl] = useState<string | null>(restored?.pdfUrl ?? null)
   // Rendered client-side (pdfPreview.ts) purely for the "How it'll look" panel below — LinkedIn
   // Document posts really do render as a swipeable page-by-page viewer, so showing the actual
@@ -286,7 +289,7 @@ export default function CreatePostModal({
   const forcedVideo = platforms.includes('youtube')
   // Carousel (2+ images) only has an API path on LinkedIn/Instagram — true only when every
   // currently selected platform supports it, same idea as supportsVideoAll below.
-  const supportsCarouselAll = platforms.every((p) => p === 'linkedin' || p === 'instagram')
+  const supportsCarouselAll = platforms.every((p) => p === 'linkedin' || p === 'instagram' || p === 'facebook')
   const isCarousel = supportsCarouselAll && mediaKind === 'image' && images.length > 1
   // Falls back to the first selected platform whenever the tab last clicked isn't (or is no
   // longer) part of the current selection — e.g. right after adding/removing a platform.
@@ -307,7 +310,7 @@ export default function CreatePostModal({
     // X is deliberately excluded here even though Buffer could technically send it up to 4
     // images: X has no real per-slide carousel (it's a flat image grid, not the slide-by-slide
     // narrative LinkedIn/Instagram carousels are), so multi-image posts stay LinkedIn/Instagram.
-    if (images.length > 1) return p === 'linkedin' || p === 'instagram'
+    if (images.length > 1) return p === 'linkedin' || p === 'instagram' || p === 'facebook'
     if (p === 'youtube') return false // YouTube has no photo/text mode in this composer
     return true
   }
@@ -320,7 +323,7 @@ export default function CreatePostModal({
   useEffect(() => {
     if (images.length > 1) {
       setPlatforms((prev) => {
-        const next = prev.filter((p) => p === 'linkedin' || p === 'instagram')
+        const next = prev.filter((p) => p === 'linkedin' || p === 'instagram' || p === 'facebook')
         return next.length ? next : ['instagram']
       })
     }
@@ -381,13 +384,13 @@ export default function CreatePostModal({
   useEffect(() => {
     if (done) return
     saveComposerDraft({
-      platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat,
+      platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, facebookVideoKind, pdfUrl, postFormat,
       caption, hashtagsInput, cta, commentAutomationEnabled, commentKeyword, commentDmMessage, commentAssetUrl,
       followGateEnabled, followGateMessage, followGateButtonText, followGateNotFollowingMessage,
       publicReplyEnabled, publicReplyMessage,
       when, scheduledDate, scheduledTime,
     })
-  }, [done, platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, pdfUrl, postFormat, caption, hashtagsInput, cta, commentAutomationEnabled, commentKeyword, commentDmMessage, commentAssetUrl, followGateEnabled, followGateMessage, followGateButtonText, followGateNotFollowingMessage, publicReplyEnabled, publicReplyMessage, when, scheduledDate, scheduledTime])
+  }, [done, platforms, linkedinAccount, perPlatformCaption, captionOverrides, images, mediaKind, videoUrl, facebookVideoKind, pdfUrl, postFormat, caption, hashtagsInput, cta, commentAutomationEnabled, commentKeyword, commentDmMessage, commentAssetUrl, followGateEnabled, followGateMessage, followGateButtonText, followGateNotFollowingMessage, publicReplyEnabled, publicReplyMessage, when, scheduledDate, scheduledTime])
 
   function discardDraft() {
     clearComposerDraft()
@@ -481,6 +484,7 @@ export default function CreatePostModal({
           scheduledTime: scheduling && scheduledTime ? scheduledTime : null,
           scheduledAt: targetInstant ? targetInstant.toISOString() : null,
           linkedinAccount: p === 'linkedin' ? linkedinAccount : null,
+          facebookVideoKind: p === 'facebook' && mediaKind === 'video' ? facebookVideoKind : null,
           crosspostGroupId,
           // Instagram-only, and only on the Instagram sibling when cross-posting — the other
           // platforms' items must not carry an automation their branch can't honour.
@@ -693,6 +697,17 @@ export default function CreatePostModal({
                   </>
                 ) : null}
               </div>
+              {mediaKind === 'video' && platforms.includes('facebook') && postFormat !== 'story' && (
+                <div className="flex items-center gap-2 flex-wrap mt-2">
+                  <span className="text-muted text-xs">On Facebook:</span>
+                  <button type="button" onClick={() => setFacebookVideoKind('reel')} className={facebookVideoKind === 'reel' ? 'badge badge-blue' : 'badge badge-blue opacity-40'} style={{ textTransform: 'none' }}>
+                    Reel
+                  </button>
+                  <button type="button" onClick={() => setFacebookVideoKind('video')} className={facebookVideoKind === 'video' ? 'badge badge-blue' : 'badge badge-blue opacity-40'} style={{ textTransform: 'none' }}>
+                    Video
+                  </button>
+                </div>
+              )}
               {/* Story's own Photo/Video choice — Instagram Stories support video (media_type=
                   STORIES + video_url, same container flow as Reels) just as much as a static
                   image, this just wasn't wired up before. */}
@@ -809,18 +824,20 @@ export default function CreatePostModal({
                 ? 'Required — posted as a native LinkedIn Document (the same mechanism behind what people call a "LinkedIn PDF carousel" — a swipeable page-by-page viewer). Up to 100MB / 300 pages.'
                 : mediaKind === 'video'
                 ? isMultiPlatform
-                  ? `Required — one video, posted as ${platforms.map((p) => (p === 'instagram' ? 'a Reel on Instagram' : p === 'youtube' ? 'a Short on YouTube' : p === 'x' ? 'a video on X' : 'a video on Facebook')).join(', ')}. Processing can take up to ~1 minute per platform after you save.`
+                  ? `Required — one video, posted as ${platforms.map((p) => (p === 'instagram' ? 'a Reel on Instagram' : p === 'youtube' ? 'a Short on YouTube' : p === 'x' ? 'a video on X' : facebookVideoKind === 'reel' ? 'a Reel on Facebook' : 'a video on Facebook')).join(', ')}. Processing can take up to ~1 minute per platform after you save.`
                   : platforms[0] === 'youtube'
                     ? 'Required — vertical video, up to 3 minutes, posted as a YouTube Short.'
                     : platforms[0] === 'instagram'
                       ? postFormat === 'story'
                         ? 'Required — vertical video, posted as an Instagram Story (expires after 24h). Processing can take up to ~1 minute after you save.'
                         : 'Required — vertical video, posted as an Instagram Reel. Processing can take up to ~1 minute after you save.'
-                      : 'Required — upload the video file to post.'
+                      : platforms[0] === 'facebook'
+                        ? `Required — posted as a ${facebookVideoKind === 'reel' ? 'Reel (vertical, up to 90 seconds)' : 'video'} on Facebook. Processing can take up to ~2 minutes after you save.`
+                        : 'Required — upload the video file to post.'
                 : postFormat === 'story'
                   ? 'A photo Story is a single image.'
                   : supportsCarouselAll
-                    ? `Optional — leave blank for a text-only post. Add 2 or more to post as a carousel${hasLinkedin ? ' (swipeable gallery)' : ''}.`
+                    ? `Optional — leave blank for a text-only post. Add 2 or more to post as a carousel${hasLinkedin ? ' (swipeable gallery)' : ''}${platforms.includes('facebook') ? ' (a multi-photo post on Facebook)' : ''}.`
                     : 'Optional — leave blank for a text-only post.'}
             </p>
           </div>

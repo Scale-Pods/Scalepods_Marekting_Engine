@@ -31,7 +31,8 @@ export default function EditLivePostModal({
   const toast = useToast()
   const qc = useQueryClient()
   const isYouTube = post.platform === 'youtube'
-  const platformName = isYouTube ? 'YouTube' : 'LinkedIn'
+  const isFacebook = post.platform === 'facebook'
+  const platformName = isYouTube ? 'YouTube' : isFacebook ? 'Facebook' : 'LinkedIn'
   const [caption, setCaption] = useState(post.caption ?? '')
   const [title, setTitle] = useState(post.title ?? '')
   const [saving, setSaving] = useState(false)
@@ -49,7 +50,7 @@ export default function EditLivePostModal({
 
   const current = mine ? edits.find((e) => e.id === mine) ?? null : null
   const open = edits.find(isOpenEdit) ?? null
-  const captionLimit = isYouTube ? EDIT_LIMITS.youtube.caption : EDIT_LIMITS.linkedin.caption
+  const captionLimit = isYouTube ? EDIT_LIMITS.youtube.caption : isFacebook ? EDIT_LIMITS.facebook.caption : EDIT_LIMITS.linkedin.caption
   const titleTooLong = isYouTube && title.trim().length > EDIT_LIMITS.youtube.title
   const captionTooLong = caption.length > captionLimit
   const changed = caption.trim() !== (post.caption ?? '').trim() || (isYouTube && title.trim() !== (post.title ?? '').trim())
@@ -145,7 +146,7 @@ export default function EditLivePostModal({
             <p className="text-muted text-xs">
               {isYouTube
                 ? 'Only the title and description change — the video stays as it is. "#Shorts" is added to the end of the description for you.'
-                : 'Hashtags are part of the caption, so change them right in the text. LinkedIn marks an edited post "Edited" for everyone, and the image or video cannot be changed.'}
+                : `Hashtags are part of the caption, so change them right in the text. ${platformName} marks an edited post "Edited" for everyone, and the image or video cannot be changed.`}
             </p>
 
             <Button className="w-full justify-center" loading={saving} disabled={!changed || invalid || !!open} onClick={save}>

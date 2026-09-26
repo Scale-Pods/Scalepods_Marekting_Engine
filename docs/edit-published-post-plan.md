@@ -1,6 +1,6 @@
 # Edit a published post — implementation plan
 
-Status: **draft, awaiting your go-ahead.** Written 2026-09-25 from the platform-docs research
+Status: **Phases 1 and 2 built; Phase 2 (Facebook) verified live 2026-09-25.** (Original status: draft.) Written 2026-09-25 from the platform-docs research
 plus a read of the live Publishing Engine (`BT0liCZ4RbZDTBjY`), the schema, and the UI. Nothing
 below is built.
 
@@ -114,3 +114,17 @@ the post's likes and comments, so it's a separate decision, not part of this.
    each from Hrishikesh, Adnan and Raunak, and one YouTube Short.
 2. Confirm edits should be **admins/owner only** (`publishing: full`), not editors.
 3. Whether to plan Phases 2–3 now, or stop after Phase 1 and see how it's used.
+
+## 7. Phase 2 outcome (Facebook, 2026-09-25)
+
+- Root cause of the missing ids: the engine's Meta credential is a system-user token, and Facebook
+  rejected Page posts with it (403 `publish_actions`). `FB Result` swallowed the error and logged
+  "published" with no id, so the two earlier Facebook rows never reached the Page. The engine now
+  fetches a Page token (`GET /{page}?fields=access_token`) and posts with it; `FB Result` throws when
+  there is no id.
+- Publishing verified live for text, photo, 2-photo carousel, plain video and Reel; ids stored.
+- `POST /{page_post_id}` with `message` (feed/photo/carousel) or `POST /{video_id}` with
+  `description` (video/Reel) edits the live post. Verified for all five types, and through the app
+  path (post_edits -> sp-edit-published) for text and Reel.
+- Wired: `post_edit_claim` allows facebook and returns `fb_page_id`; Edit Published Post workflow
+  has a Facebook route; `editBlockReason`, `EDIT_LIMITS.facebook` and the dialog updated.
