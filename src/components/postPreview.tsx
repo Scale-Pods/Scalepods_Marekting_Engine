@@ -4,7 +4,7 @@ import { Eye, X, ChevronLeft, ChevronRight, CheckCircle2, Clock, Loader2, XCircl
 import { PlatformBadge } from './mediaUi'
 import { Badge, Button } from './ui'
 import { useToast, toastMessage } from './Toast'
-import { cancelScheduledPost, editScheduledPost, saveCommentAutomation, triggerPublish, type ScheduledPost } from '../lib/publishing'
+import { cancelScheduledPost, editScheduledPost, isStuckPublishing, saveCommentAutomation, triggerPublish, type ScheduledPost } from '../lib/publishing'
 import { PUBLISHING_ENABLED, deleteContentItem, type CommentAutomation, type ContentItem, type ContentSlide } from '../lib/content'
 import { renderPdfPages } from '../lib/pdfPreview'
 import { relativeTime } from '../lib/time'
@@ -45,8 +45,18 @@ export const STATUS_META: Record<string, { label: string; tone: 'green' | 'blue'
   published: { label: 'Published', tone: 'green', icon: CheckCircle2 },
   scheduled: { label: 'Scheduled', tone: 'blue', icon: Clock },
   publishing: { label: 'Publishing…', tone: 'blue', icon: Loader2 },
+  // Not a real scheduled_posts.status value — postStatusMeta() below substitutes this in place
+  // of 'publishing' once isStuckPublishing() says a row has been "in flight" too long.
+  stuck: { label: 'Stuck', tone: 'orange', icon: XCircle },
   pending: { label: 'Pending', tone: 'blue', icon: Loader2 },
   failed: { label: 'Failed', tone: 'orange', icon: XCircle },
+}
+
+/** STATUS_META keyed by the row's real status, except a 'publishing' row past isStuckPublishing()
+ *  reads as 'stuck' instead — everywhere a tile or the preview modal picks its badge/icon. */
+export function postStatusMeta(post: Pick<ScheduledPost, 'status' | 'scheduled_time' | 'created_at'>) {
+  const key = isStuckPublishing(post) ? 'stuck' : post.status
+  return STATUS_META[key] ?? STATUS_META.pending
 }
 
 export function ContentTypeChip({ type }: { type: string }) {
@@ -700,7 +710,8 @@ export function ActivityPreviewModal({
     }
   }
 
-  const meta = STATUS_META[post.status] ?? STATUS_META.pending
+  const meta = postStatusMeta(post)
+  const stuck = isStuckPublishing(post)
 
   return (
     <>
@@ -745,6 +756,12 @@ export function ActivityPreviewModal({
                   : ''}
             </div>
             {post.error && <div className="text-terracotta text-xs">{post.error}</div>}
+            {stuck && !post.error && (
+              <div className="text-terracotta text-xs">
+                This has been stuck "publishing" for a while with no result recorded — it likely
+                didn't go out. Contact support before assuming it's live.
+              </div>
+            )}
           </>
         )
       }

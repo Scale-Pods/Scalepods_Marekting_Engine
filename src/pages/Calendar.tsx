@@ -6,9 +6,9 @@ import type { ContentItem, ContentStatus } from '../lib/content'
 import { PageHeader, Badge, Button, EmptyState, Spinner, Modal } from '../components/ui'
 import { PlatformBadge } from '../components/mediaUi'
 import {
-  PostTile, PostPreviewModal, ActivityPreviewModal, ReadyPreviewActions, ContentTypeChip, STATUS_META,
+  PostTile, PostPreviewModal, ActivityPreviewModal, ReadyPreviewActions, ContentTypeChip, postStatusMeta,
 } from '../components/postPreview'
-import type { ScheduledPost } from '../lib/publishing'
+import { isStuckPublishing, type ScheduledPost } from '../lib/publishing'
 import CreatePostModal from '../components/CreatePostModal'
 
 // Tone for content_items that haven't reached scheduled_posts yet — the pipeline stages, not
@@ -73,7 +73,7 @@ function buildEntries(items: ContentItem[], posts: ScheduledPost[]): Map<string,
 // Compact one-line row — what actually fits inside a ~104px day cell in the month grid.
 function DayChip({ entry, onClick }: { entry: DayEntry; onClick: () => void }) {
   const platform = entry.kind === 'post' ? entry.post.platform : entry.item.platform
-  const tone = entry.kind === 'post' ? (STATUS_META[entry.post.status] ?? STATUS_META.pending).tone : ITEM_STATUS_TONE[entry.item.status]
+  const tone = entry.kind === 'post' ? postStatusMeta(entry.post).tone : ITEM_STATUS_TONE[entry.item.status]
   const label = entry.kind === 'post'
     ? entry.post.title || entry.post.caption || `${entry.post.platform} post`
     : entry.item.title || entry.item.body || `${entry.item.platform} post`
@@ -97,7 +97,7 @@ function DayChip({ entry, onClick }: { entry: DayEntry; onClick: () => void }) {
 // a line of text.
 function DayTile({ entry, onClick }: { entry: DayEntry; onClick: () => void }) {
   if (entry.kind === 'post') {
-    const meta = STATUS_META[entry.post.status] ?? STATUS_META.pending
+    const meta = postStatusMeta(entry.post)
     const Icon = meta.icon
     return (
       <PostTile
@@ -107,7 +107,7 @@ function DayTile({ entry, onClick }: { entry: DayEntry; onClick: () => void }) {
         topRight={
           <Icon
             size={14}
-            className={`text-white ${entry.post.status === 'publishing' || entry.post.status === 'pending' ? 'animate-spin' : ''}`}
+            className={`text-white ${(entry.post.status === 'publishing' && !isStuckPublishing(entry.post)) || entry.post.status === 'pending' ? 'animate-spin' : ''}`}
             style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.7))' }}
           />
         }

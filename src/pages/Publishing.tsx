@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Send, Clock, Loader2, Link2 } from 'lucide-react'
 import { useProfile, useApprovedItems, useScheduledPosts } from '../lib/queries'
 import { PageHeader, Badge, EmptyState, Spinner } from '../components/ui'
-import { PostTile, PostPreviewModal, ActivityPreviewModal, ReadyPreviewActions, ContentTypeChip, STATUS_META, TimeBadge } from '../components/postPreview'
+import { PostTile, PostPreviewModal, ActivityPreviewModal, ReadyPreviewActions, ContentTypeChip, postStatusMeta, TimeBadge } from '../components/postPreview'
+import { isStuckPublishing } from '../lib/publishing'
 
 const ACTIVITY_FILTERS = ['all', 'published', 'scheduled', 'failed'] as const
 type ActivityFilter = (typeof ACTIVITY_FILTERS)[number]
@@ -158,8 +159,9 @@ export default function Publishing() {
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-1.5">
               {filteredPosts.map((p, i) => {
-                const meta = STATUS_META[p.status] ?? STATUS_META.pending
+                const meta = postStatusMeta(p)
                 const Icon = meta.icon
+                const spinning = (p.status === 'publishing' && !isStuckPublishing(p)) || p.status === 'pending'
                 return (
                   <PostTile
                     key={p.id}
@@ -169,7 +171,7 @@ export default function Publishing() {
                     topRight={
                       <Icon
                         size={14}
-                        className={`text-white ${p.status === 'publishing' || p.status === 'pending' ? 'animate-spin' : ''}`}
+                        className={`text-white ${spinning ? 'animate-spin' : ''}`}
                         style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.7))' }}
                       />
                     }

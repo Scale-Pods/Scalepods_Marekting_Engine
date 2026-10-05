@@ -23,6 +23,25 @@ import { renderPdfPages } from '../lib/pdfPreview'
 // values stored/compared as 24h "HH:MM" so the rest of the composer's date-math is untouched.
 const SCHEDULE_TIMES = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0')).flatMap((h) => [`${h}:00`, `${h}:30`])
 
+// A slot has to be at least this far ahead to be offered. The scheduler only wakes on :00/:30, and
+// saving the post takes a few seconds, so a slot 1-2 minutes away could be missed until the next tick.
+const SCHEDULE_LEAD_MS = 5 * 60_000
+
+/** Today as YYYY-MM-DD in the browser's own timezone (not UTC — `toISOString` would flip the
+ *  date around midnight for anyone east of Greenwich, e.g. IST). */
+function localDateString(d = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+/** The half-hour marks still bookable on `date`: all 48 for a future day, only the ones past
+ *  now + the lead time for today, none for a day already gone. */
+function availableTimes(date: string): string[] {
+  if (!date) return SCHEDULE_TIMES
+  const cutoff = Date.now() + SCHEDULE_LEAD_MS
+  return SCHEDULE_TIMES.filter((t) => new Date(`${date}T${t}`).getTime() > cutoff)
+}
+
 // X's standard (non-Premium) character limit — the ScalePods X account isn't on Premium, so this
 // is the real ceiling Buffer/X will enforce. Mirrors the exact text the Publishing Engine's
 // n8n "Build Context" node sends (body + '\n\n' + hashtags), so this counter can't drift from
@@ -48,7 +67,7 @@ function formatTime12h(hhmm: string): string {
  *  the trigger's real bounding rect on open, so the list always fits in whichever direction
  *  (above/below) actually has room, scrolling internally rather than ever escaping the window —
  *  same positioning engine as the split HH/MM version, just one list instead of two. */
-function ScheduleTimeSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function ScheduleTimeSelect({ value, date, onChange }: { value: string; date: string; onChange: (value: string) => void }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number } | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -132,7 +151,10 @@ function ScheduleTimeSelect({ value, onChange }: { value: string; onChange: (val
               boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
             }}
           >
-            {SCHEDULE_TIMES.map((t) => (
+            {availableTimes(date).length === 0 && (
+              <div className="px-3 py-2 text-xs text-muted">No time slots left on this date — pick a later day.</div>
+            )}
+            {availableTimes(date).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -379,6 +401,18 @@ export default function CreatePostModal({
     : null
   const targetValid = Boolean(targetInstant && !Number.isNaN(targetInstant.getTime()))
   const targetInPast = targetValid && targetInstant!.getTime() <= Date.now()
+
+  // Keep the picked date/time bookable: a date that has already gone (e.g. from a restored draft)
+  // is cleared, and so is a time that is no longer offered for the chosen date (switching to
+  // today after picking an early slot, or a slot that has since slipped into the past).
+  useEffect(() => {
+    if (scheduledDate && scheduledDate < localDateString()) {
+      setScheduledDate('')
+      setScheduledTime('')
+    } else if (scheduledDate && scheduledTime && !availableTimes(scheduledDate).includes(scheduledTime)) {
+      setScheduledTime('')
+    }
+  }, [scheduledDate, scheduledTime])
 
   // Autosave on every change (cheap — it's a handful of strings in localStorage).
   useEffect(() => {
@@ -1089,9 +1123,10 @@ export default function CreatePostModal({
                     type="date"
                     className="input !w-auto !py-1.5 text-xs"
                     value={scheduledDate}
+                    min={localDateString()}
                     onChange={(e) => setScheduledDate(e.target.value)}
                   />
-                  <ScheduleTimeSelect value={scheduledTime} onChange={setScheduledTime} />
+                  <ScheduleTimeSelect value={scheduledTime} date={scheduledDate} onChange={setScheduledTime} />
                 </>
               )}
             </div>
@@ -1103,6 +1138,8 @@ export default function CreatePostModal({
             {when === 'date' && (
               <p className="text-muted text-xs mt-1.5">
                 Only half-hour marks (e.g. 2:00, 2:30) are pickable — the scheduler that fires this checks for due posts every 30 minutes.
+                {scheduledDate === localDateString() && ' For today, only slots from now onward are listed.'}
+                {` Times are in your timezone (${Intl.DateTimeFormat().resolvedOptions().timeZone}).`}
               </p>
             )}
             {targetInPast && (

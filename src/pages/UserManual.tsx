@@ -251,8 +251,9 @@ const MANUAL_GROUPS: { section: string; blurb: string; entries: ManualEntry[] }[
         steps: [
           '"Ready to publish" lists everything approved and waiting.',
           'Open a post, then either "Post now" or "Schedule" it for the AI-predicted best time.',
-          'Watch "Recent activity" for the live status, the link to the published post, and any error message.',
+          'Watch "Recent activity" for the live status, the link to the published post, and any error message. A scheduled post that\'s been "Publishing…" for over 10 minutes with nothing recorded shows as "Stuck" instead — a sign it likely didn\'t go out; contact support rather than assume it\'s live.',
           'A scheduled post can still be edited or cancelled from Recent activity before it fires.',
+          'Setting a target date in Create Post: pick the day, then a half-hour time. Past days are greyed out in the date box, and when you pick today only the times still ahead (at least 5 minutes from now) are listed.',
           'Facebook takes a text post, one photo, several photos (a multi-photo post), or a video. When you pick a video and Facebook is selected, choose "Reel" (vertical, up to 90 seconds) or a plain "Video" beside it.',
           'Spotted a typo after it went live? Admins and the owner can open a published LinkedIn, Facebook or YouTube post in Recent activity and click "Edit live post" to change the caption (or, for YouTube, the title and description; for a Facebook video or Reel, its description). Every edit is recorded with who made it and whether the platform accepted it.',
         ],

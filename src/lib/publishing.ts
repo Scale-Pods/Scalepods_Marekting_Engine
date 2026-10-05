@@ -71,6 +71,21 @@ export async function saveCommentAutomation(contentItemId: string, automation: C
   if (error) throw error
 }
 
+/**
+ * A 'publishing' row is normally in flight for a few seconds. Past 10 minutes it's either a
+ * genuine hung run (the Publishing Engine workflow was deactivated, or died somewhere the error
+ * workflow itself couldn't reach) or, before 2026-09-28, the orphaned-row bug — the claimed row
+ * was never touched again because the result got logged to a brand-new row instead. Shown as a
+ * distinct "stuck" state instead of spinning forever, so it reads as "something needs a look",
+ * not as an active in-progress post. Purely a display decision — never writes back to the row.
+ */
+export function isStuckPublishing(post: Pick<ScheduledPost, 'status' | 'scheduled_time' | 'created_at'>): boolean {
+  if (post.status !== 'publishing') return false
+  const since = post.scheduled_time ?? post.created_at
+  if (!since) return false
+  return Date.now() - new Date(since).getTime() > 10 * 60 * 1000
+}
+
 /** Fires the Publishing Engine (M9). scheduleNow=true posts immediately; false uses AI best-time scheduling. */
 export async function triggerPublish(itemId: string, scheduleNow: boolean): Promise<void> {
   if (!PUBLISHING_ENABLED) throw new Error('Publishing is disabled (PUBLISHING_ENABLED=false)')
