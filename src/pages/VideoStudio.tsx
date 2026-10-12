@@ -466,7 +466,7 @@ function ShotEditor({
       )}
       {shot.status === 'done' && shot.clipUrl && (
         <>
-          <video src={shot.clipUrl} controls className="w-full rounded-lg mt-1" style={{ maxHeight: 220, background: 'var(--fill-tertiary)' }} />
+          <video src={shot.clipUrl} controls preload="metadata" className="w-full rounded-lg mt-1" style={{ maxHeight: 220, background: 'var(--fill-tertiary)' }} />
           <FeedbackControl
             feedback={shot.feedback}
             onChange={(f) => set({ feedback: f })}
@@ -881,6 +881,7 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
               <video
                 src={job.final_video_url!}
                 controls
+                preload="metadata"
                 className="w-full rounded-lg"
                 style={{ maxHeight: 480, background: 'var(--fill-tertiary)' }}
               />

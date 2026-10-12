@@ -369,7 +369,7 @@ export function PostPreviewModal({
               </a>
             </div>
           ) : img && isVideoUrl(img) ? (
-            <video src={img} controls className="max-h-[45vh] md:max-h-[85vh] w-full object-contain" />
+            <video src={img} controls preload="metadata" className="max-h-[45vh] md:max-h-[85vh] w-full object-contain" />
           ) : img ? (
             <img src={img} alt="" className="max-h-[45vh] md:max-h-[85vh] w-full object-contain" />
           ) : (

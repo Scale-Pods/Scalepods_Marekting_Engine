@@ -224,7 +224,7 @@ function JobDetail({ job, onChanged }: { job: CarouselJob; onChanged: () => void
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {job.slide_urls.map((url, i) => (
                 <div key={url} className="space-y-1.5">
-                  <video src={url} controls className="w-full rounded-lg" style={{ aspectRatio: '4/5', background: 'var(--fill-tertiary)' }} />
+                  <video src={url} controls preload="metadata" className="w-full rounded-lg" style={{ aspectRatio: '4/5', background: 'var(--fill-tertiary)' }} />
                   <a href={url} target="_blank" rel="noreferrer" className="text-xs text-sage flex items-center gap-1">
                     <Download size={12} /> Slide {i + 1}
                   </a>

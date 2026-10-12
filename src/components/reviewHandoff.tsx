@@ -316,7 +316,7 @@ export function ImportModal({
         <div className="space-y-4">
           <div className="rounded-lg overflow-hidden flex justify-center" style={{ background: 'var(--fill-tertiary)' }}>
             {isVideo
-              ? <video src={mediaUrl} controls className="max-h-56" />
+              ? <video src={mediaUrl} controls preload="metadata" className="max-h-56" />
               : <img src={mediaUrl} alt="Imported creative" className="max-h-56 object-contain" />}
           </div>
           <div>

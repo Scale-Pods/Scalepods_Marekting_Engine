@@ -80,7 +80,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Editorial photography, full-frame camera, 35mm lens, shallow depth of field, natural window light with soft falloff, muted desaturated grade, real materials and real textures, generous negative space in the upper third. ${BRAND_PALETTE}`,
     avoid: 'illustration, cartoon, 3D render, clip-art, stock-photo smiling, text, logos, watermarks',
     defaultRatio: '4:5',
-    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/bd371372-3f9f-48fc-bcca-92201bc63c79/1788354104767-0.png',
+    thumbnail: '/studio-styles/editorial-photo.jpg',
   },
   {
     id: 'cinematic-portrait',
@@ -89,7 +89,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Cinematic portrait, 85mm lens, tight key light with deep falloff into shadow, teal-and-warm colour grade, film grain, subject off-centre with clean space beside them. ${BRAND_PALETTE}`,
     avoid: 'flat lighting, illustration, cartoon, clip-art, text, logos, distorted hands or faces',
     defaultRatio: '4:5',
-    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/d381b607-7778-4635-8601-2176c9e274b2/1788354099846-0.png',
+    thumbnail: '/studio-styles/cinematic-portrait.jpg',
   },
   {
     id: 'typographic-poster',
@@ -98,7 +98,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `A Swiss-style typographic poster where the lettering IS the artwork and fills most of the frame. Set the words in a heavy geometric sans-serif, tight tracking, ranged left on a strict grid, broken across two or three lines with extreme scale contrast between the key word and the rest. Flat colour fields, generous margins, print-quality flatness, no imagery behind the type beyond a simple shape or rule. ${BRAND_PALETTE}`,
     avoid: 'photography, 3D, gradients, drop shadows, decorative or script fonts, extra words beyond the ones specified, gibberish lettering, clutter',
     defaultRatio: '1:1',
-    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/a3b7f2bf-6a16-4f4c-b8cf-6f40b52f5374/1788354093661-0.png',
+    thumbnail: '/studio-styles/typographic-poster.jpg',
     rendersText: true,
   },
   {
@@ -108,7 +108,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Clean data-visualisation card built around ONE very large numeral, with thin precise chart geometry supporting it, generous whitespace, subtle 1px rules, dashboard-grade restraint, flat vector rendering. The single figure is the hero; everything else is quiet. ${BRAND_PALETTE}`,
     avoid: 'photography, 3D, skeuomorphism, dense fake dashboards, small unreadable labels, paragraphs of text, gibberish lettering, clip-art',
     defaultRatio: '1:1',
-    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/5b176b8b-c64f-4bef-beda-5813cc9026b6/1788354071295-0.png',
+    thumbnail: '/studio-styles/data-card.jpg',
   },
   {
     id: 'isometric-3d',
@@ -117,7 +117,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Isometric 3D render, soft studio lighting, matte clay materials with a single glossy accent, shallow ambient occlusion, objects arranged on a clean plane, generous space above. ${BRAND_PALETTE}`,
     avoid: 'photorealism, harsh specular highlights, cluttered scene, text, logos',
     defaultRatio: '1:1',
-    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/f0c1195b-1161-404d-b6c3-53bc482fe1f7/1788354092538-0.png',
+    thumbnail: '/studio-styles/isometric-3d.jpg',
   },
   {
     id: 'neon-tech',
@@ -126,7 +126,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Dark technical composition, volumetric glow, thin luminous line-work over deep navy, controlled bloom, crisp high-contrast edges, one focal light source. ${BRAND_PALETTE}`,
     avoid: 'washed-out haze, fog covering the frame, low contrast, cartoon figures, clip-art, text',
     defaultRatio: '1:1',
-    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/2f6022b4-ac84-42ec-bf0a-a18bf5074da6/1788354077089-0.png',
+    thumbnail: '/studio-styles/neon-tech.jpg',
   },
   {
     id: 'paper-collage',
@@ -135,7 +135,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Cut-paper collage, layered matte stock with visible torn edges and real drop shadows, tactile grain, analogue imperfection, bold simple shapes. ${BRAND_PALETTE}`,
     avoid: 'digital gradients, glossy 3D, photography, text, busy layering',
     defaultRatio: '1:1',
-    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/7efcb0ec-b770-4ea7-a91f-423bdafffff2/1788354941769-0.png',
+    thumbnail: '/studio-styles/paper-collage.jpg',
   },
   {
     id: 'ui-mockup',
@@ -153,7 +153,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Hand-drawn explanatory diagram, confident marker strokes, boxes and arrows, deliberate imperfection, plenty of breathing room, two-colour discipline. ${BRAND_PALETTE}`,
     avoid: 'childish doodles, cartoon characters, stick figures, clip-art, dense text, photography',
     defaultRatio: '16:9',
-    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/319abebc-c89f-423f-90b0-9d9c999e3d13/1788354098000-0.png',
+    thumbnail: '/studio-styles/whiteboard-diagram.jpg',
   },
   {
     id: 'gradient-mesh',
@@ -171,7 +171,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Split composition, hard vertical divide, visually distinct treatment either side — cluttered and desaturated on the left, ordered and accented on the right, symmetrical framing. ${BRAND_PALETTE}`,
     avoid: 'text labels, arrows, clip-art, cartoon figures, uneven or tilted divide',
     defaultRatio: '1:1',
-    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/1fdeff34-d3a0-48cf-bcdc-9f8c49a3c93f/1788354771490-0.png',
+    thumbnail: '/studio-styles/split-before-after.jpg',
   },
   {
     id: 'flat-vector',
@@ -189,7 +189,7 @@ export const STUDIO_STYLES: StudioStyle[] = [
     promptFragment: `Extreme macro photography, razor-thin depth of field, dramatic raking light, rich material detail filling the frame, abstract and unplaceable. ${BRAND_PALETTE}`,
     avoid: 'recognisable objects, people, illustration, 3D render, text',
     defaultRatio: '1:1',
-    thumbnail: 'https://oyfudqqypvpqsyrjqnfy.supabase.co/storage/v1/object/public/content-media/studio/f279bb64-fa89-4f3f-8d73-8da3ca21c356/1788354276900-0.png',
+    thumbnail: '/studio-styles/macro-texture.jpg',
   },
   {
     id: 'risograph',

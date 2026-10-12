@@ -766,7 +766,7 @@ export default function CreatePostModal({
             {mediaKind === 'video' ? (
               videoUrl ? (
                 <div className="relative w-40 mb-2">
-                  <video src={videoUrl} controls className="w-40 rounded-lg" />
+                  <video src={videoUrl} controls preload="metadata" className="w-40 rounded-lg" />
                   <button
                     type="button"
                     onClick={() => setVideoUrl(null)}
@@ -1207,7 +1207,7 @@ export default function CreatePostModal({
             )
           ) : mediaKind === 'video' ? (
             videoUrl ? (
-              <video src={videoUrl} controls className="w-full rounded-panel" style={{ border: '1px solid var(--border-subtle)' }} />
+              <video src={videoUrl} controls preload="metadata" className="w-full rounded-panel" style={{ border: '1px solid var(--border-subtle)' }} />
             ) : (
               <div
                 className="rounded-panel flex items-center justify-center text-muted text-xs py-16"
