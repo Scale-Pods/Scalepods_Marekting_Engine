@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { UploadCloud } from 'lucide-react'
 import { supabase, sanitizeStorageFilename } from '../lib/supabase'
+import { usesR2, uploadToR2 } from '../lib/mediaUpload'
 import { Spinner } from './ui'
 
 export default function AssetUploader({
@@ -26,10 +27,14 @@ export default function AssetUploader({
     setError(null)
     try {
       const path = `${pathPrefix}/${Date.now()}-${sanitizeStorageFilename(file.name)}`
-      const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, { upsert: true })
-      if (upErr) throw upErr
-      const { data } = supabase.storage.from(bucket).getPublicUrl(path)
-      onUploaded(data.publicUrl, file)
+      if (usesR2(bucket, path)) {
+        onUploaded(await uploadToR2(path, file), file)
+      } else {
+        const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, { upsert: true })
+        if (upErr) throw upErr
+        const { data } = supabase.storage.from(bucket).getPublicUrl(path)
+        onUploaded(data.publicUrl, file)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {

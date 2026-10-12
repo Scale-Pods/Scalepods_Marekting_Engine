@@ -47,6 +47,14 @@ const SLIDE_COUNTS = [3, 4, 5, 6, 7, 8]
 
 /** Chip row used for platform / ratio / variant count — same pill treatment as the tabs on
  *  Strategy and the view toggle on the content calendar, so the page doesn't invent a new one. */
+/** A style card's preview picture. Falls back to the plain image icon when the picture is missing
+ *  or fails to load, so one lost file can never leave a broken-image mark in the gallery. */
+function StyleThumb({ src, alt }: { src?: string | null; alt: string }) {
+  const [failed, setFailed] = useState(false)
+  if (!src || failed) return <ImageIcon size={18} className="text-muted" />
+  return <img src={src} alt={alt} className="w-full h-full object-cover" onError={() => setFailed(true)} />
+}
+
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -652,11 +660,7 @@ export default function AIStudio() {
                       className="w-full flex items-center justify-center"
                       style={{ aspectRatio: '4 / 3', background: 'var(--fill-tertiary)' }}
                     >
-                      {s.thumbnail ? (
-                        <img src={s.thumbnail} alt={s.label} className="w-full h-full object-cover" />
-                      ) : (
-                        <ImageIcon size={18} className="text-muted" />
-                      )}
+                      <StyleThumb src={s.thumbnail} alt={s.label} />
                     </div>
                     <div className="px-2.5 py-2">
                       <div className="text-xs font-semibold">{s.label}</div>
