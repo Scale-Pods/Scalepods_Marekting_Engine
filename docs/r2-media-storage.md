@@ -42,9 +42,15 @@ Beyond that: $0.015 per GB-month (100 GB is about $1.50).
 
 191 files (649 MB) were copied from Supabase to R2 with a size check on each, and every media link in
 16 database columns was rewritten to the R2 address (184 distinct links, all checked against R2).
-Backups of the changed rows: tables `zz_bak_*`. Copy list: `zz_migrate_list`. The Supabase originals
-are still in place; delete them (after checking the code and workflows for hardcoded references; see
-the AI Studio thumbnail incident) once the app has been confirmed working, then drop the `zz_*` tables.
+The Supabase originals were **deleted on 2026-10-12** after these checks: no code, database column or n8n
+workflow referenced a migrated file; each of the 191 files was re-checked on R2 (exists, same size)
+immediately before deletion; deletion went through the Storage API. Supabase storage fell from about
+694 MB to about 47 MB (blog images, brand assets, Carousel Studio output, ticket attachments).
+The helper tables (`zz_*`) and the temporary edge functions (`tmp-storage-cleanup`, `r2-selftest`,
+`r2-migrate`, `tmp-supabase-media-delete`, now 410 stubs) are no longer needed; the stubs can be
+removed from the Supabase dashboard. **R2 now holds the only copy of these files**, so do not empty
+the bucket. A composer draft saved in someone's browser before the migration may still point at an old
+Supabase link; re-attach the file if one shows broken.
 
 ## Not moved yet
 
