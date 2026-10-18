@@ -680,7 +680,10 @@ async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, log
   const clips = [];
   for (let i = 0; i < shots.length; i++) {
     const shot = shots[i];
-    if (onProgress) onProgress({ phase: 'shot_generating', slideIndex: i + 1, slideTotal: shots.length });
+    // Stamped once per shot and repeated on every poll tick, so the FE can show a countdown that
+    // is still right after a page reload (it cannot know when a shot began from the phase alone).
+    const shotStartedAt = new Date().toISOString();
+    if (onProgress) onProgress({ phase: 'shot_generating', slideIndex: i + 1, slideTotal: shots.length, shotStartedAt });
 
     if (shot.status === 'done' && shot.clipUrl) {
       clips.push({ source: shot.clipUrl, onScreenText: shot.onScreenText });
@@ -701,7 +704,7 @@ async function generateAndAssembleVideo({ jobId, shots, engine, aspectRatio, log
         // Real Veo generation can take several minutes -- reports 'shot_polling' on every poll
         // tick (veo.js's pollUntilDone(), ~every 10s) so the FE shows genuine ongoing activity
         // instead of "generating..." frozen for minutes at a time.
-        onPoll: () => { if (onProgress) onProgress({ phase: 'shot_polling', slideIndex: i + 1, slideTotal: shots.length }); },
+        onPoll: () => { if (onProgress) onProgress({ phase: 'shot_polling', slideIndex: i + 1, slideTotal: shots.length, shotStartedAt }); },
       });
       clips.push({ source: localPath, onScreenText: shot.onScreenText });
       if (onShotDone) await onShotDone({ ...shot, status: 'done', costUsd, localPath }, i);

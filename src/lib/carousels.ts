@@ -42,6 +42,9 @@ export interface RenderProgress {
   frame?: number
   frameTotal?: number
   message?: string
+  /** ISO time the worker began the shot currently being generated (Video Studio Phase 2). Lets
+   *  the FE show an honest per-shot countdown that survives a page reload. */
+  shotStartedAt?: string
 }
 
 export interface CarouselJob {
@@ -63,6 +66,7 @@ export interface CarouselJob {
 export function describeProgress(p: RenderProgress | null | undefined): string {
   if (!p) return 'Starting…'
   const slide = p.slideIndex && p.slideTotal ? `Slide ${p.slideIndex}/${p.slideTotal}` : null
+  const shot = p.slideIndex && p.slideTotal ? `Shot ${p.slideIndex} of ${p.slideTotal}` : null
   switch (p.phase) {
     case 'starting': return 'Preparing slides…'
     case 'loading': return `${slide ?? 'Slide'} — loading…`
@@ -73,8 +77,8 @@ export function describeProgress(p: RenderProgress | null | undefined): string {
     case 'stitching': return 'Stitching slides, branding, and encoding the final video…'
     case 'audio_voiceover': return 'Recording the voiceover…'
     case 'audio_music': return 'Composing the music bed…'
-    case 'shot_generating': return `${slide ?? 'Shot'} — sending to Veo…`
-    case 'shot_polling': return `${slide ?? 'Shot'} — Veo is rendering (this can take a few minutes)…`
+    case 'shot_generating': return `${shot ?? 'Shot'} — sending to Veo…`
+    case 'shot_polling': return `${shot ?? 'Shot'} — Veo is rendering (this can take a few minutes)…`
     case 'slide_failed': return `${slide ?? 'Slide'} failed — ${p.message ?? 'unknown error'}`
     case 'done': return 'Finished'
     case 'failed': return p.message ?? 'Render failed'

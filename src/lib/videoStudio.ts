@@ -157,6 +157,8 @@ export interface VideoShot {
   clipUrl: string | null
   costUsd: number | null
   errorDetail?: string | null
+  /** ISO time the worker started generating this shot on its own (single-shot generate). */
+  startedAt?: string | null
   /** A thumbs up/down and an optional revision note — logged so quality issues have a record,
    *  and folded straight into `prompt` the next time this shot is regenerated (see
    *  `applyShotFeedback`) rather than being a separate signal nothing ever reads. */
@@ -186,6 +188,51 @@ export function totalDurationS(shots: VideoShot[]): number {
   return shots.reduce((sum, s) => sum + s.durationS, 0)
 }
 
+// ---------------------------------------------------------------------------
+// Time estimates. Veo does not publish latency; these are typical real-world figures (a clip takes
+// roughly the same time whether it is 4 or 8 seconds long, so duration is deliberately ignored).
+// They only drive the "about N min" wording and the progress bars, never any charge. If real runs
+// turn out slower or faster, change the numbers here -- nothing else depends on them.
+// ---------------------------------------------------------------------------
+const SHOT_BASE_SECONDS: Record<VideoEngine, number> = {
+  'veo-3.1-lite': 90,
+  'veo-3.1-fast': 120,
+  'veo-3.1-standard': 210,
+}
+const RESOLUTION_TIME_FACTOR: Record<VideoResolution, number> = { '720p': 1, '1080p': 1.15, '4k': 1.6 }
+/** Download + upload of the finished clip, on top of Veo's own rendering. */
+const SHOT_OVERHEAD_SECONDS = 20
+export const ASSEMBLY_SECONDS = 45
+export const VOICEOVER_SECONDS = 15
+export const MUSIC_SECONDS = 40
+
+export function estimateShotSeconds(engine: VideoEngine, resolution: VideoResolution): number {
+  return Math.round(SHOT_BASE_SECONDS[engine] * (RESOLUTION_TIME_FACTOR[resolution] ?? 1)) + SHOT_OVERHEAD_SECONDS
+}
+
+/** Whole-run estimate: audio (if it will be generated), N shots one after another, then assembly. */
+export function estimateRunSeconds(
+  engine: VideoEngine,
+  resolution: VideoResolution,
+  pendingShotCount: number,
+  audio: { voiceover?: boolean; music?: boolean } = {},
+): number {
+  return (
+    pendingShotCount * estimateShotSeconds(engine, resolution) +
+    (audio.voiceover ? VOICEOVER_SECONDS : 0) +
+    (audio.music ? MUSIC_SECONDS : 0) +
+    ASSEMBLY_SECONDS
+  )
+}
+
+/** "about 6 min" / "under a minute" -- rounded on purpose; a precise-looking figure would overstate
+ *  how well anyone can predict a third-party render queue. */
+export function formatEta(seconds: number): string {
+  if (seconds < 75) return 'about a minute'
+  const mins = Math.round(seconds / 60)
+  return `about ${mins} min`
+}
+
 /**
  * Turns a worker-written `error_detail` into something a human can act on.
  *
@@ -206,6 +253,13 @@ export function describeVideoError(raw: string | null | undefined): VideoJobErro
   if (!raw) return null
   const text = String(raw)
 
+  if (text.startsWith('WORKER_UNREACHABLE:')) {
+    return {
+      title: 'The video render service is offline',
+      detail:
+        'The app could not reach the render worker (it runs on Railway), so nothing was started and Google was not charged. Trying again will not help until the worker is switched back on — ask the developer to restart it.',
+    }
+  }
   if (text.startsWith('QUOTA_EXCEEDED:') || /RESOURCE_EXHAUSTED|quota|billing|out of credits|insufficient/i.test(text)) {
     return {
       title: 'Google AI Studio is out of credits or over quota',

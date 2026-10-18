@@ -488,7 +488,7 @@ async function runRegenerateShot(jobId, shotIndex, engine, shot, aspectRatio, re
     const shots = Array.isArray(job.shots_json) ? job.shots_json : [];
     const patched = (i, patch) => shots.map((s, idx) => (idx === i ? { ...s, ...patch } : s));
 
-    await patchVideoJob(jobId, { shots_json: patched(shotIndex, { status: 'generating' }) });
+    await patchVideoJob(jobId, { shots_json: patched(shotIndex, { status: 'generating', startedAt: new Date().toISOString(), errorDetail: null }) });
 
     const outfile = path.join(ROOT, 'output', jobId, `shot-${String(shotIndex).padStart(2, '0')}-raw.mp4`);
     const { costUsd } = await generateShot({
@@ -502,7 +502,7 @@ async function runRegenerateShot(jobId, shotIndex, engine, shot, aspectRatio, re
     });
     const clipUrl = await uploadShotClip(jobId, shotIndex, outfile);
     fs.unlinkSync(outfile);
-    await patchVideoJob(jobId, { shots_json: patched(shotIndex, { status: 'done', costUsd, clipUrl, errorDetail: null }) });
+    await patchVideoJob(jobId, { shots_json: patched(shotIndex, { status: 'done', costUsd, clipUrl, errorDetail: null, startedAt: null }) });
   } catch (err) {
     const job = await fetchVideoJob(jobId).catch(() => null);
     const shots = job && Array.isArray(job.shots_json) ? job.shots_json : [];

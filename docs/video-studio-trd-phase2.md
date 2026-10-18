@@ -280,3 +280,39 @@ completion the same way it already blends slide completion.
 - Native per-shot Veo audio (§4).
 - fal.ai, Kling Avatar, HeyGen long-form (Phase 3/4 per PRD §10).
 - A resolution picker — hardcoded 1080p for v1, matching the PRD's own cost table.
+
+## Progress, time estimates, shot-by-shot, and the worker-offline path (2026-10-18)
+
+**Why:** videos started on 14 Oct never generated. `ScalePods · Video Render` ran "successfully" five
+times, but its worker-trigger node continues on error and Railway answered 404 ("The train has not
+arrived at the station"): the render worker service had no active deployment (the last one, 799f954,
+was REMOVED on 2026-10-01; later pushes were SKIPPED by the `carousel-studio/**` watch pattern). The job
+row never changed, so the FE showed nothing, and the FE had already logged $2.16 per click to
+`spend_events` (5 clicks = $10.80 of phantom spend; Google was never called).
+
+**Fixed in n8n (published 2026-10-18):**
+- `ScalePods · Video Render` and `ScalePods · Video Regenerate Shot` gained a `Flag Worker Unreachable`
+  node after the worker call. On a worker error it marks the job `failed` (regenerate: that shot
+  `failed`) with `WORKER_UNREACHABLE: ...`; on success it sends a no-op patch. The render one only touches
+  jobs whose status is not `rendering`, so it can never overwrite a live run.
+- `Video Regenerate Shot` now sends `resolution` (it was missing, so a 720p job regenerated shot by shot
+  rendered at the worker's 1080p default and cost more than the screen quoted).
+
+**FE (`VideoStudio.tsx`, `videoStudio.ts`, `carousels.ts`):**
+- Estimated time before every generate click and in both confirm dialogs. Constants live in
+  `videoStudio.ts` (`SHOT_BASE_SECONDS` etc.); they are typical-latency guesses, not Google figures.
+- Overall bar + "about N min left" while a run is going, plus a bar on each shot card.
+- "Generate this shot" on any shot without a clip (own confirm dialog, own price) next to "Generate
+  all / remaining". Finished shots are reused, so each shot is paid for once.
+- Local shot state now merges the worker's results (clip, cost, status) as they arrive. Before, it only
+  refreshed when you switched videos, so a Rebuild after a run could save stale "pending" shots and pay
+  again. A shot stuck "generating" for 12 min is treated as idle so buttons are never locked forever.
+- Single-shot generate now saves on-screen prompt edits first (it used to generate the OLD saved prompt).
+- "Waiting for the worker" notice between click and first update; clearer "Shot 2 of 3" wording.
+
+**Worker (`render.js`, `server.js`, NOT yet deployed):** progress now carries `shotStartedAt`, and a
+single-shot regenerate stamps `startedAt` on the shot, so the countdown survives a page reload. The FE
+works without them (falls back to when it first saw the shot generating).
+
+**Still needed:** bring the Railway service back (check the Railway billing/plan; I could not see why it
+was removed). Carousel Studio uses the same worker and is down too.

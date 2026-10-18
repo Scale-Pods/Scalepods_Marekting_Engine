@@ -14,6 +14,7 @@ import {
   listVideoJobs, generateVideoBrief, updateVideoDraft, triggerVideoRender, deleteVideoJob,
   markVideoJobUsed, regenerateVideoShot, describeProgress, overallProgress,
   estimateShotsCost, totalDurationS, ratePerSecond, formatUsdInr, describeVideoError,
+  estimateRunSeconds, estimateShotSeconds, formatEta, ASSEMBLY_SECONDS, VOICEOVER_SECONDS, MUSIC_SECONDS,
   VIDEO_ENGINES, VIDEO_RESOLUTIONS, ENGINE_LABEL, ENGINE_BLURB, PER_VIDEO_CEILING_USD,
   MUSIC_COST_USD, VOICE_OPTIONS, DEFAULT_VOICE, voiceSampleUrl, foldFeedbackIntoText,
   type VideoJob, type CarouselSlide, type VideoShot, type VideoEngine, type VideoType,
@@ -63,6 +64,46 @@ function StatusBadge({ status }: { status: VideoJob['status'] }) {
 /** The live price of what's currently configured, broken down so the number is never a mystery:
  *  what it's charging per second, how many seconds, and the total in both currencies. Mirrors
  *  AI Studio's CostEstimate, but video costs 10-100x more per click so it gets more room. */
+/** Re-renders every second while `active`, so countdowns and bars move without any worker traffic. */
+function useNow(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    setNow(Date.now())
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [active])
+  return now
+}
+
+function ProgressBar({ fraction }: { fraction: number }) {
+  return (
+    <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--fill-tertiary)' }}>
+      <div
+        className="h-full rounded-full transition-all duration-700"
+        style={{ width: `${Math.round(Math.min(1, Math.max(0, fraction)) * 100)}%`, background: 'var(--accent-blue)' }}
+      />
+    </div>
+  )
+}
+
+/** "Takes about N min" line shown wherever a click starts a generation. It is an estimate, and
+ *  says so -- Veo's queue time is Google's, not ours. */
+function EtaNote({ seconds, what }: { seconds: number; what: string }) {
+  return (
+    <div className="text-[11px] text-muted flex items-center gap-1.5 flex-wrap">
+      <Clock size={11} /> Estimated time for {what}: <b className="text-secondary">{formatEta(seconds)}</b>
+      <span>(an estimate; Google's queue sets the real time)</span>
+    </div>
+  )
+}
+
+interface ShotLive {
+  fraction: number
+  label: string
+  tone: 'active' | 'queued'
+}
+
 function CostBar({
   engine, resolution, seconds, shots, overCeiling, music = false,
 }: {
@@ -368,7 +409,7 @@ function FeedbackControl({
 
 function ShotEditor({
   shot, engine, resolution, editable, onChange, onRemove, onRegenerate, regenerating,
-  onMoveUp, onMoveDown,
+  onMoveUp, onMoveDown, onGenerate, live, busy,
 }: {
   shot: VideoShot
   engine: VideoEngine
@@ -383,6 +424,12 @@ function ShotEditor({
    *  than shown disabled, same convention as onRemove disappearing at one shot left. */
   onMoveUp?: () => void
   onMoveDown?: () => void
+  /** Generate (and pay for) just this one shot. Offered on shots that have no clip yet. */
+  onGenerate?: () => void
+  /** Live progress for a shot being generated right now, or waiting its turn in a run. */
+  live?: ShotLive | null
+  /** Another generation is in flight, so starting a second one is blocked. */
+  busy?: boolean
 }) {
   const set = (patch: Partial<VideoShot>) => onChange({ ...shot, ...patch })
   const rate = ratePerSecond(engine, resolution) ?? 0
@@ -416,8 +463,19 @@ function ShotEditor({
               {SHOT_DURATIONS.map((d) => <option key={d} value={d}>{d}s</option>)}
             </select>
           )}
-          {onRegenerate && (
-            <button onClick={onRegenerate} disabled={regenerating} className="text-muted hover:text-sage disabled:opacity-40" title="Regenerate just this shot">
+          {onGenerate && shot.status !== 'done' && shot.status !== 'generating' && (
+            <button
+              onClick={onGenerate}
+              disabled={regenerating || busy}
+              className="text-[11px] font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 disabled:opacity-40"
+              style={{ background: 'var(--fill-secondary)', border: '1px solid var(--border-subtle)' }}
+              title="Generate only this shot; you pay for this shot only"
+            >
+              {regenerating ? <Spinner size={12} /> : <Play size={11} />} Generate this shot — ≈${cost.toFixed(2)}
+            </button>
+          )}
+          {onRegenerate && shot.status === 'done' && (
+            <button onClick={onRegenerate} disabled={regenerating || busy} className="text-muted hover:text-sage disabled:opacity-40" title="Regenerate just this shot">
               {regenerating ? <Spinner size={13} /> : <RefreshCw size={13} />}
             </button>
           )}
@@ -426,6 +484,16 @@ function ShotEditor({
           )}
         </div>
       </div>
+
+      {live && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2 text-[11px]">
+            <span className={live.tone === 'active' ? 'text-sage font-medium' : 'text-muted'}>{live.label}</span>
+            {live.tone === 'active' && <span className="tabular-nums text-muted">{Math.round(live.fraction * 100)}%</span>}
+          </div>
+          <ProgressBar fraction={live.fraction} />
+        </div>
+      )}
 
       <div className="label !mb-1">Veo prompt</div>
       <textarea
@@ -462,7 +530,7 @@ function ShotEditor({
       )}
 
       {shot.status === 'failed' && shot.errorDetail && (
-        <div className="text-xs text-terracotta break-words">{shot.errorDetail}</div>
+        <div className="text-xs text-terracotta break-words">{describeVideoError(shot.errorDetail)?.detail ?? shot.errorDetail}</div>
       )}
       {shot.status === 'done' && shot.clipUrl && (
         <>
@@ -521,6 +589,11 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [regeneratingShot, setRegeneratingShot] = useState<number | null>(null)
   const [regeneratingAudio, setRegeneratingAudio] = useState<'voiceover' | 'music' | null>(null)
+  // When the last Generate click went out. Drives the "waiting for the worker to start" notice
+  // until the job row actually changes state.
+  const [triggeredAt, setTriggeredAt] = useState<number | null>(null)
+  const [confirmShotIdx, setConfirmShotIdx] = useState<number | null>(null)
+  const seenRef = useRef<Record<string, number>>({})
   const toast = useToast()
 
   const isGeneratedClips = job.video_type === 'generated_clips'
@@ -539,7 +612,34 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
     setWantsMusicEdit(job.music_prompt !== null)
     setVoFeedback(job.voiceover_feedback)
     setMusicFeedback(job.music_feedback)
+    setTriggeredAt(null)
   }, [job.id])
+
+  // The worker writes shot results (clip URL, cost, done/failed) straight to the job row while
+  // this screen is open. Without pulling those into the local copy, a finished run kept showing
+  // "pending" shots with no clip, and the next Rebuild would have saved that stale copy back and
+  // paid for every shot again. Only the worker-owned fields are taken, and only for a shot whose
+  // prompt and length still match the saved one, so an unsaved edit is never overwritten.
+  const dbShotsSig = JSON.stringify((job.shots_json ?? []).map((s) => [s.prompt, s.durationS, s.status, s.clipUrl, s.costUsd, s.errorDetail, s.startedAt]))
+  useEffect(() => {
+    const db = job.shots_json ?? []
+    setShots((prev) => {
+      if (prev.length !== db.length) return job.status === 'rendering' ? db : prev
+      return prev.map((s, i) => (
+        s.prompt === db[i].prompt && s.durationS === db[i].durationS
+          ? { ...s, status: db[i].status, clipUrl: db[i].clipUrl, costUsd: db[i].costUsd, errorDetail: db[i].errorDetail, startedAt: db[i].startedAt }
+          : s
+      ))
+    })
+  }, [dbShotsSig, job.status])
+
+  // The job row leaving draft/done, or failing, means the worker (or the failure handler) answered.
+  useEffect(() => {
+    if (job.status === 'rendering' || job.status === 'failed') setTriggeredAt(null)
+  }, [job.status])
+
+  const hasGeneratingShot = shots.some((s) => s.status === 'generating')
+  const now = useNow(job.status === 'rendering' || hasGeneratingShot || triggeredAt !== null)
 
   // Live, not stale: recomputed on every duration change / shot removal, so the number on the
   // button is always what the next click will actually cost.
@@ -548,7 +648,73 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
   const overCeiling = isGeneratedClips && liveCost > PER_VIDEO_CEILING_USD
   // Editable in every state except mid-render — after a video is finished you can still rework a
   // shot prompt and re-run it, which is the whole point of keeping the storyboard on screen.
-  const editable = job.status !== 'rendering'
+  const shotEta = estimateShotSeconds(engine, resolution)
+  const progress = job.render_progress
+  // Which shot a full run is on right now (1-based slideIndex -> 0-based).
+  const runShotIdx = job.status === 'rendering' && progress && (progress.phase === 'shot_generating' || progress.phase === 'shot_polling') && progress.slideIndex
+    ? progress.slideIndex - 1
+    : null
+
+  /** When this shot's generation began. The worker stamps it; if an older worker did not, the first
+   *  moment this screen saw it generating stands in (right unless the page was reloaded mid-shot). */
+  function shotStartMs(i: number, shot: VideoShot): number {
+    const iso = (runShotIdx === i ? progress?.shotStartedAt : null) ?? shot.startedAt ?? null
+    const t = iso ? Date.parse(iso) : NaN
+    if (!Number.isNaN(t)) return t
+    const key = `${job.id}:${i}`
+    if (!(key in seenRef.current)) seenRef.current[key] = Date.now()
+    return seenRef.current[key]
+  }
+
+  // A shot marked "generating" for longer than the worker's own 10-minute limit means the worker
+  // died mid-shot; treat it as idle so the buttons are not locked forever.
+  const STALE_SHOT_MS = 12 * 60 * 1000
+  function shotIsLive(i: number, shot: VideoShot): boolean {
+    if (shot.status === 'done') return false
+    const active = runShotIdx === i || shot.status === 'generating'
+    return active && now - shotStartMs(i, shot) < STALE_SHOT_MS
+  }
+
+  function liveFor(i: number, shot: VideoShot): ShotLive | null {
+    if (shotIsLive(i, shot)) {
+      const elapsed = Math.max(0, (now - shotStartMs(i, shot)) / 1000)
+      const left = shotEta - elapsed
+      return {
+        tone: 'active',
+        fraction: Math.min(0.95, elapsed / shotEta),
+        label: left > 5 ? `Generating — ${formatEta(left)} left (estimate)` : 'Taking a little longer than usual, still working…',
+      }
+    }
+    if (job.status === 'rendering' && shot.status !== 'done' && shot.status !== 'failed') {
+      return { tone: 'queued', fraction: 0, label: 'Waiting for its turn' }
+    }
+    return null
+  }
+
+  const shotBusy = shots.some((s, i) => shotIsLive(i, s))
+
+  // Whole-run estimate, recomputed from what is actually left, so "N min left" shrinks as shots land.
+  const audioRemaining =
+    (job.voiceover_script && !job.voiceover_url ? VOICEOVER_SECONDS : 0) + (job.music_prompt && !job.music_url ? MUSIC_SECONDS : 0)
+  let remainingS = 0
+  let totalS = 0
+  if (job.status === 'rendering' && isGeneratedClips) {
+    shots.forEach((s, i) => {
+      totalS += shotEta
+      if (s.status === 'done') return
+      const live = shotIsLive(i, s)
+      const elapsed = live ? (now - shotStartMs(i, s)) / 1000 : 0
+      remainingS += Math.max(live ? 8 : shotEta, shotEta - elapsed)
+    })
+    const phase = progress?.phase
+    const assemblyLeft = phase === 'stitching' ? ASSEMBLY_SECONDS / 2 : ASSEMBLY_SECONDS
+    const audioLeft = phase === 'audio_voiceover' || phase === 'audio_music' || phase === 'starting' || phase === undefined ? audioRemaining : 0
+    remainingS += assemblyLeft + audioLeft
+    totalS += ASSEMBLY_SECONDS + audioRemaining
+  }
+  const overallFraction = totalS > 0 ? Math.min(0.97, Math.max(0.02, 1 - remainingS / totalS)) : 0
+
+  const editable = job.status !== 'rendering' && !shotBusy
 
   // A shot that already has a real clip is REUSED by the worker rather than regenerated, so the
   // next click only pays for shots that still need generating. Editing a prompt resets that shot
@@ -559,6 +725,9 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
     : 0
   const nextRunOverCeiling = isGeneratedClips && nextRunCost > PER_VIDEO_CEILING_USD
   const budgetGate = useBudgetGate(nextRunCost)
+  const confirmShot = confirmShotIdx !== null ? shots[confirmShotIdx] : undefined
+  const confirmShotCost = confirmShot ? Math.round(confirmShot.durationS * (ratePerSecond(engine, resolution) ?? 0) * 100) / 100 : 0
+  const shotBudgetGate = useBudgetGate(confirmShotCost)
   const hasFinished = job.status === 'done' && Boolean(job.final_video_url)
 
   /**
@@ -607,6 +776,11 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
   const voChanged = effectiveVoScript !== (job.voiceover_script || null) || (wantsVoiceoverEdit && voice !== (job.voice ?? DEFAULT_VOICE))
   const musicChanged = effectiveMusicPrompt !== (job.music_prompt || null)
   const audioChanged = voChanged || musicChanged
+  // What the NEXT click will take: only shots without a clip, plus audio that still has to be made.
+  const runEtaS = estimateRunSeconds(engine, resolution, pendingShots.length, {
+    voiceover: Boolean(effectiveVoScript) && (voChanged || !job.voiceover_url),
+    music: Boolean(effectiveMusicPrompt) && (musicChanged || !job.music_url),
+  })
 
   async function doRender() {
     setSaving(true)
@@ -632,10 +806,11 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
       // The ceiling applies to what this run will actually charge — already-generated shots are
       // reused, not re-billed.
       await triggerVideoRender(job.id, job.video_type, nextRunCost)
+      setTriggeredAt(Date.now())
       toast.info(
         isGeneratedClips
           ? (pendingShots.length > 0
-            ? `Generating ${pendingShots.length} shot${pendingShots.length === 1 ? '' : 's'} — Veo takes a few minutes each.`
+            ? `Generating ${pendingShots.length} shot${pendingShots.length === 1 ? '' : 's'}: ${formatEta(runEtaS)} in total.`
             : audioChanged
               ? 'Recording the audio and re-assembling — shots are reused, so this only costs the audio itself.'
               : 'Re-assembling with your new on-screen text — no new generation, no extra cost.')
@@ -662,22 +837,22 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
   async function onRegenerateShot(idx: number) {
     setRegeneratingShot(idx)
     try {
-      // A feedback note gets folded into the prompt BEFORE firing — n8n reads shots_json fresh
-      // from Supabase when this webhook lands, so the worker only ever sees what is actually
-      // saved, not local component state. The note is cleared once folded in (it is now part of
-      // the prompt text itself, visible and editable there); the rating stays as the log.
+      // The worker reads the shot from the saved job row (via n8n), so whatever is on screen must be
+      // saved first; otherwise an edit to this prompt would be ignored and the OLD prompt paid for.
+      // A feedback note is folded into the prompt before saving, then cleared (the rating stays
+      // as the log).
       const note = shots[idx].feedback?.note?.trim()
-      let nextShots = shots
-      if (note) {
-        nextShots = shots.map((s, i) => (i === idx ? { ...s, prompt: foldFeedbackIntoText(s.prompt, note), feedback: { rating: s.feedback?.rating ?? null, note: '' } } : s))
-        setShots(nextShots)
-        await updateVideoDraft(job.id, { shots_json: nextShots })
-      }
+      const nextShots = note
+        ? shots.map((s, i) => (i === idx ? { ...s, prompt: foldFeedbackIntoText(s.prompt, note), feedback: { rating: s.feedback?.rating ?? null, note: '' } } : s))
+        : shots
+      if (note) setShots(nextShots)
+      await updateVideoDraft(job.id, { shots_json: nextShots, estimated_cost_usd: estimateShotsCost(engine, resolution, nextShots) })
       await regenerateVideoShot(job.id, idx)
-      toast.info(`Regenerating shot ${idx + 1} — this costs the price of that one shot.`)
+      setTriggeredAt(Date.now())
+      toast.info(`Generating shot ${idx + 1}: ${formatEta(shotEta)}. Only this shot is charged.`)
       onChanged()
     } catch (err) {
-      toast.error(toastMessage(err, 'Could not regenerate this shot'))
+      toast.error(toastMessage(err, 'Could not generate this shot'))
     } finally {
       setRegeneratingShot(null)
     }
@@ -715,6 +890,7 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
       }
       await updateVideoDraft(job.id, patch)
       await triggerVideoRender(job.id, job.video_type, 0)
+      setTriggeredAt(Date.now())
       toast.info(isVo ? 'Re-recording the voiceover…' : 'Re-composing the music bed — $0.04.')
       onChanged()
     } catch (err) {
@@ -785,6 +961,11 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                   onRemove={shots.length > 1 ? () => setShots((prev) => prev.filter((_, idx) => idx !== i).map((s, idx) => ({ ...s, index: idx }))) : undefined}
                   onMoveUp={i > 0 ? () => moveShot(i, -1) : undefined}
                   onMoveDown={i < shots.length - 1 ? () => moveShot(i, 1) : undefined}
+                  onGenerate={() => setConfirmShotIdx(i)}
+                  onRegenerate={() => setConfirmShotIdx(i)}
+                  regenerating={regeneratingShot === i}
+                  live={liveFor(i, shot)}
+                  busy={shotBusy || regeneratingShot !== null}
                 />
               ))}
             </div>
@@ -834,7 +1015,17 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
           )}
 
           {isGeneratedClips && (
-            <CostBar engine={engine} resolution={resolution} seconds={seconds} shots={shots.length} overCeiling={overCeiling} />
+            <>
+              <CostBar engine={engine} resolution={resolution} seconds={totalDurationS(pendingShots)} shots={pendingShots.length} overCeiling={nextRunOverCeiling} />
+              {pendingShots.length > 0 && <EtaNote seconds={runEtaS} what={pendingShots.length === 1 ? 'this shot' : `all ${pendingShots.length} shots`} />}
+              {shots.length > 1 && (
+                <div className="text-[11px] text-muted">
+                  Two ways to run it: <b className="text-secondary">Generate all</b> below makes every shot one after another,
+                  or use <b className="text-secondary">Generate this shot</b> on a card to make and check them one at a time.
+                  Finished shots are reused free, so you only ever pay for each shot once.
+                </div>
+              )}
+            </>
           )}
           {isGeneratedClips && budgetGate.cap !== null && (
             <p className="text-xs mb-2" style={{ color: budgetGate.allowed ? 'var(--text-muted)' : 'var(--accent-orange)' }}>
@@ -846,11 +1037,18 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
           <Button
             onClick={onApprove}
             loading={saving || rendering}
-            disabled={!GENERATION_ENABLED || (isGeneratedClips && (!VIDEO_GENERATION_ENABLED || overCeiling))}
+            disabled={!GENERATION_ENABLED || (isGeneratedClips && (!VIDEO_GENERATION_ENABLED || nextRunOverCeiling || shotBusy))}
             {...spendGate.props}
             {...budgetGate.props}
           >
-            <Play size={15} /> {isGeneratedClips ? `Generate video — ≈$${liveCost.toFixed(2)}` : 'Approve & Render'}
+            <Play size={15} />{' '}
+            {!isGeneratedClips
+              ? 'Approve & Render'
+              : pendingShots.length === 0
+                ? 'Assemble video (no new generation)'
+                : pendingShots.length === shots.length
+                  ? `Generate all ${shots.length} shot${shots.length === 1 ? '' : 's'} — ≈$${nextRunCost.toFixed(2)}`
+                  : `Generate remaining ${pendingShots.length} shot${pendingShots.length === 1 ? '' : 's'} — ≈$${nextRunCost.toFixed(2)}`}
           </Button>
         </>
       )}
@@ -858,19 +1056,40 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
       {(job.status === 'rendering' || job.status === 'done' || job.status === 'failed') && (
         <>
           {job.status === 'rendering' && (
-            <div className="card p-6 flex flex-col items-center gap-3 text-center">
-              <Spinner size={22} />
-              <div className="text-xs text-sage font-medium tabular-nums">{describeProgress(job.render_progress)}</div>
-              <div className="w-full max-w-xs h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--fill-tertiary)' }}>
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{ width: `${Math.round(overallProgress(job.render_progress) * 100)}%`, background: 'var(--accent-blue)' }}
-                />
+            <div className="card p-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <Spinner size={20} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-ink break-words">{describeProgress(job.render_progress)}</div>
+                  <div className="text-xs text-muted">
+                    {isGeneratedClips
+                      ? `About ${formatEta(remainingS).replace('about ', '')} left (estimate)`
+                      : 'Stitching, branding and encoding takes a few minutes.'}
+                  </div>
+                </div>
+                <div className="text-sm font-semibold tabular-nums text-sage">
+                  {Math.round((isGeneratedClips ? overallFraction : overallProgress(job.render_progress)) * 100)}%
+                </div>
               </div>
+              <ProgressBar fraction={isGeneratedClips ? overallFraction : overallProgress(job.render_progress)} />
               <div className="text-xs text-muted">
                 {isGeneratedClips
-                  ? 'Veo generates each shot separately — a few minutes each. You can leave this page.'
-                  : 'Stitching, branding and encoding takes a few minutes. You can leave this page.'}
+                  ? 'Shots are made one after another, and each shot below has its own bar. You can leave this page; progress is saved and the video appears here when it is ready.'
+                  : 'You can leave this page.'}
+              </div>
+            </div>
+          )}
+
+          {/* Between the click and the worker's first update. If it never answers, the failure
+              handler flips the job to "failed" within seconds; this covers the gap and the case
+              where even that does not arrive. */}
+          {triggeredAt !== null && job.status !== 'rendering' && job.status !== 'failed' && (
+            <div className="card p-4 flex items-start gap-3">
+              <Spinner size={16} />
+              <div className="text-xs text-secondary">
+                {now - triggeredAt < 60_000
+                  ? 'Sent to the render worker. Waiting for it to start…'
+                  : 'The render worker has not answered after a minute. It may be offline; nothing has been charged by Google. Check back shortly or ask the developer to look at it.'}
               </div>
             </div>
           )}
@@ -929,8 +1148,11 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                   resolution={resolution}
                   editable={editable}
                   onChange={(s) => onShotChange(i, s)}
-                  onRegenerate={editable ? () => onRegenerateShot(i) : undefined}
+                  onRegenerate={editable ? () => setConfirmShotIdx(i) : undefined}
+                  onGenerate={editable ? () => setConfirmShotIdx(i) : undefined}
                   regenerating={regeneratingShot === i}
+                  live={liveFor(i, shot)}
+                  busy={shotBusy || regeneratingShot !== null}
                   onMoveUp={editable && i > 0 ? () => moveShot(i, -1) : undefined}
                   onMoveDown={editable && i < shots.length - 1 ? () => moveShot(i, 1) : undefined}
                 />
@@ -1008,10 +1230,11 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                       Nothing to re-generate — re-assembling only applies your new on-screen text, caption and shot order, at no cost.
                     </div>
                   )}
+                  {nextRunCost > 0 && <EtaNote seconds={runEtaS} what={pendingShots.length === 1 ? 'this shot' : `${pendingShots.length} shots`} />}
                   <Button
                     onClick={onApprove}
                     loading={saving || rendering}
-                    disabled={!GENERATION_ENABLED || !VIDEO_GENERATION_ENABLED || nextRunOverCeiling}
+                    disabled={!GENERATION_ENABLED || !VIDEO_GENERATION_ENABLED || nextRunOverCeiling || shotBusy}
                   >
                     <RefreshCw size={15} />{' '}
                     {nextRunCost > 0
@@ -1047,6 +1270,9 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
               <div className="text-[11px] text-muted mt-2">
                 Estimate based on Google's published per-second rate. You are only charged for shots that generate successfully.
               </div>
+              <div className="text-[11px] text-muted mt-1">
+                Takes {formatEta(runEtaS)} in total (estimate). Shots are made one after another, so you can watch each bar fill.
+              </div>
             </div>
             <div className="flex gap-2">
               <Button variant="ghost" className="flex-1" onClick={() => setConfirmOpen(false)}>Cancel</Button>
@@ -1058,6 +1284,40 @@ function JobDetail({ job, onChanged }: { job: VideoJob; onChanged: () => void })
                 {...budgetGate.props}
               >
                 <Play size={15} /> Yes, generate
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {confirmShotIdx !== null && shots[confirmShotIdx] && (
+        <Modal title={`Generate shot ${confirmShotIdx + 1}`} onClose={() => setConfirmShotIdx(null)}>
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'var(--fill-tertiary)' }}>
+              <AlertTriangle size={18} className="text-terracotta shrink-0 mt-0.5" />
+              <div className="text-sm text-secondary">
+                {shots[confirmShotIdx].status === 'done'
+                  ? 'This replaces the clip you already have for this shot, and you pay for it again.'
+                  : 'This generates only this one shot.'}{' '}
+                It charges the connected Google account for this shot alone ({shots[confirmShotIdx].durationS} seconds with{' '}
+                <b className="text-ink">{ENGINE_LABEL[engine]}</b> at {resolution}). The other shots are not touched.
+              </div>
+            </div>
+            <div className="text-center py-1">
+              <div className="text-3xl font-bold text-ink tabular-nums">${confirmShotCost.toFixed(2)}</div>
+              <div className="text-sm text-secondary mt-1">≈ ₹{Math.round(confirmShotCost * 94.6).toLocaleString('en-IN')}</div>
+              <div className="text-[11px] text-muted mt-2">Takes {formatEta(shotEta)} (estimate). You are only charged if the shot generates.</div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" className="flex-1" onClick={() => setConfirmShotIdx(null)}>Cancel</Button>
+              <Button
+                className="flex-1"
+                disabled={!GENERATION_ENABLED || !VIDEO_GENERATION_ENABLED || shotBusy}
+                onClick={async () => { const idx = confirmShotIdx; setConfirmShotIdx(null); await onRegenerateShot(idx) }}
+                {...spendGate.props}
+                {...shotBudgetGate.props}
+              >
+                <Play size={15} /> Yes, generate this shot
               </Button>
             </div>
           </div>
